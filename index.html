@@ -22,6 +22,11 @@
     .modal input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0A1929; border: 1px solid #1E4976; color: white; border-radius: 8px; box-sizing: border-box; }
     .modal button { width: 100%; padding: 12px; background: #36C7B2; color: #0A1929; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
     .close { float: right; color: #B2BAC2; cursor: pointer; font-size: 20px; }
+    .filters { display: flex; gap: 10px; padding: 0 20px 20px; overflow-x: auto; }
+    .filter { background: #132F4C; color: #B2BAC2; border: 1px solid #1E4976; padding: 8px 16px; border-radius: 20px; white-space: nowrap; cursor: pointer; }
+    .filter.active { background: #36C7B2; color: #0A1929; border-color: #36C7B2; }
+    .calm-mode-active .likes-count { display: none; }
+    @keyframes bounce { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.5); } }
   </style>
 </head>
 <body>
@@ -31,13 +36,69 @@
     <button class="btn-register" onclick="document.getElementById('registerModal').style.display='flex'">Registrarse</button>
   </header>
 
+  <div class="filters">
+    <div class="filter active" onclick="toggleCalmMode()">Modo Calma</div>
+    <div class="filter">Para ti</div>
+    <div class="filter">Deportes</div>
+    <div class="filter">Animales</div>
+    <div class="filter">Océano</div>
+    <div class="filter">Arte</div>
+    <div class="filter">Psicología</div>
+    <div class="filter">Música</div>
+  </div>
+
   <div class="feed">
     <div class="post">
       <div class="post-header"><div class="avatar">TS</div><div class="username">Tierra Salvaje</div></div>
       <div style="padding: 0 15px 15px;">Instinto, fuerza y trabajo en equipo. 🦁</div>
       <iframe class="media" src="https://www.youtube.com/embed/OMg8u2j8l8E" frameborder="0" allowfullscreen></iframe>
-      <div class="post-actions"><div class="action">❤️ 2.4k</div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div></div>
+      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">2.4k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
       <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Animales</strong>.</div>
+    </div>
+
+    <div class="post">
+      <div class="post-header"><div class="avatar">OM</div><div class="username">Océano Mágico</div></div>
+      <div style="padding: 0 15px 15px;">La majestuosidad de las ballenas jorobadas. 🐋</div>
+      <iframe class="media" src="https://www.youtube.com/embed/3nYqXfXjNqk" frameborder="0" allowfullscreen></iframe>
+      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">1.8k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
+      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Océano</strong>.</div>
+    </div>
+
+    <div class="post">
+      <div class="post-header"><div class="avatar">DM</div><div class="username">Diego Montes</div></div>
+      <div style="padding: 0 15px 15px;">Tu único límite es el que decides romper. 💪</div>
+      <iframe class="media" src="https://www.youtube.com/embed/1L8pV72P0i0" frameborder="0" allowfullscreen></iframe>
+      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">3.1k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
+      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Deportes</strong>.</div>
+    </div>
+
+    <div class="post">
+      <div class="post-header"><div class="avatar">AH</div><div class="username">Arte e Historia</div></div>
+      <div style="padding: 0 15px 15px;">"La joven de la perla" de Vermeer (Siglo XVII). 🎨</div>
+      <img class="media" src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Meisje_met_de_parel.jpg/800px-Meisje_met_de_parel.jpg" alt="La joven de la perla">
+      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">5.2k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
+      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Arte</strong>.</div>
+    </div>
+
+    <div class="post">
+      <div class="post-header"><div class="avatar">PS</div><div class="username">Mente Curiosa</div></div>
+      <div style="padding: 0 15px 15px;">"Hasta que no hagas consciente lo inconsciente, tu vida estará guiada por él y lo llamarás destino". - Carl Jung. 🧠</div>
+      <div style="background: linear-gradient(135deg, #132F4C, #0A1929); padding: 40px 20px; text-align: center; font-style: italic; color: #36C7B2;">"El que mira hacia afuera, sueña; el que mira hacia adentro, despierta."</div>
+      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">4.5k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
+      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Psicología</strong>.</div>
+    </div>
+
+    <div class="post">
+      <div class="post-header"><div class="avatar">MU</div><div class="username">Universo Sonoro</div></div>
+      <div style="padding: 0 15px 15px;">Sonidos binaurales para relajarte. 🎧</div>
+      <div style="background: #1E4976; padding: 20px; text-align: center; display: flex; justify-content: center; gap: 5px; align-items: center;">
+        <div style="width: 5px; height: 20px; background: #36C7B2; animation: bounce 1s infinite;"></div>
+        <div style="width: 5px; height: 35px; background: #36C7B2; animation: bounce 1.2s infinite;"></div>
+        <div style="width: 5px; height: 15px; background: #36C7B2; animation: bounce 0.8s infinite;"></div>
+        <div style="width: 5px; height: 40px; background: #36C7B2; animation: bounce 1.5s infinite;"></div>
+      </div>
+      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">1.2k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
+      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Música</strong>.</div>
     </div>
   </div>
 
@@ -45,7 +106,7 @@
     <div class="modal-content">
       <span class="close" onclick="document.getElementById('registerModal').style.display='none'">&times;</span>
       <h2 style="color: #36C7B2; margin-top: 0;">Únete a Gyste</h2>
-      <form name="registro-gyste" data-netlify="true" onsubmit="alert('¡Bienvenido a Gyste! Tu perfil ha sido creado.'); document.getElementById('registerModal').style.display='none'; return false;">
+      <form name="registro-gyste" data-netlify="true" onsubmit="alert('¡Bienvenido a Gyste!'); document.getElementById('registerModal').style.display='none'; return false;">
         <input type="text" name="nombre" placeholder="Tu nombre" required>
         <input type="email" name="correo" placeholder="Tu correo electrónico" required>
         <button type="submit">Crear mi perfil</button>
@@ -53,5 +114,19 @@
     </div>
   </div>
 
+  <script>
+    function toggleLike(el) {
+      el.style.color = el.style.color === 'rgb(54, 199, 178)' ? '#B2BAC2' : '#36C7B2';
+    }
+    function toggleCalmMode() {
+      document.body.classList.toggle('calm-mode-active');
+      const btn = document.querySelector('.filter.active');
+      if(document.body.classList.contains('calm-mode-active')) {
+        btn.textContent = 'Modo Normal';
+      } else {
+        btn.textContent = 'Modo Calma';
+      }
+    }
+  </script>
 </body>
 </html>
