@@ -4,129 +4,153 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gyste</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { background-color: #0A1929; color: #F3F6F9; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
-    header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background-color: #0A1929; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #1E4976; }
+    header { display: flex; justify-content: space-between; padding: 15px 20px; border-bottom: 1px solid #1E4976; background: #0A1929; }
     .logo { font-size: 24px; font-weight: bold; color: #36C7B2; }
-    .btn-register { background-color: #36C7B2; color: #0A1929; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-    .feed { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
-    .post { background-color: #132F4C; border-radius: 16px; border: 1px solid #1E4976; overflow: hidden; }
-    .post-header { padding: 15px; display: flex; align-items: center; gap: 10px; }
-    .avatar { width: 40px; height: 40px; border-radius: 50%; background-color: #1E4976; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #36C7B2; }
-    .media { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #000; display: block; }
-    .post-actions { padding: 10px 15px; display: flex; gap: 15px; border-top: 1px solid #1E4976; align-items: center; }
-    .action { color: #B2BAC2; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.9rem; }
-    .transparency { padding: 10px 15px; background: rgba(54, 199, 178, 0.1); font-size: 0.8rem; color: #B2BAC2; border-top: 1px solid #1E4976; }
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 200; }
-    .modal-content { background: #132F4C; padding: 30px; border-radius: 16px; width: 90%; max-width: 400px; border: 1px solid #1E4976; }
-    .modal input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0A1929; border: 1px solid #1E4976; color: white; border-radius: 8px; box-sizing: border-box; }
-    .modal button { width: 100%; padding: 12px; background: #36C7B2; color: #0A1929; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-    .close { float: right; color: #B2BAC2; cursor: pointer; font-size: 20px; }
-    .filters { display: flex; gap: 10px; padding: 0 20px 20px; overflow-x: auto; }
-    .filter { background: #132F4C; color: #B2BAC2; border: 1px solid #1E4976; padding: 8px 16px; border-radius: 20px; white-space: nowrap; cursor: pointer; }
-    .filter.active { background: #36C7B2; color: #0A1929; border-color: #36C7B2; }
-    .calm-mode-active .likes-count { display: none; }
-    @keyframes bounce { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.5); } }
+    input, button { font-family: inherit; }
+    .auth-container { max-width: 400px; margin: 50px auto; padding: 20px; background: #132F4C; border-radius: 12px; border: 1px solid #1E4976; }
+    .auth-container h1 { color: #36C7B2; text-align: center; }
+    .auth-input { width: 100%; padding: 15px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #1E4976; background: #0A1929; color: white; box-sizing: border-box; }
+    .btn-primary { width: 100%; padding: 15px; background: #36C7B2; color: #0A1929; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; margin-bottom: 10px; }
+    .btn-secondary { width: 100%; padding: 15px; background: transparent; color: #36C7B2; font-weight: bold; border-radius: 8px; border: 1px solid #36C7B2; cursor: pointer; }
+    .feed-container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .post-box { background: #132F4C; padding: 20px; border-radius: 12px; border: 1px solid #1E4976; margin-bottom: 20px; }
+    .post { background: #132F4C; padding: 20px; border-radius: 12px; border: 1px solid #1E4976; margin-bottom: 15px; }
+    .post-actions { display: flex; gap: 15px; margin-top: 15px; color: #B2BAC2; }
+    .action-btn { background: none; border: none; color: #B2BAC2; cursor: pointer; font-size: 1rem; display: flex; align-items: center; gap: 5px; }
+    .action-btn:hover { color: #36C7B2; }
+    .action-btn.liked { color: #36C7B2; }
   </style>
 </head>
 <body>
+  <div id="root"></div>
 
-  <header>
-    <div class="logo">🌍 Gyste</div>
-    <button class="btn-register" onclick="document.getElementById('registerModal').style.display='flex'">Registrarse</button>
-  </header>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    
+    // --- TUS DATOS DE SUPABASE (DEJA ESTO ASÍ POR AHORA) ---
+    const supabaseUrl = 'https://fmmsfyenevlordrupzdw.supabase.co';
+    const supabaseKey = 'TU_CLAVE_ANON_AQUI'; 
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-  <div class="filters">
-    <div class="filter active" onclick="toggleCalmMode()">Modo Calma</div>
-    <div class="filter">Para ti</div>
-    <div class="filter">Deportes</div>
-    <div class="filter">Animales</div>
-    <div class="filter">Océano</div>
-    <div class="filter">Arte</div>
-    <div class="filter">Psicología</div>
-    <div class="filter">Música</div>
-  </div>
+    function App() {
+      const [session, setSession] = useState(null);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [posts, setPosts] = useState([]);
+      const [newPost, setNewPost] = useState('');
+      const [loading, setLoading] = useState(true);
 
-  <div class="feed">
-    <div class="post">
-      <div class="post-header"><div class="avatar">TS</div><div class="username">Tierra Salvaje</div></div>
-      <div style="padding: 0 15px 15px;">Instinto, fuerza y trabajo en equipo. 🦁</div>
-      <iframe class="media" src="https://www.youtube.com/embed/OMg8u2j8l8E" frameborder="0" allowfullscreen></iframe>
-      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">2.4k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
-      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Animales</strong>.</div>
-    </div>
+      useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          setSession(session);
+          if (session) fetchPosts();
+          setLoading(false);
+        });
 
-    <div class="post">
-      <div class="post-header"><div class="avatar">OM</div><div class="username">Océano Mágico</div></div>
-      <div style="padding: 0 15px 15px;">La majestuosidad de las ballenas jorobadas. 🐋</div>
-      <iframe class="media" src="https://www.youtube.com/embed/3nYqXfXjNqk" frameborder="0" allowfullscreen></iframe>
-      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">1.8k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
-      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Océano</strong>.</div>
-    </div>
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          setSession(session);
+          if (session) fetchPosts();
+        });
 
-    <div class="post">
-      <div class="post-header"><div class="avatar">DM</div><div class="username">Diego Montes</div></div>
-      <div style="padding: 0 15px 15px;">Tu único límite es el que decides romper. 💪</div>
-      <iframe class="media" src="https://www.youtube.com/embed/1L8pV72P0i0" frameborder="0" allowfullscreen></iframe>
-      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">3.1k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
-      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Deportes</strong>.</div>
-    </div>
+        return () => subscription.unsubscribe();
+      }, []);
 
-    <div class="post">
-      <div class="post-header"><div class="avatar">AH</div><div class="username">Arte e Historia</div></div>
-      <div style="padding: 0 15px 15px;">"La joven de la perla" de Vermeer (Siglo XVII). 🎨</div>
-      <img class="media" src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Meisje_met_de_parel.jpg/800px-Meisje_met_de_parel.jpg" alt="La joven de la perla">
-      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">5.2k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
-      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Arte</strong>.</div>
-    </div>
+      const fetchPosts = async () => {
+        const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+        if (data) setPosts(data);
+      };
 
-    <div class="post">
-      <div class="post-header"><div class="avatar">PS</div><div class="username">Mente Curiosa</div></div>
-      <div style="padding: 0 15px 15px;">"Hasta que no hagas consciente lo inconsciente, tu vida estará guiada por él y lo llamarás destino". - Carl Jung. 🧠</div>
-      <div style="background: linear-gradient(135deg, #132F4C, #0A1929); padding: 40px 20px; text-align: center; font-style: italic; color: #36C7B2;">"El que mira hacia afuera, sueña; el que mira hacia adentro, despierta."</div>
-      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">4.5k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
-      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Psicología</strong>.</div>
-    </div>
+      const handleSignUp = async () => {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) alert(error.message);
+        else alert('¡Revisa tu correo para confirmar tu cuenta!');
+      };
 
-    <div class="post">
-      <div class="post-header"><div class="avatar">MU</div><div class="username">Universo Sonoro</div></div>
-      <div style="padding: 0 15px 15px;">Sonidos binaurales para relajarte. 🎧</div>
-      <div style="background: #1E4976; padding: 20px; text-align: center; display: flex; justify-content: center; gap: 5px; align-items: center;">
-        <div style="width: 5px; height: 20px; background: #36C7B2; animation: bounce 1s infinite;"></div>
-        <div style="width: 5px; height: 35px; background: #36C7B2; animation: bounce 1.2s infinite;"></div>
-        <div style="width: 5px; height: 15px; background: #36C7B2; animation: bounce 0.8s infinite;"></div>
-        <div style="width: 5px; height: 40px; background: #36C7B2; animation: bounce 1.5s infinite;"></div>
-      </div>
-      <div class="post-actions"><div class="action" onclick="toggleLike(this)">❤️ <span class="likes-count">1.2k</span></div><div class="action">💬 Comentar</div><div class="action">↗️ Compartir</div><div class="action">⬇️ Descargar</div></div>
-      <div class="transparency">¿Por qué veo esto? Porque te interesa <strong>Música</strong>.</div>
-    </div>
-  </div>
+      const handleSignIn = async () => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) alert(error.message);
+      };
 
-  <div id="registerModal" class="modal">
-    <div class="modal-content">
-      <span class="close" onclick="document.getElementById('registerModal').style.display='none'">&times;</span>
-      <h2 style="color: #36C7B2; margin-top: 0;">Únete a Gyste</h2>
-      <form name="registro-gyste" data-netlify="true" onsubmit="alert('¡Bienvenido a Gyste!'); document.getElementById('registerModal').style.display='none'; return false;">
-        <input type="text" name="nombre" placeholder="Tu nombre" required>
-        <input type="email" name="correo" placeholder="Tu correo electrónico" required>
-        <button type="submit">Crear mi perfil</button>
-      </form>
-    </div>
-  </div>
+      const handleSignOut = async () => {
+        await supabase.auth.signOut();
+        setPosts([]);
+      };
 
-  <script>
-    function toggleLike(el) {
-      el.style.color = el.style.color === 'rgb(54, 199, 178)' ? '#B2BAC2' : '#36C7B2';
-    }
-    function toggleCalmMode() {
-      document.body.classList.toggle('calm-mode-active');
-      const btn = document.querySelector('.filter.active');
-      if(document.body.classList.contains('calm-mode-active')) {
-        btn.textContent = 'Modo Normal';
-      } else {
-        btn.textContent = 'Modo Calma';
+      const handleCreatePost = async (e) => {
+        e.preventDefault();
+        if (!newPost.trim()) return;
+        const { error } = await supabase.from('posts').insert([{ content: newPost, user_id: session.user.id }]);
+        if (error) alert(error.message);
+        else {
+          setNewPost('');
+          fetchPosts();
+        }
+      };
+
+      const handleLike = async (postId, currentLikes) => {
+        await supabase.from('posts').update({ likes: currentLikes + 1 }).eq('id', postId);
+        fetchPosts();
+      };
+
+      if (loading) return <div style={{ color: 'white', textAlign: 'center', marginTop: '50px' }}>Cargando Gyste...</div>;
+
+      if (!session) {
+        return (
+          <div className="auth-container">
+            <h1>🌍 Gyste</h1>
+            <p style={{ textAlign: 'center', color: '#B2BAC2', marginBottom: '20px' }}>Únete a la red social del futuro</p>
+            <input className="auth-input" type="email" placeholder="Correo electrónico" value={email} onChange={e => setEmail(e.target.value)} />
+            <input className="auth-input" type="password" placeholder="Contraseña" value={password} onChange={e => setPassword(e.target.value)} />
+            <button className="btn-primary" onClick={handleSignIn}>Entrar</button>
+            <button className="btn-secondary" onClick={handleSignUp}>Crear cuenta</button>
+          </div>
+        );
       }
+
+      return (
+        <div>
+          <header>
+            <div className="logo">🌍 Gyste</div>
+            <button onClick={handleSignOut} style={{ background: 'transparent', color: 'white', border: '1px solid white', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' }}>Salir</button>
+          </header>
+
+          <div className="feed-container">
+            <form onSubmit={handleCreatePost} className="post-box" style={{ display: 'flex', gap: '10px' }}>
+              <input 
+                value={newPost} 
+                onChange={e => setNewPost(e.target.value)} 
+                placeholder="¿Qué está pasando en tu universo?" 
+                style={{ flex: 1, padding: '15px', borderRadius: '8px', border: '1px solid #1E4976', background: '#0A1929', color: 'white' }} 
+              />
+              <button type="submit" style={{ padding: '15px', background: '#36C7B2', color: '#0A1929', fontWeight: 'bold', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>Publicar</button>
+            </form>
+
+            {posts.map(post => (
+              <div key={post.id} className="post">
+                <p style={{ margin: '0 0 15px 0', fontSize: '1.1rem' }}>{post.content}</p>
+                <div className="post-actions">
+                  <button className="action-btn" onClick={() => handleLike(post.id, post.likes || 0)}>
+                    ❤️ {post.likes || 0}
+                  </button>
+                  <button className="action-btn" onClick={() => alert('Comentarios próximamente')}>💬 Comentar</button>
+                  <button className="action-btn" onClick={() => alert('Enlace copiado')}>↗️ Compartir</button>
+                </div>
+              </div>
+            ))}
+            {posts.length === 0 && <p style={{ textAlign: 'center', color: '#B2BAC2', marginTop: '40px' }}>Aún no hay publicaciones. ¡Sé el primero en publicar!</p>}
+          </div>
+        </div>
+      );
     }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
   </script>
 </body>
 </html>
