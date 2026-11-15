@@ -1,144 +1,651 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gyste</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body { background-color: #0A1929; color: #F3F6F9; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
-        header { display: flex; justify-content: space-between; padding: 15px 20px; border-bottom: 1px solid #1E4976; }
-        .logo { font-size: 24px; font-weight: bold; color: #36C7B2; }
-        input, button { font-family: inherit; }
-        .auth-container { max-width: 400px; margin: 50px auto; padding: 20px; background: #132F4C; border-radius: 12px; }
-        .auth-container h1 { color: #36C7B2; text-align: center; }
-        .auth-input { width: 100%; padding: 15px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #1E4976; background: #0A1929; color: #F3F6F9; box-sizing: border-box; }
-        .btn-primary { width: 100%; padding: 15px; background: #36C7B2; color: #0A1929; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; margin-bottom: 10px; }
-        .btn-secondary { width: 100%; padding: 15px; background: transparent; color: #36C7B2; font-weight: bold; border-radius: 8px; border: 1px solid #36C7B2; cursor: pointer; }
-        .feed-container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .post-box { background: #132F4C; padding: 20px; border-radius: 12px; border: 1px solid #1E4976; margin-bottom: 20px; }
-        .post { background: #132F4C; padding: 20px; border-radius: 12px; border: 1px solid #1E4976; margin-bottom: 15px; }
-        .post-actions { display: flex; gap: 15px; margin-top: 15px; color: #B2BAC2; }
-        .action-btn { background: none; border: none; color: #B2BAC2; cursor: pointer; font-size: 1rem; display: flex; align-items: center; gap: 5px; }
-        .action-btn:hover { color: #36C7B2; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0A1929">
+  <title>Gyste</title>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      background: #0A1929;
+      color: #F3F6F9;
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 20px;
+      border-bottom: 1px solid #1E4976;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: bold;
+      color: #36C7B2;
+    }
+
+    button, input { font-family: inherit; }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .auth-container {
+      max-width: 400px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #132F4C;
+      border-radius: 12px;
+    }
+
+    .auth-container h1 {
+      color: #36C7B2;
+      text-align: center;
+    }
+
+    .auth-input {
+      width: 100%;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 1px solid #1E4976;
+      background: #0A1929;
+      color: #F3F6F9;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 15px;
+      background: #36C7B2;
+      color: #0A1929;
+      font-weight: bold;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 15px;
+      background: transparent;
+      color: #36C7B2;
+      font-weight: bold;
+      border-radius: 8px;
+      border: 1px solid #36C7B2;
+      cursor: pointer;
+    }
+
+    .feed-container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .post-box, .post {
+      background: #132F4C;
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #1E4976;
+      margin-bottom: 20px;
+    }
+
+    .post-box {
+      display: flex;
+      gap: 10px;
+      flex-direction: column;
+    }
+
+    .post-input {
+      width: 100%;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #1E4976;
+      background: #0A1929;
+      color: white;
+    }
+
+    .publish-btn {
+      padding: 15px;
+      background: #36C7B2;
+      color: #0A1929;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .post-actions {
+      display: flex;
+      gap: 15px;
+      margin-top: 15px;
+      color: #B2BAC2;
+    }
+
+    .action-btn {
+      background: none;
+      border: none;
+      color: #B2BAC2;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .action-btn.liked { color: #ff4757; }
+
+    .message {
+      color: #B2BAC2;
+      text-align: center;
+      padding: 15px;
+    }
+
+    .error-message {
+      color: #ff7777;
+      text-align: center;
+      padding: 10px;
+      overflow-wrap: anywhere;
+    }
+
+    .success-message {
+      color: #36C7B2;
+      text-align: center;
+      padding: 10px;
+    }
+
+    @media (max-width: 480px) {
+      .auth-container {
+        margin: 25px 15px;
+      }
+
+      .feed-container {
+        padding: 12px;
+      }
+    }
+  </style>
 </head>
+
 <body>
-    <div id="root"></div>
+  <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
 
-        // CONEXIÓN A SUPABASE CON TU CLAVE NUEVA
-        const supabaseUrl = 'https://fmmsfyenevlordrupzdw.supabase.co';
-        const supabaseKey = 'sb_publishable_FYw0EYzzVvxnBtVQwwxCAg_zQR13mS2';
-        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+    const supabaseUrl = 'https://fmmsfyenevlordrupzdw.supabase.co';
+    const supabaseKey = 'sb_publishable_FYw0EYzzVvxnBtVQwwxCAg_zQR13mS2';
 
-        function App() {
-            const [session, setSession] = useState(null);
-            const [email, setEmail] = useState('');
-            const [password, setPassword] = useState('');
-            const [posts, setPosts] = useState([]);
-            const [newPost, setNewPost] = useState('');
-            const [loading, setLoading] = useState(true);
+    const supabase = window.supabase.createClient(
+      supabaseUrl,
+      supabaseKey
+    );
 
-            useEffect(() => {
-                supabase.auth.getSession().then(({ data: { session } }) => {
-                    setSession(session);
-                    if (session) fetchPosts();
-                    setLoading(false);
-                });
+    function App() {
+      const [session, setSession] = useState(null);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [posts, setPosts] = useState([]);
+      const [newPost, setNewPost] = useState('');
+      const [loading, setLoading] = useState(true);
+      const [publishing, setPublishing] = useState(false);
+      const [busyLikes, setBusyLikes] = useState({});
+      const [message, setMessage] = useState('');
+      const [errorMessage, setErrorMessage] = useState('');
 
-                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-                    setSession(session);
-                    if (session) fetchPosts();
-                });
+      const fetchRequest = useRef(0);
 
-                return () => subscription.unsubscribe();
-            }, []);
+      // Cargar publicaciones y reacciones del usuario actual.
+      const fetchPosts = async () => {
+        const requestId = ++fetchRequest.current;
 
-            const fetchPosts = async () => {
-                const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-                if (error) console.error(error);
-                else if (data) setPosts(data);
-            };
+        try {
+          const { data: postsData, error: postsError } =
+            await supabase
+              .from('posts')
+              .select('*')
+              .order('created_at', { ascending: false });
 
-            const handleSignUp = async () => {
-                const { error } = await supabase.auth.signUp({ email, password });
-                if (error) alert(error.message);
-                else alert('¡Revisa tu correo para confirmar tu cuenta!');
-            };
+          if (postsError) throw postsError;
 
-            const handleSignIn = async () => {
-                const { error } = await supabase.auth.signInWithPassword({ email, password });
-                if (error) alert(error.message);
-            };
+          const { data: { user }, error: authError } =
+            await supabase.auth.getUser();
 
-            const handleSignOut = async () => {
-                await supabase.auth.signOut();
-                setPosts([]);
-            };
+          if (authError) throw authError;
 
-            const handleCreatePost = async (e) => {
-                e.preventDefault();
-                if (!newPost.trim()) return;
-                const { error } = await supabase.from('posts').insert([{ content: newPost, user_id: session.user.id }]);
-                if (error) alert(error.message);
-                else {
-                    setNewPost('');
-                    fetchPosts();
-                }
-            };
+          let likedIds = new Set();
 
-            const handleLike = async (postId, currentLikes) => {
-                await supabase.from('posts').update({ likes: (currentLikes || 0) + 1 }).eq('id', postId);
-                fetchPosts();
-            };
+          if (user) {
+            const { data: reactions, error: reactionsError } =
+              await supabase
+                .from('reactions')
+                .select('post_id')
+                .eq('user_id', user.id);
 
-            if (loading) return <div style={{ color: 'white', textAlign: 'center', marginTop: '50px' }}>Cargando Gyste...</div>;
+            if (reactionsError) throw reactionsError;
 
-            if (!session) {
-                return (
-                    <div className="auth-container">
-                        <h1>Gyste</h1>
-                        <p style={{ textAlign: 'center', color: '#B2BAC2', marginBottom: '20px' }}>Únete a la red social del futuro</p>
-                        <input className="auth-input" type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} />
-                        <input className="auth-input" type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} />
-                        <button className="btn-primary" onClick={handleSignIn}>Entrar</button>
-                        <button className="btn-secondary" onClick={handleSignUp}>Crear cuenta</button>
-                    </div>
-                );
-            }
-
-            return (
-                <div>
-                    <header>
-                        <div className="logo">Gyste</div>
-                        <button onClick={handleSignOut} style={{ background: 'transparent', color: 'white', border: '1px solid white', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' }}>Cerrar sesión</button>
-                    </header>
-                    <div className="feed-container">
-                        <form onSubmit={handleCreatePost} className="post-box" style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
-                            <input value={newPost} onChange={(e) => setNewPost(e.target.value)} placeholder="¿Qué está pasando en tu universo?" style={{ flex: 1, padding: '15px', borderRadius: '8px', border: '1px solid #1E4976', background: '#0A1929', color: 'white' }} />
-                            <button type="submit" style={{ padding: '15px', background: '#36C7B2', color: '#0A1929', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Publicar</button>
-                        </form>
-                        {posts.map((post) => (
-                            <div key={post.id} className="post">
-                                <p>{post.content}</p>
-                                <div className="post-actions">
-                                    <button className="action-btn" onClick={() => handleLike(post.id, post.likes)}>❤️ {post.likes || 0} Me gusta</button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            likedIds = new Set(
+              (reactions || []).map(r => String(r.post_id))
             );
+          }
+
+          if (requestId !== fetchRequest.current) return;
+
+          const formattedPosts = (postsData || []).map(post => ({
+            ...post,
+            userHasLiked: likedIds.has(String(post.id))
+          }));
+
+          setPosts(formattedPosts);
+          setErrorMessage('');
+
+        } catch (error) {
+          console.error('Error al cargar publicaciones:', error);
+          setErrorMessage(
+            'No se pudieron cargar las publicaciones: ' +
+            (error.message || 'Error desconocido')
+          );
+        }
+      };
+
+      // Comprobar sesión y cambios de autenticación.
+      useEffect(() => {
+        let active = true;
+
+        const initialize = async () => {
+          const { data, error } = await supabase.auth.getSession();
+
+          if (!active) return;
+
+          if (error) {
+            setErrorMessage(error.message);
+          }
+
+          setSession(data?.session || null);
+          setLoading(false);
+        };
+
+        initialize();
+
+        const { data: { subscription } } =
+          supabase.auth.onAuthStateChange((_event, newSession) => {
+            if (!active) return;
+            setSession(newSession);
+            setLoading(false);
+          });
+
+        return () => {
+          active = false;
+          subscription.unsubscribe();
+        };
+      }, []);
+
+      // Cargar el contenido cuando cambia la sesión.
+      useEffect(() => {
+        if (session?.user?.id) {
+          fetchPosts();
+        } else {
+          setPosts([]);
+        }
+      }, [session?.user?.id]);
+
+      // Crear cuenta.
+      const handleSignUp = async () => {
+        setErrorMessage('');
+        setMessage('');
+
+        if (!email.trim() || !password) {
+          setErrorMessage('Escribe tu correo y contraseña.');
+          return;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password
+        });
+
+        if (error) {
+          setErrorMessage('Error al crear cuenta: ' + error.message);
+        } else {
+          setMessage(
+            'Cuenta creada. Revisa tu correo si necesitas confirmar el registro.'
+          );
+        }
+      };
+
+      // Iniciar sesión.
+      const handleSignIn = async () => {
+        setErrorMessage('');
+        setMessage('');
+
+        if (!email.trim() || !password) {
+          setErrorMessage('Escribe tu correo y contraseña.');
+          return;
+        }
+
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password
+        });
+
+        if (error) {
+          setErrorMessage('Error al entrar: ' + error.message);
+        }
+      };
+
+      // Cerrar sesión.
+      const handleSignOut = async () => {
+        const { error } = await supabase.auth.signOut();
+
+        if (error) {
+          setErrorMessage('Error al cerrar sesión: ' + error.message);
+          return;
+        }
+
+        setPosts([]);
+        setMessage('');
+        setErrorMessage('');
+      };
+
+      // Publicar contenido.
+      const handleCreatePost = async (event) => {
+        event.preventDefault();
+
+        setMessage('');
+        setErrorMessage('');
+
+        const content = newPost.trim();
+
+        if (!content) {
+          setErrorMessage('Escribe algo antes de publicar.');
+          return;
+        }
+
+        if (publishing) return;
+
+        setPublishing(true);
+
+        try {
+          const {
+            data: { user },
+            error: authError
+          } = await supabase.auth.getUser();
+
+          if (authError) throw authError;
+
+          if (!user) {
+            throw new Error('Debes iniciar sesión de nuevo.');
+          }
+
+          const { error } = await supabase
+            .from('posts')
+            .insert([{
+              content,
+              user_id: user.id
+            }]);
+
+          if (error) throw error;
+
+          setNewPost('');
+          setMessage('¡Publicación guardada correctamente!');
+
+          await fetchPosts();
+
+        } catch (error) {
+          console.error('Error al publicar:', error);
+          setErrorMessage(
+            'No se pudo publicar: ' + (error.message || 'Error desconocido')
+          );
+        } finally {
+          setPublishing(false);
+        }
+      };
+
+      // Añadir o quitar un Me gusta mediante la tabla reactions.
+      const handleLike = async (post) => {
+        const postId = post.id;
+        const key = String(postId);
+
+        if (busyLikes[key]) return;
+
+        setBusyLikes(previous => ({
+          ...previous,
+          [key]: true
+        }));
+
+        setErrorMessage('');
+        setMessage('');
+
+        try {
+          const {
+            data: { user },
+            error: authError
+          } = await supabase.auth.getUser();
+
+          if (authError) throw authError;
+
+          if (!user) {
+            throw new Error('Debes iniciar sesión para reaccionar.');
+          }
+
+          if (post.userHasLiked) {
+            const { error } = await supabase
+              .from('reactions')
+              .delete()
+              .eq('post_id', postId)
+              .eq('user_id', user.id);
+
+            if (error) throw error;
+
+            setMessage('Has quitado tu Me gusta.');
+
+          } else {
+            const { error } = await supabase
+              .from('reactions')
+              .insert([{
+                post_id: postId,
+                user_id: user.id
+              }]);
+
+            if (error) throw error;
+
+            setMessage('¡Has dado Me gusta!');
+          }
+
+          await fetchPosts();
+
+        } catch (error) {
+          console.error('Error al registrar reacción:', error);
+
+          setErrorMessage(
+            'No se pudo actualizar el Me gusta: ' +
+            (error.message || 'Error desconocido')
+          );
+
+          await fetchPosts();
+
+        } finally {
+          setBusyLikes(previous => ({
+            ...previous,
+            [key]: false
+          }));
+        }
+      };
+
+      if (loading) {
+        return (
+          <div className="message">
+            Cargando Gyste...
+          </div>
+        );
+      }
+
+      if (!session) {
+        return (
+          <div className="auth-container">
+            <h1>Gyste</h1>
+
+            <p style={{
+              textAlign: 'center',
+              color: '#B2BAC2',
+              marginBottom: '20px'
+            }}>
+              Únete a la red social del futuro
+            </p>
+
+            <input
+              className="auth-input"
+              type="email"
+              placeholder="Correo electrónico"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+
+            <input
+              className="auth-input"
+              type="password"
+              placeholder="Contraseña"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+
+            <button
+              className="btn-primary"
+              onClick={handleSignIn}
+            >
+              Entrar
+            </button>
+
+            <button
+              className="btn-secondary"
+              onClick={handleSignUp}
+            >
+              Crear cuenta
+            </button>
+
+            {message && (
+              <p className="success-message">{message}</p>
+            )}
+
+            {errorMessage && (
+              <p className="error-message">{errorMessage}</p>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          <header>
+            <div className="logo">Gyste</div>
+
+            <button
+              onClick={handleSignOut}
+              style={{
+                background: 'transparent',
+                color: 'white',
+                border: '1px solid white',
+                padding: '7px 12px',
+                borderRadius: '5px',
+                cursor: 'pointer'
+              }}
+            >
+              Cerrar sesión
+            </button>
+          </header>
+
+          <main className="feed-container">
+            <form
+              onSubmit={handleCreatePost}
+              className="post-box"
+            >
+              <input
+                className="post-input"
+                value={newPost}
+                onChange={e => setNewPost(e.target.value)}
+                placeholder="¿Qué está pasando en tu universo?"
+                maxLength={5000}
+              />
+
+              <button
+                type="submit"
+                className="publish-btn"
+                disabled={publishing}
+              >
+                {publishing ? 'Publicando...' : 'Publicar'}
+              </button>
+            </form>
+
+            {message && (
+              <p className="success-message">{message}</p>
+            )}
+
+            {errorMessage && (
+              <p className="error-message">{errorMessage}</p>
+            )}
+
+            {posts.length === 0 && !errorMessage && (
+              <p className="message">
+                Todavía no hay publicaciones. ¡Sé el primero en publicar!
+              </p>
+            )}
+
+            {posts.map(post => {
+              const key = String(post.id);
+              const isBusy = !!busyLikes[key];
+
+              return (
+                <article key={key} className="post">
+                  <p style={{ whiteSpace: 'pre-wrap' }}>
+                    {post.content}
+                  </p>
+
+                  <div className="post-actions">
+                    <button
+                      className={
+                        'action-btn' +
+                        (post.userHasLiked ? ' liked' : '')
+                      }
+                      onClick={() => handleLike(post)}
+                      disabled={isBusy}
+                      aria-pressed={post.userHasLiked}
+                    >
+                      {post.userHasLiked ? '❤️' : '🤍'}
+                      {' '}
+                      {post.likes || 0}
+                      {' '}
+                      Me gusta
+                      {isBusy ? '...' : ''}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(
+      document.getElementById('root')
+    );
+
+    root.render(<App />);
+  </script>
 </body>
 </html>
