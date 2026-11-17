@@ -71,7 +71,7 @@ const BUCKET="gyste-media";
 const MEDIA_BUCKET_PRIVATE=false;
 const MEDIA_SIGNED_URL_TTL=3600;
 
-const db=window.supabase.createClient(URL_DB,KEY_DB);
+let db=null;
 const app=document.getElementById("app");
 
 let session=null;
@@ -413,4 +413,4 @@ me={...me,...data};say("Perfil actualizado.");
 async function notificationView(){
 const {data,error}=await db.from("gyste_notifications").select("*").eq("user_id",me.id).order("created_at",{ascending:false}).limit(60);
 if(error){shell(`<p class="error">No se pudieron cargar avisos: ${esc(error.message)}</p>`);return;}
-shell(`<section class="panel"><h3>Notificaciones</h3>${(data||[]).map(n=>`<div class="userrow"><div cla
+shell(`<section class="panel"><h3>Notificaciones</h3>${(data||[]).map(n=>`<div class="userrow"><div class="userinfo">${esc(n.message)}<small cla
