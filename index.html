@@ -39,6 +39,7 @@ textarea.field{resize:vertical;min-height:80px}
 .media{width:100%;max-height:520px;object-fit:contain;background:#07121e;border-radius:10px;margin-top:10px}
 .actions{display:flex;gap:15px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
 .action{border:0;background:none;color:var(--muted);padding:6px 0}
+.danger{border:1px solid var(--red);background:transparent;color:var(--red);border-radius:8px;padding:7px 10px}
 .liked{color:#ff7887}
 .comment{border-top:1px solid var(--line);padding:9px 0;overflow-wrap:anywhere}
 .comment small{color:var(--muted)}
@@ -266,6 +267,7 @@ document.getElementById("publish").onclick=publish;
 document.querySelectorAll("[data-like]").forEach(b=>{b.onclick=()=>like(b.dataset.like);});
 document.querySelectorAll("[data-comment-form]").forEach(f=>{f.onsubmit=sendComment;});
 document.querySelectorAll("[data-comments]").forEach(b=>{b.onclick=()=>toggleComments(b.dataset.comments);});
+document.querySelectorAll("[data-delete-post]").forEach(b=>{b.onclick=()=>deletePost(b.dataset.deletePost,b);});
 }
 
 function postCard(p,author){
@@ -282,6 +284,7 @@ ${media}
 <div class="actions">
 <button class="action ${liked.has(p.id)?"liked":""}" data-like="${esc(p.id)}">${liked.has(p.id)?"♥ Me gusta":"♡ Me gusta"} · ${Number(p.likes||0)}</button>
 <button class="action" data-comments="${esc(p.id)}">Comentarios</button>
+${p.user_id===me.id?`<button class="danger" data-delete-post="${esc(p.id)}" type="button">🗑 Eliminar</button>`:""}
 </div>
 <div id="comments-${esc(p.id)}" class="hidden"><div id="list-${esc(p.id)}"></div>
 <form class="commentform" data-comment-form="${esc(p.id)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form>
@@ -317,6 +320,37 @@ if(path){const {error:removeError}=await db.storage.from(BUCKET).remove([path]);
 say("No se pudo publicar: "+(e?.message||"Error desconocido"),true);
 const current=document.getElementById("publish");
 if(current){current.disabled=false;current.textContent="Publicar";}
+}
+}
+
+
+// Elimina únicamente publicaciones propias. Si hay multimedia, primero solicita
+// su eliminación mediante la API oficial de Supabase Storage.
+async function deletePost(id,button){
+const post=posts.find(p=>p.id===id);
+if(!post)return say("No se encontró esta publicación. Actualiza el inicio.",true);
+if(post.user_id!==me.id)return say("Solo puedes eliminar tus propias publicaciones.",true);
+if(!confirm("¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer."))return;
+if(button){button.disabled=true;button.textContent="Eliminando…";}
+try{
+  if(post.media_path){
+    // Las subidas de Gyste se guardan dentro de una carpeta con el UID del autor.
+    if(!post.media_path.startsWith(me.id+"/")){
+      throw new Error("La ruta del archivo no pertenece a tu cuenta. No se ha borrado nada.");
+    }
+    const {error:storageError}=await db.storage.from(BUCKET).remove([post.media_path]);
+    if(storageError)throw new Error("No se pudo eliminar el archivo multimedia: "+storageError.message+". La publicación se ha conservado.");
+  }
+  const {data,error}=await db.from("posts").delete().eq("id",id).eq("user_id",me.id).select("id").maybeSingle();
+  if(error)throw new Error("El archivo se eliminó, pero no se pudo eliminar la publicación: "+error.message);
+  if(!data)throw new Error("No se confirmó el borrado de la publicación. Actualiza el inicio.");
+  posts=posts.filter(p=>p.id!==id);
+  if(post.media_path)mediaUrlCache.delete(post.media_path);
+  say("Publicación eliminada.");
+  await feedView();
+}catch(e){
+  say(e?.message||"No se pudo eliminar la publicación.",true);
+  if(button){button.disabled=false;button.textContent="🗑 Eliminar";}
 }
 }
 
@@ -456,7 +490,14 @@ app.innerHTML='<section class="auth"><h1>Gyste</h1><p class="error">No se pudo c
 document.getElementById("retry").onclick=start;
 return;
 }
-if(!db)db=window.supabase.createClient(URL_DB,KEY_DB);
+if(!db)db=window.supabase.createClient(URL_DB,KEY_DB,{
+  auth:{
+    persistSession:true,
+    autoRefreshToken:true,
+    detectSessionInUrl:true,
+    storage:window.localStorage
+  }
+});
 const result=await Promise.race([
 db.auth.getSession(),
 new Promise((_,reject)=>setTimeout(()=>reject(new Error("La conexión está tardando demasiado. Comprueba Internet y pulsa Reintentar.")),15000))
