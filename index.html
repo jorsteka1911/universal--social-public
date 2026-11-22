@@ -74,6 +74,10 @@ const MEDIA_SIGNED_URL_TTL=3600;
 
 let db=null;
 let authListener=null;
+// El SDK puede retirar el fragmento de recuperación antes de que termine getSession().
+// Guardamos la intención antes de crear el cliente para impedir que boot() tape el formulario.
+let recoveryPending=/(?:^|[&#?])type=recovery(?:&|$)/i.test(window.location.hash+"&"+window.location.search);
+let recoverySaving=false;
 const app=document.getElementById("app");
 
 let session=null;
@@ -176,17 +180,20 @@ finally{button.disabled=false;button.textContent="¿Olvidaste tu contraseña?";}
 }
 
 async function saveNewPassword(){
+if(recoverySaving)return;
 const password=document.getElementById("newpassword").value;
 const confirmation=document.getElementById("confirmnewpassword").value;
 if(password.length<6)return say("La contraseña debe tener al menos 6 caracteres.",true);
 if(password!==confirmation)return say("Las contraseñas no coinciden. Escríbelas de nuevo.",true);
 const button=document.getElementById("savepassword");
 button.disabled=true;button.textContent="Guardando…";
+recoverySaving=true;
 try{
 const {data,error}=await db.auth.updateUser({password});
 if(error)throw error;
 session=(await db.auth.getSession()).data.session;
 if(data?.user){
+  recoveryPending=false;
   window.history.replaceState({},document.title,window.location.pathname+window.location.search);
   notice="Contraseña actualizada correctamente. Ya puedes usarla para entrar en Gyste.";
   noticeError=false;
@@ -196,6 +203,7 @@ if(data?.user){
   say(notice,false);
 }
 }catch(e){say("No se pudo actualizar la contraseña. Vuelve a abrir el enlace de recuperación más reciente.",true);button.disabled=false;button.textContent="Guardar contraseña";}
+finally{recoverySaving=false;}
 }
 
 function authMessage(error, mode){
@@ -610,7 +618,13 @@ if(!authListener){
 authListener=db.auth.onAuthStateChange((event,s)=>{
 session=s;
 if(event==="PASSWORD_RECOVERY"){
+  recoveryPending=true;
   recoveryView();
+  return;
+}
+// Un SIGNED_IN del enlace de recuperación no debe mostrar el feed.
+if(recoveryPending){
+  if(s)recoveryView();
   return;
 }
 if(!s){me=null;chatUser=null;authView();}
@@ -623,9 +637,16 @@ new Promise((_,reject)=>setTimeout(()=>reject(new Error("La conexión está tard
 const {data,error}=result;
 if(error)throw error;
 session=data.session;
-const recoveryLink=/(?:^|[&#])type=recovery(?:&|$)/i.test(window.location.hash);
-if(recoveryLink&&session){recoveryView();}
-else if(session)await boot();else authView();
+if(recoveryPending){
+  if(session)recoveryView();
+  else {
+    // Si el enlace ha expirado, permitir solicitar uno nuevo.
+    recoveryPending=false;
+    notice="El enlace de recuperación no se pudo validar. Solicita uno nuevo.";
+    noticeError=true;
+    authView();
+  }
+}else if(session)await boot();else authView();
 }catch(e){
 app.innerHTML=`<section class="auth"><h1>Gyste</h1><p class="error">${esc(e?.message||"No se pudo iniciar Gyste. Comprueba Internet.")}</p><button class="primary full" id="retry">Reintentar</button></section>`;
 document.getElementById("retry").onclick=start;
