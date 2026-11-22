@@ -73,6 +73,7 @@ const MEDIA_BUCKET_PRIVATE=false;
 const MEDIA_SIGNED_URL_TTL=3600;
 
 let db=null;
+let authListener=null;
 const app=document.getElementById("app");
 
 let session=null;
@@ -140,30 +141,134 @@ app.innerHTML=`
 <input id="email" class="field" type="email" autocomplete="email" placeholder="Correo electrónico">
 <input id="password" class="field" type="password" minlength="6" autocomplete="current-password" placeholder="Contraseña">
 <button class="primary full" id="login">Entrar</button>
+<button class="secondary full" id="forgot">¿Olvidaste tu contraseña?</button>
 <button class="secondary full" id="signup">Crear cuenta</button>
 </section>`;
 document.getElementById("login").onclick=login;
+document.getElementById("forgot").onclick=sendPasswordReset;
 document.getElementById("signup").onclick=signup;
 }
 
+function recoveryView(){
+app.innerHTML=`
+<section class="auth">
+<h1>Crear contraseña nueva</h1>
+<p class="muted">Escribe tu nueva contraseña dos veces para confirmar el cambio.</p>
+<div id="notice" class="notice ${noticeError?"error":""}">${esc(notice)}</div>
+<input id="newpassword" class="field" type="password" minlength="6" autocomplete="new-password" placeholder="Nueva contraseña">
+<input id="confirmnewpassword" class="field" type="password" minlength="6" autocomplete="new-password" placeholder="Repite la nueva contraseña">
+<button class="primary full" id="savepassword">Guardar contraseña</button>
+</section>`;
+document.getElementById("savepassword").onclick=saveNewPassword;
+}
+
+async function sendPasswordReset(){
+const email=document.getElementById("email").value.trim().toLowerCase();
+if(!validEmail(email))return say("Escribe primero el correo de tu cuenta.",true);
+const button=document.getElementById("forgot");
+button.disabled=true;button.textContent="Enviando…";
+try{
+const {error}=await db.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+if(error)throw error;
+say("Te enviamos un enlace. Ábrelo desde este mismo navegador para crear tu contraseña nueva.");
+}catch(e){say("No se pudo enviar el correo de recuperación. Comprueba la configuración de URL de Supabase e inténtalo de nuevo.",true);}
+finally{button.disabled=false;button.textContent="¿Olvidaste tu contraseña?";}
+}
+
+async function saveNewPassword(){
+const password=document.getElementById("newpassword").value;
+const confirmation=document.getElementById("confirmnewpassword").value;
+if(password.length<6)return say("La contraseña debe tener al menos 6 caracteres.",true);
+if(password!==confirmation)return say("Las contraseñas no coinciden. Escríbelas de nuevo.",true);
+const button=document.getElementById("savepassword");
+button.disabled=true;button.textContent="Guardando…";
+try{
+const {data,error}=await db.auth.updateUser({password});
+if(error)throw error;
+session=(await db.auth.getSession()).data.session;
+if(data?.user){
+  window.history.replaceState({},document.title,window.location.pathname+window.location.search);
+  notice="Contraseña actualizada correctamente. Ya puedes usarla para entrar en Gyste.";
+  noticeError=false;
+  await db.auth.signOut();
+  session=null;me=null;chatUser=null;
+  authView();
+  say(notice,false);
+}
+}catch(e){say("No se pudo actualizar la contraseña. Vuelve a abrir el enlace de recuperación más reciente.",true);button.disabled=false;button.textContent="Guardar contraseña";}
+}
+
+function authMessage(error, mode){
+  const raw=String(error?.message||"").toLowerCase();
+  const code=String(error?.code||"").toLowerCase();
+  if(raw.includes("invalid login credentials")||raw.includes("invalid_credentials")||code==="invalid_credentials")
+    return "El correo o la contraseña no son correctos. Comprueba los datos e inténtalo de nuevo.";
+  if(raw.includes("email not confirmed")||code==="email_not_confirmed")
+    return "Tu correo todavía no está confirmado. Revisa tu bandeja de entrada y la carpeta de spam.";
+  if(raw.includes("user already registered")||raw.includes("already registered")||raw.includes("user already exists")||code==="user_already_exists")
+    return "Este correo ya tiene una cuenta. Pulsa Entrar para iniciar sesión.";
+  if(raw.includes("password should be at least")||raw.includes("password is too short"))
+    return "La contraseña debe tener al menos 6 caracteres.";
+  if(raw.includes("rate limit")||raw.includes("too many requests")||code.includes("rate_limit"))
+    return "Has realizado demasiados intentos. Espera un poco y vuelve a intentarlo.";
+  if(raw.includes("network")||raw.includes("fetch")||raw.includes("timeout"))
+    return "No se pudo conectar. Comprueba Internet y vuelve a intentarlo.";
+  return mode==="login" ? "No se pudo iniciar sesión. Comprueba tus datos e inténtalo de nuevo." : "No se pudo crear la cuenta. Revisa los datos e inténtalo de nuevo.";
+}
+
+function validEmail(email){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 async function login(){
-const email=document.getElementById("email").value.trim();
-const password=document.getElementById("password").value;
-if(!email||!password)return say("Escribe tu correo y contraseña.",true);
-const {data,error}=await db.auth.signInWithPassword({email,password});
-if(error)return say(error.message,true);
-session=data.session;
-await boot();
+  const email=document.getElementById("email").value.trim().toLowerCase();
+  const password=document.getElementById("password").value;
+  const button=document.getElementById("login");
+  if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
+  if(!password)return say("Escribe tu contraseña.",true);
+  button.disabled=true;button.textContent="Entrando…";
+  try{
+    const {data,error}=await db.auth.signInWithPassword({email,password});
+    if(error)throw error;
+    if(!data.session)throw new Error("No se pudo establecer la sesión. Inténtalo de nuevo.");
+    session=data.session;
+    await boot();
+  }catch(error){
+    say(authMessage(error,"login"),true);
+  }finally{
+    const current=document.getElementById("login");
+    if(current){current.disabled=false;current.textContent="Entrar";}
+  }
 }
 
 async function signup(){
-const email=document.getElementById("email").value.trim();
-const password=document.getElementById("password").value;
-if(!email||password.length<6)return say("Escribe un correo y una contraseña de al menos 6 caracteres.",true);
-const {data,error}=await db.auth.signUp({email,password});
-if(error)return say(error.message,true);
-if(data.session){session=data.session;await boot();}
-else say("Cuenta creada. Confirma tu correo si Supabase lo solicita.");
+  const email=document.getElementById("email").value.trim().toLowerCase();
+  const password=document.getElementById("password").value;
+  const button=document.getElementById("signup");
+  if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
+  if(password.length<6)return say("La contraseña debe tener al menos 6 caracteres.",true);
+  button.disabled=true;button.textContent="Creando cuenta…";
+  try{
+    const {data,error}=await db.auth.signUp({email,password});
+    if(error)throw error;
+    // Supabase puede devolver identidades vacías cuando el correo ya existe,
+    // para evitar revelar información de cuentas a terceros.
+    if(data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
+      say("Este correo ya tiene una cuenta. Pulsa Entrar para iniciar sesión.",true);
+      return;
+    }
+    if(data.session){
+      session=data.session;
+      await boot();
+    }else{
+      say("Solicitud de registro recibida. Si Supabase requiere confirmar el correo, revisa tu bandeja de entrada y spam.");
+    }
+  }catch(error){
+    say(authMessage(error,"signup"),true);
+  }finally{
+    const current=document.getElementById("signup");
+    if(current){current.disabled=false;current.textContent="Crear cuenta";}
+  }
 }
 
 async function logout(){
@@ -324,29 +429,32 @@ if(current){current.disabled=false;current.textContent="Publicar";}
 }
 
 
-// Elimina únicamente publicaciones propias. Si hay multimedia, primero solicita
-// su eliminación mediante la API oficial de Supabase Storage.
+// Primero confirma el borrado de la fila; después limpia el archivo de Storage.
+// Así, un fallo en la base de datos nunca deja una publicación con multimedia roto.
 async function deletePost(id,button){
-const post=posts.find(p=>p.id===id);
+const post=posts.find(p=>String(p.id)===String(id));
 if(!post)return say("No se encontró esta publicación. Actualiza el inicio.",true);
 if(post.user_id!==me.id)return say("Solo puedes eliminar tus propias publicaciones.",true);
 if(!confirm("¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer."))return;
 if(button){button.disabled=true;button.textContent="Eliminando…";}
 try{
-  if(post.media_path){
-    // Las subidas de Gyste se guardan dentro de una carpeta con el UID del autor.
-    if(!post.media_path.startsWith(me.id+"/")){
-      throw new Error("La ruta del archivo no pertenece a tu cuenta. No se ha borrado nada.");
-    }
-    const {error:storageError}=await db.storage.from(BUCKET).remove([post.media_path]);
-    if(storageError)throw new Error("No se pudo eliminar el archivo multimedia: "+storageError.message+". La publicación se ha conservado.");
+  if(post.media_path&&!post.media_path.startsWith(me.id+"/")){
+    throw new Error("La ruta multimedia no pertenece a tu cuenta. No se ha borrado nada.");
   }
   const {data,error}=await db.from("posts").delete().eq("id",id).eq("user_id",me.id).select("id").maybeSingle();
-  if(error)throw new Error("El archivo se eliminó, pero no se pudo eliminar la publicación: "+error.message);
-  if(!data)throw new Error("No se confirmó el borrado de la publicación. Actualiza el inicio.");
-  posts=posts.filter(p=>p.id!==id);
-  if(post.media_path)mediaUrlCache.delete(post.media_path);
-  say("Publicación eliminada.");
+  if(error)throw new Error("No se pudo eliminar la publicación: "+error.message);
+  if(!data)throw new Error("No se confirmó el borrado. Comprueba la política de eliminación en Supabase.");
+  posts=posts.filter(p=>String(p.id)!==String(id));
+  if(post.media_path){
+    const {error:storageError}=await db.storage.from(BUCKET).remove([post.media_path]);
+    if(storageError){
+      console.warn("Publicación eliminada; limpieza multimedia pendiente:",storageError.message);
+      say("Publicación eliminada. No se pudo limpiar su archivo multimedia; revisa Storage.",true);
+    }else{
+      mediaUrlCache.delete(post.media_path);
+      say("Publicación eliminada.");
+    }
+  }else say("Publicación eliminada.");
   await feedView();
 }catch(e){
   say(e?.message||"No se pudo eliminar la publicación.",true);
@@ -498,6 +606,16 @@ if(!db)db=window.supabase.createClient(URL_DB,KEY_DB,{
     storage:window.localStorage
   }
 });
+if(!authListener){
+authListener=db.auth.onAuthStateChange((event,s)=>{
+session=s;
+if(event==="PASSWORD_RECOVERY"){
+  recoveryView();
+  return;
+}
+if(!s){me=null;chatUser=null;authView();}
+});
+}
 const result=await Promise.race([
 db.auth.getSession(),
 new Promise((_,reject)=>setTimeout(()=>reject(new Error("La conexión está tardando demasiado. Comprueba Internet y pulsa Reintentar.")),15000))
@@ -505,11 +623,9 @@ new Promise((_,reject)=>setTimeout(()=>reject(new Error("La conexión está tard
 const {data,error}=result;
 if(error)throw error;
 session=data.session;
-if(session)await boot();else authView();
-db.auth.onAuthStateChange((_event,s)=>{
-session=s;
-if(!s){me=null;chatUser=null;authView();}
-});
+const recoveryLink=/(?:^|[&#])type=recovery(?:&|$)/i.test(window.location.hash);
+if(recoveryLink&&session){recoveryView();}
+else if(session)await boot();else authView();
 }catch(e){
 app.innerHTML=`<section class="auth"><h1>Gyste</h1><p class="error">${esc(e?.message||"No se pudo iniciar Gyste. Comprueba Internet.")}</p><button class="primary full" id="retry">Reintentar</button></section>`;
 document.getElementById("retry").onclick=start;
