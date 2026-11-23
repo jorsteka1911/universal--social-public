@@ -50,6 +50,7 @@ textarea.field{resize:vertical;min-height:80px}
 .userinfo{flex:1;min-width:0;overflow-wrap:anywhere}
 .userrow button{flex-shrink:0}
 .hidden{display:none!important}
+.lesson{padding:13px 0;border-bottom:1px solid var(--line)}.lesson summary{cursor:pointer;color:var(--mint)}.lesson li{margin:9px 0;line-height:1.55}select.field{appearance:auto}
 @media(max-width:520px){
 header{padding:10px 12px}
 .wrap{padding:12px 9px}
@@ -74,17 +75,12 @@ const MEDIA_SIGNED_URL_TTL=3600;
 
 let db=null;
 let authListener=null;
-// El SDK puede retirar el fragmento de recuperación antes de que termine getSession().
-// Guardamos la intención antes de crear el cliente para impedir que boot() tape el formulario.
-let recoveryPending=/(?:^|[&#?])type=recovery(?:&|$)/i.test(window.location.hash+"&"+window.location.search);
-let recoverySaving=false;
 const app=document.getElementById("app");
 
 let session=null;
 let me=null;
 let tab="feed";
 let posts=[];
-let feedMode="recent";
 let profiles=[];
 let notice="";
 let noticeError=false;
@@ -123,6 +119,8 @@ app.innerHTML=`
 <nav>
 <button data-tab="feed" class="${tab==="feed"?"active":""}">Inicio</button>
 <button data-tab="explore" class="${tab==="explore"?"active":""}">Descubrir</button>
+<button data-tab="learn" class="${tab==="learn"?"active":""}">Aprender</button>
+<button data-tab="series" class="${tab==="series"?"active":""}">Frutinovelas</button>
 <button data-tab="messages" class="${tab==="messages"?"active":""}">Mensajes</button>
 <button data-tab="notifications" class="${tab==="notifications"?"active":""}">Avisos</button>
 <button data-tab="profile" class="${tab==="profile"?"active":""}">Mi perfil</button>
@@ -181,20 +179,17 @@ finally{button.disabled=false;button.textContent="¿Olvidaste tu contraseña?";}
 }
 
 async function saveNewPassword(){
-if(recoverySaving)return;
 const password=document.getElementById("newpassword").value;
 const confirmation=document.getElementById("confirmnewpassword").value;
 if(password.length<6)return say("La contraseña debe tener al menos 6 caracteres.",true);
 if(password!==confirmation)return say("Las contraseñas no coinciden. Escríbelas de nuevo.",true);
 const button=document.getElementById("savepassword");
 button.disabled=true;button.textContent="Guardando…";
-recoverySaving=true;
 try{
 const {data,error}=await db.auth.updateUser({password});
 if(error)throw error;
 session=(await db.auth.getSession()).data.session;
 if(data?.user){
-  recoveryPending=false;
   window.history.replaceState({},document.title,window.location.pathname+window.location.search);
   notice="Contraseña actualizada correctamente. Ya puedes usarla para entrar en Gyste.";
   noticeError=false;
@@ -204,7 +199,6 @@ if(data?.user){
   say(notice,false);
 }
 }catch(e){say("No se pudo actualizar la contraseña. Vuelve a abrir el enlace de recuperación más reciente.",true);button.disabled=false;button.textContent="Guardar contraseña";}
-finally{recoverySaving=false;}
 }
 
 function authMessage(error, mode){
@@ -316,6 +310,8 @@ async function renderTab(){
 if(!session)return authView();
 if(tab==="feed")return feedView();
 if(tab==="explore")return exploreView();
+if(tab==="learn")return learnView();
+if(tab==="series")return seriesView();
 if(tab==="profile")return profileView();
 if(tab==="notifications")return notificationView();
 if(tab==="messages")return messagesView();
@@ -323,6 +319,38 @@ if(tab==="messages")return messagesView();
 
 // Obtiene enlaces temporales para medios del feed. Si el bucket continúa público,
 // conserva compatibilidad con media_url cuando no exista media_path o falle la firma.
+// Catálogo educativo inicial: contenido incluido en el archivo, sin depender de tablas nuevas.
+const lessons=[
+{group:"Cuero",name:"Bolso estructurado de cuero",level:"Avanzado",steps:["Dibuja un patrón de frente, espalda, fuelle y asas; añade margen de costura uniforme.","Corta las piezas con cuchilla afilada y regla metálica sobre base de corte.","Rebaja cuidadosamente los bordes que deban doblarse y refuerza las zonas de las asas.","Marca las líneas de costura con compás, perfora con tenedores y cose con dos agujas (punto de guarnicionero).","Remata cantos con lijado fino, tinte adecuado y bruñido; comprueba la resistencia de las uniones."]},
+{group:"Cuero",name:"Cartera de varias ranuras",level:"Intermedio",steps:["Traza una plantilla de billetes y tarjetas con holgura suficiente.","Corta panel exterior, bolsillos y separadores y redondea las esquinas.","Rebaja los bordes de los bolsillos para evitar exceso de grosor.","Pega provisionalmente las capas con adhesivo apropiado y cose los laterales.","Bruñe los cantos y prueba la entrada y salida de tarjetas."]},
+{group:"Cuero",name:"Monedero con cremallera",level:"Intermedio",steps:["Diseña dos caras y una pequeña base; corta cuero flexible.","Marca el centro de la cremallera y fija sus cintas sin bloquear los dientes.","Cose la cremallera, después une los laterales con el cuero del revés cuando corresponda.","Refuerza los extremos de la cremallera y comprueba el cierre.","Acaba bordes y revisa que no queden puntas ni hilos sueltos."]},
+{group:"Cuero",name:"Llavero y tarjetero",level:"Principiante",steps:["Prepara una plantilla compacta y corta las piezas.","Redondea y suaviza los bordes.","Marca los agujeros con separación regular.","Instala una anilla con remache bien asentado o cose un cierre resistente.","Personaliza con iniciales y aplica acabado apto para cuero."]},
+{group:"Cuero",name:"Mosaico de cuero de Kazán",level:"Avanzado · tradición tártara de Rusia",steps:["Dibuja un ornamento geométrico o floral propio sobre papel.","Separa el dibujo en piezas de cuero de distintos colores y numéralas.","Corta con precisión y presenta las piezas sobre una base sin solaparlas.","Une los fragmentos con costura decorativa de borde, probando primero en retales.","Monta el panel resultante en una cartera o bolso y refuerza su reverso."]},
+{group:"Cuero",name:"Acabado inspirado en cuero ruso yuft",level:"Avanzado",steps:["Selecciona cuero ya curtido de origen conocido; no intentes curtir pieles con químicos domésticos.","Ensaya sobre retales un grabado de rombos con herramienta de estampación.","Aplica productos de acabado comerciales compatibles con ese cuero, según fabricante.","Pulimenta de forma gradual y compara flexibilidad, tacto y color.","Documenta tu muestra indicando qué acabado es una recreación y cuál es tradicional."]},
+{group:"Dibujo",name:"Perspectiva y sombreado",level:"Principiante a avanzado",steps:["Dibuja una caja con línea de horizonte y dos puntos de fuga.","Traza las aristas hacia los puntos de fuga.","Elige una fuente de luz y define sombras propias y proyectadas.","Practica degradados con lápices de distinta dureza.","Repite con un objeto real y compara proporciones."]},
+{group:"Pintura",name:"Color, veladuras y composición",level:"Intermedio",steps:["Haz una paleta limitada de tres colores y blanco.","Pinta primero masas grandes y valores de luz.","Deja secar según el material antes de aplicar veladuras.","Añade contraste y un punto focal.","Fotografía el resultado y anota mezclas utilizadas."]},
+{group:"Escultura",name:"Modelado y volumen",level:"Principiante",steps:["Haz bocetos frontal y lateral de una figura sencilla.","Construye el volumen con arcilla de modelar adecuada.","Define formas grandes antes de detalles pequeños.","Usa estecas para transiciones y texturas.","Sigue las indicaciones del material para secado o cocción; no uses un horno doméstico salvo que el producto lo permita."]}
+];
+function learnView(){
+const groups=[...new Set(lessons.map(x=>x.group))];
+shell(`<section class="panel"><h2>Academia Gyste</h2><p class="muted">Aprende, crea y comparte tus trabajos. Cursos iniciales de cuero, dibujo, pintura y escultura. Incluimos una introducción a tradiciones artesanales de Rusia.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Comparte lo que has creado</h3><p class="muted">Puedes publicar una fotografía o vídeo de tu trabajo en Inicio y añadir la etiqueta #ArtesaniaGyste.</p><button class="secondary" id="share-art">Publicar mi creación</button></section>`);
+const list=document.getElementById("lesson-list");
+const update=()=>{const group=document.getElementById("lesson-group").value;list.innerHTML=lessons.filter(x=>x.group===group).map(x=>`<details class="lesson"><summary><strong>${esc(x.name)}</strong><div class="muted">${esc(x.level)}</div></summary><ol>${x.steps.map(t=>`<li>${esc(t)}</li>`).join("")}</ol></details>`).join("");};
+document.getElementById("lesson-group").onchange=update;update();
+document.getElementById("share-art").onclick=async()=>{tab="feed";await feedView();const field=document.getElementById("posttext");if(field){field.value="#ArtesaniaGyste ";field.focus();}};
+}
+async function seriesView(){
+shell(`<section class="panel"><h2>Frutinovelas de Gyste</h2><p>Historias originales protagonizadas por frutas y verduras. Publica episodios en vídeo y sigue las series de otros creadores.</p><p class="muted">Para agrupar una serie escribe en la publicación <b>#Frutinovela</b>, el título de tu serie y el número de capítulo. Ejemplo: #Frutinovela La fresa viajera — Capítulo 1.</p><button class="primary" id="new-episode">Publicar un capítulo</button></section><section class="panel"><h3>Capítulos de la comunidad</h3><div id="episodes"><p class="muted">Buscando capítulos…</p></div></section>`);
+document.getElementById("new-episode").onclick=async()=>{tab="feed";await feedView();const field=document.getElementById("posttext");if(field){field.value="#Frutinovela Mi serie — Capítulo 1\n";field.focus();}};
+const {data,error}=await db.from("posts").select("id,content,user_id,likes,created_at,media_url,media_type,media_path").ilike("content","%#Frutinovela%").order("created_at",{ascending:false}).limit(40);
+const dest=document.getElementById("episodes");if(!dest)return;
+if(error){dest.innerHTML=`<p class="error">No se pudieron cargar los capítulos: ${esc(error.message)}</p>`;return;}
+const items=data||[];await prepareMediaUrls(items);
+const authors=[...new Set(items.map(x=>x.user_id))];let names={};
+if(authors.length){const {data:users}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",authors);(users||[]).forEach(u=>names[u.user_id]=u.display_name);}
+dest.innerHTML=items.map(p=>{const url=postMediaUrl(p);const media=p.media_type?.startsWith("video/")&&url?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`:p.media_type?.startsWith("image/")&&url?`<img class="media" loading="lazy" src="${esc(url)}" alt="Imagen del capítulo">`:"";return `<article class="post"><div class="posthead"><b class="author">${esc(names[p.user_id]||"Miembro de Gyste")}</b><span>${time(p.created_at)}</span></div><div class="bodytext">${esc(p.content)}</div>${media}</article>`;}).join("")||'<p class="muted">Todavía no hay capítulos. ¡Publica el primero!</p>';
+}
+
 async function prepareMediaUrls(list){
 const paths=[...new Set(list.map(p=>p.media_path).filter(Boolean))];
 if(!paths.length)return;
@@ -366,34 +394,18 @@ if(authors.length){
 const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,username").in("user_id",authors);
 (u||[]).forEach(x=>names[x.user_id]=x);
 }
-// El feed público conserva todas las publicaciones visibles según RLS.
-// «Siguiendo» filtra únicamente las cuentas seguidas y la propia.
-const visiblePosts=feedMode==="following"
-  ? posts.filter(p=>p.user_id===me.id||following.has(p.user_id))
-  : posts;
-const cards=visiblePosts.map(p=>postCard(p,names[p.user_id])).join("");
+const cards=posts.map(p=>postCard(p,names[p.user_id])).join("");
 shell(`
 <section class="panel">
-<h3>Comparte con la comunidad</h3>
-<p class="muted">Tus publicaciones pueden aparecer en el inicio de otros miembros de Gyste.</p>
+<h3>¿Qué quieres compartir?</h3>
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe una publicación…"></textarea>
 <label class="muted">Foto o vídeo (máximo 50 MB)
 <input id="media" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm">
 </label>
 <button id="publish" class="primary full">Publicar</button>
 </section>
-<section class="panel" aria-label="Filtros del inicio">
-<div class="row">
-<button type="button" class="${feedMode==="recent"?"primary":"secondary"}" data-feed-mode="recent">Comunidad · Recientes</button>
-<button type="button" class="${feedMode==="following"?"primary":"secondary"}" data-feed-mode="following">Siguiendo</button>
-<button type="button" class="secondary" id="findPeople">Descubrir personas</button>
-</div>
-<p class="muted">${feedMode==="following"?"Publicaciones tuyas y de personas a las que sigues.":"Publicaciones recientes de la comunidad, ordenadas por fecha."}</p>
-</section>
-<div id="feed">${cards||(feedMode==="following"?'<p class="muted">Todavía no hay publicaciones de las personas que sigues. En Descubrir puedes encontrar miembros.</p>':'<p class="muted">Aún no hay publicaciones disponibles. ¡Inicia la conversación!</p>')}</div>`);
+<div id="feed">${cards||'<p class="muted">Aún no hay publicaciones. ¡Inicia la conversación!</p>'}</div>`);
 document.getElementById("publish").onclick=publish;
-document.querySelectorAll("[data-feed-mode]").forEach(b=>{b.onclick=()=>{feedMode=b.dataset.feedMode;feedView();};});
-document.getElementById("findPeople").onclick=()=>{tab="explore";exploreView();};
 document.querySelectorAll("[data-like]").forEach(b=>{b.onclick=()=>like(b.dataset.like);});
 document.querySelectorAll("[data-comment-form]").forEach(f=>{f.onsubmit=sendComment;});
 document.querySelectorAll("[data-comments]").forEach(b=>{b.onclick=()=>toggleComments(b.dataset.comments);});
@@ -454,32 +466,29 @@ if(current){current.disabled=false;current.textContent="Publicar";}
 }
 
 
-// Primero confirma el borrado de la fila; después limpia el archivo de Storage.
-// Así, un fallo en la base de datos nunca deja una publicación con multimedia roto.
+// Elimina únicamente publicaciones propias. Si hay multimedia, primero solicita
+// su eliminación mediante la API oficial de Supabase Storage.
 async function deletePost(id,button){
-const post=posts.find(p=>String(p.id)===String(id));
+const post=posts.find(p=>p.id===id);
 if(!post)return say("No se encontró esta publicación. Actualiza el inicio.",true);
 if(post.user_id!==me.id)return say("Solo puedes eliminar tus propias publicaciones.",true);
 if(!confirm("¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer."))return;
 if(button){button.disabled=true;button.textContent="Eliminando…";}
 try{
-  if(post.media_path&&!post.media_path.startsWith(me.id+"/")){
-    throw new Error("La ruta multimedia no pertenece a tu cuenta. No se ha borrado nada.");
+  if(post.media_path){
+    // Las subidas de Gyste se guardan dentro de una carpeta con el UID del autor.
+    if(!post.media_path.startsWith(me.id+"/")){
+      throw new Error("La ruta del archivo no pertenece a tu cuenta. No se ha borrado nada.");
+    }
+    const {error:storageError}=await db.storage.from(BUCKET).remove([post.media_path]);
+    if(storageError)throw new Error("No se pudo eliminar el archivo multimedia: "+storageError.message+". La publicación se ha conservado.");
   }
   const {data,error}=await db.from("posts").delete().eq("id",id).eq("user_id",me.id).select("id").maybeSingle();
-  if(error)throw new Error("No se pudo eliminar la publicación: "+error.message);
-  if(!data)throw new Error("No se confirmó el borrado. Comprueba la política de eliminación en Supabase.");
-  posts=posts.filter(p=>String(p.id)!==String(id));
-  if(post.media_path){
-    const {error:storageError}=await db.storage.from(BUCKET).remove([post.media_path]);
-    if(storageError){
-      console.warn("Publicación eliminada; limpieza multimedia pendiente:",storageError.message);
-      say("Publicación eliminada. No se pudo limpiar su archivo multimedia; revisa Storage.",true);
-    }else{
-      mediaUrlCache.delete(post.media_path);
-      say("Publicación eliminada.");
-    }
-  }else say("Publicación eliminada.");
+  if(error)throw new Error("El archivo se eliminó, pero no se pudo eliminar la publicación: "+error.message);
+  if(!data)throw new Error("No se confirmó el borrado de la publicación. Actualiza el inicio.");
+  posts=posts.filter(p=>p.id!==id);
+  if(post.media_path)mediaUrlCache.delete(post.media_path);
+  say("Publicación eliminada.");
   await feedView();
 }catch(e){
   say(e?.message||"No se pudo eliminar la publicación.",true);
@@ -635,13 +644,7 @@ if(!authListener){
 authListener=db.auth.onAuthStateChange((event,s)=>{
 session=s;
 if(event==="PASSWORD_RECOVERY"){
-  recoveryPending=true;
   recoveryView();
-  return;
-}
-// Un SIGNED_IN del enlace de recuperación no debe mostrar el feed.
-if(recoveryPending){
-  if(s)recoveryView();
   return;
 }
 if(!s){me=null;chatUser=null;authView();}
@@ -654,16 +657,9 @@ new Promise((_,reject)=>setTimeout(()=>reject(new Error("La conexión está tard
 const {data,error}=result;
 if(error)throw error;
 session=data.session;
-if(recoveryPending){
-  if(session)recoveryView();
-  else {
-    // Si el enlace ha expirado, permitir solicitar uno nuevo.
-    recoveryPending=false;
-    notice="El enlace de recuperación no se pudo validar. Solicita uno nuevo.";
-    noticeError=true;
-    authView();
-  }
-}else if(session)await boot();else authView();
+const recoveryLink=/(?:^|[&#])type=recovery(?:&|$)/i.test(window.location.hash);
+if(recoveryLink&&session){recoveryView();}
+else if(session)await boot();else authView();
 }catch(e){
 app.innerHTML=`<section class="auth"><h1>Gyste</h1><p class="error">${esc(e?.message||"No se pudo iniciar Gyste. Comprueba Internet.")}</p><button class="primary full" id="retry">Reintentar</button></section>`;
 document.getElementById("retry").onclick=start;
