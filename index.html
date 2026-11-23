@@ -84,6 +84,7 @@ let session=null;
 let me=null;
 let tab="feed";
 let posts=[];
+let feedMode="recent";
 let profiles=[];
 let notice="";
 let noticeError=false;
@@ -365,18 +366,34 @@ if(authors.length){
 const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,username").in("user_id",authors);
 (u||[]).forEach(x=>names[x.user_id]=x);
 }
-const cards=posts.map(p=>postCard(p,names[p.user_id])).join("");
+// El feed público conserva todas las publicaciones visibles según RLS.
+// «Siguiendo» filtra únicamente las cuentas seguidas y la propia.
+const visiblePosts=feedMode==="following"
+  ? posts.filter(p=>p.user_id===me.id||following.has(p.user_id))
+  : posts;
+const cards=visiblePosts.map(p=>postCard(p,names[p.user_id])).join("");
 shell(`
 <section class="panel">
-<h3>¿Qué quieres compartir?</h3>
+<h3>Comparte con la comunidad</h3>
+<p class="muted">Tus publicaciones pueden aparecer en el inicio de otros miembros de Gyste.</p>
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe una publicación…"></textarea>
 <label class="muted">Foto o vídeo (máximo 50 MB)
 <input id="media" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm">
 </label>
 <button id="publish" class="primary full">Publicar</button>
 </section>
-<div id="feed">${cards||'<p class="muted">Aún no hay publicaciones. ¡Inicia la conversación!</p>'}</div>`);
+<section class="panel" aria-label="Filtros del inicio">
+<div class="row">
+<button type="button" class="${feedMode==="recent"?"primary":"secondary"}" data-feed-mode="recent">Comunidad · Recientes</button>
+<button type="button" class="${feedMode==="following"?"primary":"secondary"}" data-feed-mode="following">Siguiendo</button>
+<button type="button" class="secondary" id="findPeople">Descubrir personas</button>
+</div>
+<p class="muted">${feedMode==="following"?"Publicaciones tuyas y de personas a las que sigues.":"Publicaciones recientes de la comunidad, ordenadas por fecha."}</p>
+</section>
+<div id="feed">${cards||(feedMode==="following"?'<p class="muted">Todavía no hay publicaciones de las personas que sigues. En Descubrir puedes encontrar miembros.</p>':'<p class="muted">Aún no hay publicaciones disponibles. ¡Inicia la conversación!</p>')}</div>`);
 document.getElementById("publish").onclick=publish;
+document.querySelectorAll("[data-feed-mode]").forEach(b=>{b.onclick=()=>{feedMode=b.dataset.feedMode;feedView();};});
+document.getElementById("findPeople").onclick=()=>{tab="explore";exploreView();};
 document.querySelectorAll("[data-like]").forEach(b=>{b.onclick=()=>like(b.dataset.like);});
 document.querySelectorAll("[data-comment-form]").forEach(f=>{f.onsubmit=sendComment;});
 document.querySelectorAll("[data-comments]").forEach(b=>{b.onclick=()=>toggleComments(b.dataset.comments);});
