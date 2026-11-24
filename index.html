@@ -650,8 +650,26 @@ function academyVideoPanel(){
 function bindAcademyVideos(){
  const filter=document.getElementById("academy-video-filter"),grid=document.getElementById("academy-video-grid");
  const draw=()=>{grid.innerHTML=academyVideos.filter(v=>!filter.value||v.area===filter.value).map(v=>`<article class="academy-video"><span class="muted">${esc(v.area)} · ${esc(v.level)}</span><h3>${esc(v.title)}</h3><p class="muted">${esc(v.author)}</p><div><button class="video-launch" type="button" data-lesson-video="${esc(v.id)}">▶ Reproducir vídeo</button></div><a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">Ver vídeo original en YouTube</a></article>`).join("");
- grid.querySelectorAll("[data-lesson-video]").forEach(b=>b.onclick=()=>{const v=academyVideos.find(x=>x.id===b.dataset.lessonVideo);if(!v)return;const f=document.createElement("iframe");f.title=v.title;f.src="https://www.youtube-nocookie.com/embed/"+v.id;f.allow="encrypted-media; fullscreen; picture-in-picture";f.allowFullscreen=true;f.referrerPolicy="strict-origin-when-cross-origin";b.parentElement.replaceChildren(f);});};
- filter.onchange=draw;draw();
+ grid.querySelectorAll("[data-lesson-video]").forEach(b=>bindPlayerButton(b));};
+ let active=null;
+ function restorePlayer(){
+  if(!active)return;
+  const {host,id}=active;active=null;
+  const b=document.createElement("button");b.className="video-launch";b.type="button";b.dataset.lessonVideo=id;b.textContent="▶ Reproducir vídeo";
+  host.replaceChildren(b);bindPlayerButton(b);
+ }
+ function bindPlayerButton(b){
+  b.onclick=()=>{
+   const v=academyVideos.find(x=>x.id===b.dataset.lessonVideo);if(!v)return;
+   restorePlayer();
+   document.querySelectorAll("video,audio").forEach(m=>{if(!m.paused)m.pause();});
+   const host=b.parentElement,f=document.createElement("iframe"),close=document.createElement("button");
+   f.title=v.title;f.src="https://www.youtube-nocookie.com/embed/"+v.id;f.allow="encrypted-media; fullscreen; picture-in-picture";f.allowFullscreen=true;f.referrerPolicy="strict-origin-when-cross-origin";
+   close.type="button";close.className="secondary";close.textContent="■ Cerrar vídeo";close.onclick=()=>restorePlayer();
+   host.replaceChildren(f,close);active={host,id:v.id};
+  };
+ }
+ filter.onchange=()=>{restorePlayer();draw();};draw();
 }
 function learnView(){
  const groups=[...new Set(lessons.map(x=>x.group))];
