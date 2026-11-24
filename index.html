@@ -299,6 +299,7 @@ bindNavigation();
 }
 
 function bindNavigation(){
+ bindGysteVideos();
 app.querySelectorAll("[data-tab]").forEach(b=>{b.onclick=()=>goTab(b.dataset.tab);});
 const create=document.getElementById("compose-btn");if(create)create.onclick=goCompose;
 bindSpaceButtons();
@@ -612,9 +613,40 @@ function activateAcademy(){
  select.onchange=render;render();
 }
 
+
+const gysteVideoCatalog=[["Calistenia","Calistenia desde cero","Anke Calistenia","https://www.youtube.com/watch?v=Q59KQP7MADU","Rutina inicial y fundamentos.","Q59KQP7MADU"],["Calistenia","Flexiones, dominadas y progresiones","YouTube · tutorial original","https://www.youtube.com/watch?v=UN2DrBY_6IM","Técnica y progresiones de ejercicios básicos.","UN2DrBY_6IM"],["Calistenia","Guía de ejercicios por dificultad","Jéss Martin","https://calisteniaparaprincipiantes.com/guia","Guía con enlaces a vídeos de técnica."],["Cuero","Cartera monedero desde cero","YouTube · tutorial original","https://www.youtube.com/watch?v=pXorOAwc794","Corte, costura y montaje.","pXorOAwc794"],["Cuero","Costura de guarnicionero","Curtidos Cabezas","https://www.curtidoscabezas.com/es/blog/news/como-coser-con-dos-agujas-a-mano-guia-paso-a-paso","Preparación, agujas y puntada manual."],["Cuero","Proyectos de marroquinería","Cuero Barra","https://barraleather.com/tutoriales/","Tutoriales de monederos y otros proyectos."],["Cuero","Vídeos de cuero y herramientas","Curtidos Cabezas","https://www.youtube.com/channel/UCNg2FuN9wm_LjrHPLSrdgAQ","Canal especializado."],["Pintura","Técnicas de acrílico","Anna Mamchur Art","https://anna-mamchur-art.net/ES/playlist/acrylic_paint.php","Serie de vídeos de pintura por etapas."],["Pintura","Paisajes y técnicas creativas","CreativeSalo","https://creativesalo.com/video-tutoriales-creativos/","Vídeos de pintura sobre lienzo."],["Dibujo","Perspectiva paso a paso","Paper Monsters · Jako Del Bueno","https://aprende.papermonsters.es/como-dibujar-perspectiva/","Vídeo de horizonte y puntos de fuga."],["Escultura","Modelado de una figura en barro","UNAM · Juan Delgado Martín-Prat","https://www.rua.unam.mx/portal/recursos/ficha/16843","Recurso audiovisual de modelado."],["Tai Chi","Forma Yang de ocho movimientos","Centro Dan Tian","https://centrodantian.com/videos/forma-de-8-movimientos-tai-chi-estilo-yang-dan-tian-zaragoza/","Demostración para iniciar la práctica."]];
+function gysteVideoPanel(group=""){
+ const items=group?gysteVideoCatalog.filter(x=>x[0]===group):gysteVideoCatalog;
+ return '<section class="panel"><h2>Aprende con vídeos y guías</h2><p class="muted">Recursos externos. Sus autores conservan los derechos. El reproductor externo se carga solo al pulsar Ver aquí.</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px">'+items.map(x=>'<article style="border:1px solid #8995a355;border-radius:12px;padding:14px;min-width:0"><small class="muted">'+esc(x[0])+'</small><h3>'+esc(x[1])+'</h3><p>'+esc(x[4])+'</p><p class="muted">'+esc(x[2])+'</p>'+(x[5]?'<button type="button" class="secondary" data-gyste-video="'+esc(x[5])+'">Ver aquí</button><div style="margin-top:8px"></div>':'')+'<a href="'+esc(x[3])+'" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:8px">Abrir recurso original ↗</a></article>').join("")+'</div></section>';
+}
+function bindGysteVideos(){
+ app.querySelectorAll("[data-gyste-video]").forEach(b=>b.onclick=()=>{
+ const id=b.dataset.gysteVideo;if(!/^[A-Za-z0-9_-]{11}$/.test(id))return;
+ const out=b.nextElementSibling;if(!out)return;
+ const frame=document.createElement("iframe");frame.title="Vídeo educativo externo de YouTube";frame.src="https://www.youtube-nocookie.com/embed/"+id;frame.style.cssText="width:100%;aspect-ratio:16/9;border:0;min-height:200px";frame.allowFullscreen=true;frame.referrerPolicy="strict-origin-when-cross-origin";frame.allow="encrypted-media; picture-in-picture; fullscreen";out.replaceChildren(frame);b.disabled=true;b.textContent="Reproductor abierto";
+ });
+}
+function gysteVideoGroup(name){
+ const n=String(name||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+ return [["calistenia","Calistenia"],["cuero","Cuero"],["pintura","Pintura"],["dibujo","Dibujo"],["escultura","Escultura"],["tai chi","Tai Chi"],["taichi","Tai Chi"]].find(x=>n.includes(x[0]))?.[1]||"";
+}
+async function showGysteLikers(id){
+ const out=document.getElementById("likers-"+id);if(!out)return;
+ if(!out.classList.contains("hidden")){out.classList.add("hidden");return;}
+ out.classList.remove("hidden");out.textContent="Cargando reacciones…";
+ try{
+ const {data,error}=await db.rpc("gyste_post_likers_v1",{p_post_id:id});
+ if(error){out.textContent="La lista de reacciones todavía no está disponible. El contador sigue funcionando.";return;}
+ out.replaceChildren();
+ if(!data?.length){out.textContent="No hay reacciones para mostrar.";return;}
+ for(const row of data){const item=document.createElement("div");item.className="userrow";item.textContent=row.display_name||"Miembro de Gyste";out.append(item);}
+ if(data.length===100){const note=document.createElement("small");note.textContent="Se muestran hasta 100 reacciones.";out.append(note);}
+ }catch(e){out.textContent="No se pudo cargar la lista. Inténtalo de nuevo.";}
+}
+
 function learnView(){
  const groups=[...new Set(lessons.map(x=>x.group))];
- shell(`${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
+ shell(`${gysteVideoPanel()}${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
  activateMasterclasses();
  activateAcademy();
  const pro=document.getElementById('pro-list');
@@ -692,6 +724,7 @@ return posts.map(p=>postCard(p,names[p.user_id]|| (p.user_id===me.id?me:null))).
 }
 
 function bindPostActions(){
+ app.querySelectorAll("[data-likers]").forEach(b=>b.onclick=()=>showGysteLikers(b.dataset.likers));
 app.querySelectorAll("[data-like]").forEach(b=>{b.onclick=()=>like(b.dataset.like);});
 app.querySelectorAll("[data-comment-form]").forEach(f=>{f.onsubmit=sendComment;});
 app.querySelectorAll("[data-comments]").forEach(b=>{b.onclick=()=>toggleComments(b.dataset.comments);});
@@ -710,6 +743,7 @@ const selectOptions=`<option value="">Mi estado personal</option>${spaces.map(s=
 shell(`
 <div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p></div>
 ${shortcutsHTML()}
+ ${activeSpace&&gysteVideoGroup(activeSpace.name)?gysteVideoPanel(gysteVideoGroup(activeSpace.name)):!activeSpace&&filter==="all"?`<section class="panel"><h2>Aprende algo nuevo hoy</h2><p>Calistenia, cuero, pintura, dibujo, escultura y Tai Chi.</p><button class="secondary" data-tab="learn">Explorar vídeos y cursos</button></section>`:""}
 ${activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
 <div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
@@ -742,9 +776,11 @@ ${sp?`<button class="space-chip" data-space="${esc(sp.id)}">${esc(sp.emoji||"✦
 ${media}
 <div class="actions">
 <button class="action ${liked.has(p.id)?"liked":""}" data-like="${esc(p.id)}">${liked.has(p.id)?"♥ Me gusta":"♡ Me gusta"} · ${Number(p.likes||0)}</button>
-<button class="action" data-comments="${esc(p.id)}">◯ Comentar</button>
+${p.user_id===me.id?`<button class="action" data-likers="${esc(p.id)}">Quién dio Me gusta</button>`:""}
+ <button class="action" data-comments="${esc(p.id)}">◯ Comentar</button>
 </div>
-<div id="comments-${esc(p.id)}" class="hidden"><div id="list-${esc(p.id)}"></div>
+${p.user_id===me.id?`<div id="likers-${esc(p.id)}" class="hidden" aria-live="polite"></div>`:""}
+ <div id="comments-${esc(p.id)}" class="hidden"><div id="list-${esc(p.id)}"></div>
 <form class="commentform" data-comment-form="${esc(p.id)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form></div>
 </article>`;
 }
