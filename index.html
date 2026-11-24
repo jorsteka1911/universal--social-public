@@ -677,15 +677,20 @@ const academyVideos=[
  {area:"Calistenia",title:"Cómo empezar en calistenia",author:"Anke Calistenia",id:"Q59KQP7MADU",level:"Iniciación"},
  {area:"Dibujo",title:"Paisaje urbano con un punto de fuga",author:"Arte Vivo y Divertido",id:"Icl1SBOyfdo",level:"Iniciación"},
  {area:"Escultura",title:"Introducción al modelado en arcilla",author:"TICPlasTIC",id:"nPO7rHGSRUQ",level:"Iniciación"},
- {area:"Pintura",title:"Paisaje con acuarela paso a paso",author:"YouTube · tutorial original",id:"J_QsXVNZuVM",level:"Iniciación"},
- {area:"Cuero y marroquinería",title:"Tutorial de costura en cuero",author:"YouTube · tutorial original",id:"4n4hNrYjq8k",level:"Iniciación"}
+ {area:"Pintura",title:"Paisaje con acuarela paso a paso",author:"Nacho Puerto | Watercolor",id:"J_QsXVNZuVM",level:"Iniciación"},
+ {area:"Cuero y marroquinería",title:"Tutorial de costura en cuero",author:"YouTube · tutorial original",id:"4n4hNrYjq8k",level:"Iniciación"},
+ {area:"Calistenia",title:"Ejercicios básicos de calistenia",author:"Fuerza Violeta",id:"g3scTafKSCE",level:"Iniciación"},
+ {area:"Dibujo",title:"Paisaje con lápiz y técnicas de sombreado",author:"Arte Vivo y Divertido · José Manuel Gallego",id:"9C27t1TQiEg",level:"Iniciación"},
+ {area:"Escultura",title:"Modelado de un cuenco con la técnica del pellizco",author:"Andrea Duvós | Doro Cerámica",id:"f9BYYS-ylJU",level:"Iniciación"},
+ {area:"Cuero y marroquinería",title:"Costura manual de cuero con dos agujas",author:"Saiserk",id:"waZQf824_HQ",level:"Iniciación"}
 ];
 function academyVideoPanel(){
- return `<section class="panel" id="academy-videos"><h2>▶ Academia audiovisual Gyste</h2><p>Aprende con vídeos de los creadores originales y nuestras guías escritas. Selecciona una especialidad y pulsa Reproducir.</p><label>Especialidad<select id="academy-video-filter" class="field"><option value="">Todas</option>${[...new Set(academyVideos.map(v=>v.area))].map(a=>`<option>${esc(a)}</option>`).join("")}</select></label><div class="academy-video-grid" id="academy-video-grid"></div><p class="muted">Vídeos externos de YouTube: al reproducirlos se conecta con ese servicio. Si el propietario impide la reproducción integrada, utiliza el enlace original. En calistenia adapta los ejercicios a tu nivel; en artesanía utiliza herramientas adecuadas y supervisión adulta cuando corresponda.</p></section>`;
+ return `<section class="panel" id="academy-videos"><h2>▶ Academia audiovisual Gyste</h2><p>Aprende con vídeos de los creadores originales y nuestras guías escritas. Selecciona una especialidad y pulsa Reproducir.</p><label>Especialidad<select id="academy-video-filter" class="field"><option value="">Todas</option>${[...new Set(academyVideos.map(v=>v.area))].map(a=>`<option>${esc(a)}</option>`).join("")}</select></label><label>Buscar un tema<input id="academy-video-search" class="field" type="search" placeholder="Ej.: arcilla, calistenia, cuero"></label><p id="academy-video-count" class="muted" aria-live="polite"></p><div class="academy-video-grid" id="academy-video-grid"></div><p class="muted">Vídeos externos de YouTube: al reproducirlos se conecta con ese servicio. Si el propietario impide la reproducción integrada, utiliza el enlace original. En calistenia adapta los ejercicios a tu nivel; en artesanía utiliza herramientas adecuadas y supervisión adulta cuando corresponda.</p></section>`;
 }
 function bindAcademyVideos(){
- const filter=document.getElementById("academy-video-filter"),grid=document.getElementById("academy-video-grid");
- const draw=()=>{grid.innerHTML=academyVideos.filter(v=>!filter.value||v.area===filter.value).map(v=>`<article class="academy-video"><span class="muted">${esc(v.area)} · ${esc(v.level)}</span><h3>${esc(v.title)}</h3><p class="muted">${esc(v.author)}</p><div><button class="video-launch" type="button" data-lesson-video="${esc(v.id)}">▶ Reproducir vídeo</button></div><a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">Ver vídeo original en YouTube</a></article>`).join("");
+ const filter=document.getElementById("academy-video-filter"),grid=document.getElementById("academy-video-grid"),search=document.getElementById("academy-video-search");
+ const normalize=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+ const draw=()=>{const matches=academyVideos.filter(v=>(!filter.value||v.area===filter.value)&&normalize(v.area+" "+v.title+" "+v.author).includes(normalize(search.value.trim())));document.getElementById("academy-video-count").textContent=matches.length+" vídeos";grid.innerHTML=matches.map(v=>`<article class="academy-video"><span class="muted">${esc(v.area)} · ${esc(v.level)}</span><h3>${esc(v.title)}</h3><p class="muted">${esc(v.author)}</p><div><button class="video-launch" type="button" data-lesson-video="${esc(v.id)}">▶ Reproducir vídeo</button></div><a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">Ver vídeo original en YouTube</a></article>`).join("");
  grid.querySelectorAll("[data-lesson-video]").forEach(b=>bindPlayerButton(b));};
  let active=null;
  function restorePlayer(){
@@ -705,11 +710,12 @@ function bindAcademyVideos(){
    host.replaceChildren(f,close);active={host,id:v.id};
   };
  }
- filter.onchange=()=>{restorePlayer();draw();};draw();
+ filter.onchange=search.oninput=()=>{restorePlayer();draw();};draw();
 }
+function studyResourcesPanel(){return `<section class="panel"><h2>📚 Apoyo escolar y competencias profesionales</h2><p>Recursos educativos externos para seguir aprendiendo. Se abren en su página original.</p><div class="academy-video-grid"><article class="academy-video"><h3>Matemáticas</h3><p>Ecuaciones de primer grado · Math2me</p><a href="https://cursos.math2me.com/secundaria/1/28/" target="_blank" rel="noopener noreferrer">Abrir lección y ejercicios</a></article><article class="academy-video"><h3>Ofimática</h3><p>Excel desde cero · Zalathun Learning</p><a href="https://www.zalathun.com/curso-excel-desde-cero/" target="_blank" rel="noopener noreferrer">Abrir curso de 18 vídeos</a></article></div><p class="muted">Gyste no exige comprar cursos externos ni facilita certificados por estos recursos.</p></section>`;}
 function learnView(){
  const groups=[...new Set(lessons.map(x=>x.group))];
- shell(`${academyVideoPanel()}${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
+ shell(`${academyVideoPanel()}${studyResourcesPanel()}${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
  bindAcademyVideos();
  activateMasterclasses();
  activateAcademy();
