@@ -1,0 +1,3 @@
+# Reacciones expresivas (borrador)
+Cinco reacciones, una por usuario y publicación. El usuario puede tocar la misma para quitarla o elegir otra. La opción básica anterior sigue disponible si la columna no existe. Corazones locales al elegir Me encanta; sin animación si se solicita movimiento reducido. Lista de nombres y tipo únicamente para el propietario mediante RPC v2. No confundir contador total con aprobación neta.
+Se requiere revisar y aplicar SQL en una base de prueba, validar permisos UPDATE de columnas y trigger de contador, probar con dos usuarios, verificar navegación y animación en móvil. No se ha ejecutado SQL ni desplegado. La animación no es una nueva reacción ni modifica el contador.
