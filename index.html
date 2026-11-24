@@ -410,7 +410,7 @@ function installView(){
  shell(`<section class="panel"><h2>📲 Instalar Gyste</h2><p>${standalone?"Gyste se está ejecutando como aplicación instalada.":"Añade Gyste a la pantalla principal de tu teléfono."}</p><img src="/gyste-icon-192.svg" width="96" height="96" alt="Icono Gyste"><p>En Chrome para Android, abre el menú de tres puntos del navegador y busca Instalar aplicación o Añadir a pantalla de inicio. No confundas ese menú con el de Gyste.</p>${!standalone&&gysteInstallPrompt?'<button class="primary full" id="install-gyste">Instalar aplicación</button>':""}<p class="muted">Necesitas conexión a Internet para consultar publicaciones y mensajes. Esta versión web no está todavía en Google Play.</p></section>`);
  const b=document.getElementById("install-gyste");if(b)b.onclick=async()=>{const prompt=gysteInstallPrompt;if(!prompt)return;gysteInstallPrompt=null;b.disabled=true;try{await prompt.prompt();await prompt.userChoice;}catch{}if(tab==="install")installView();};
 }
-function helpView(){shell(`<section class="panel"><h2>Cómo usar Gyste</h2><p>Bienvenido a la comunidad. Elige lo que quieras hacer:</p><div class="userrow"><div class="userinfo"><b>Publicar una foto o vídeo</b><p>En Crear puedes escribir, adjuntar archivos y seleccionar quién los verá.</p></div><button class="secondary" id="help-create">Crear</button></div><div class="userrow"><div class="userinfo"><b>Hablar con una persona</b><p>En Mensajes busca un nombre y abre una conversación. Puedes adjuntar fotos, vídeo o grabar voz.</p></div><button class="secondary" data-tab="messages">Mensajes</button></div><div class="userrow"><div class="userinfo"><b>Aprender con vídeos y cursos</b><p>Selecciona una especialidad. Solo se abre un vídeo de la academia cada vez.</p></div><button class="secondary" data-tab="learn">Aprender</button></div><div class="userrow"><div class="userinfo"><b>Historias temporales</b><p>Comparte un momento que dejará de mostrarse tras 24 horas.</p></div><button class="secondary" data-tab="stories">Historias</button></div><div class="userrow"><div class="userinfo"><b>Privacidad y seguridad</b><p>Controla quién te puede escribir y bloquea o denuncia cuentas. Los destinatarios pueden conservar contenido que reciben.</p></div><button class="secondary" data-tab="safety">Seguridad</button></div><div class="userrow"><div class="userinfo"><b>Guardar o enviar una publicación</b><p>Abre sus tres puntos y selecciona la opción. Solo las públicas pueden reenviarse desde Gyste.</p></div><button class="secondary" data-tab="feed">Inicio</button></div><p class="muted">Gyste · versión beta. No compartas datos personales de otras personas sin permiso. Si detectas una publicación inapropiada, utiliza Denunciar.</p></section>`);document.getElementById("help-create").onclick=goCompose;}
+function helpView(){shell(`<section class="panel"><h2>Cómo usar Gyste</h2><p>Bienvenido a la comunidad. Elige lo que quieras hacer:</p><div class="userrow"><div class="userinfo"><b>Publicar una foto o vídeo</b><p>En Crear puedes escribir, adjuntar archivos y seleccionar quién los verá.</p></div><button class="secondary" id="help-create">Crear</button></div><div class="userrow"><div class="userinfo"><b>Hablar con una persona</b><p>En Mensajes busca un nombre y abre una conversación. Puedes adjuntar fotos, vídeo o grabar voz.</p></div><button class="secondary" data-tab="messages">Mensajes</button></div><div class="userrow"><div class="userinfo"><b>Aprender con vídeos y cursos</b><p>Selecciona una especialidad. Solo se abre un vídeo de la academia cada vez.</p></div><button class="secondary" data-tab="learn">Aprender</button></div><div class="userrow"><div class="userinfo"><b>Historias temporales</b><p>Comparte un momento que dejará de mostrarse tras 24 horas.</p></div><button class="secondary" data-tab="stories">Historias</button></div><div class="userrow"><div class="userinfo"><b>Privacidad y seguridad</b><p>Controla quién te puede escribir y bloquea o denuncia cuentas. Los destinatarios pueden conservar contenido que reciben.</p></div><button class="secondary" data-tab="safety">Seguridad</button></div><div class="userrow"><div class="userinfo"><b>Guardar o enviar una publicación</b><p>Abre sus tres puntos y selecciona la opción. Solo las públicas pueden reenviarse desde Gyste.</p></div><button class="secondary" data-tab="feed">Inicio</button></div><p class="muted">Gyste · versión beta. No compartas datos personales de otras personas sin permiso. Si detectas una publicación inapropiada, utiliza Denunciar.</p><button class="secondary full" id="help-rules">Normas de convivencia</button></section>`);document.getElementById("help-create").onclick=goCompose;document.getElementById("help-rules").onclick=showCommunityRules;}
 function shortcutsHTML(){
 return `<section class="shortcut-section" aria-label="Accesos rápidos">
 <div class="section-heading"><h2>Tu mundo, a un toque</h2><button class="text-link" data-tab="spaces">Ver espacios ›</button></div>
@@ -439,14 +439,23 @@ app.innerHTML=`
 <p class="muted">Tu universo social: comparte, descubre y conecta.</p>
 <div id="notice" class="notice ${noticeError?"error":""}">${esc(notice)}</div>
 <input id="email" class="field" type="email" autocomplete="email" placeholder="Correo electrónico">
-<input id="password" class="field" type="password" minlength="6" autocomplete="current-password" placeholder="Contraseña">
+<input id="password" class="field" type="password" minlength="6" autocomplete="current-password" placeholder="Contraseña"><label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input id="show-login-password" type="checkbox"> Mostrar contraseña</label>
 <button class="primary full" id="login">Entrar</button>
 <button class="secondary full" id="forgot">¿Olvidaste tu contraseña?</button>
-<button class="secondary full" id="signup">Crear cuenta</button>
+<details id="signup-details" style="margin-top:18px"><summary>¿Todavía no tienes cuenta? Registrarme</summary><p class="muted">Usa el correo y una contraseña de al menos 8 caracteres en los campos de arriba.</p><button type="button" class="secondary full" id="signup-rules">Leer normas de convivencia y privacidad</button><label style="display:flex;align-items:flex-start;gap:10px;margin:12px 0"><input type="checkbox" id="signup-accept"><span>He leído las normas de convivencia y entiendo cómo se comparte el contenido.</span></label><button class="primary full" id="signup">Crear cuenta</button></details><p class="muted" style="font-size:12px">Gyste está en fase beta. Evita compartir datos personales o fotografías ajenas sin autorización.</p>
 </section>`;
 document.getElementById("login").onclick=login;
 document.getElementById("forgot").onclick=sendPasswordReset;
 document.getElementById("signup").onclick=signup;
+document.getElementById("signup-rules").onclick=showCommunityRules;
+document.getElementById("show-login-password").onchange=e=>{document.getElementById("password").type=e.target.checked?"text":"password";};
+document.getElementById("password").onkeydown=e=>{if(e.key==="Enter"&&!document.getElementById("signup-details").open){e.preventDefault();if(!document.getElementById("login").disabled)login();}};
+}
+function showCommunityRules(){
+ const d=document.createElement("dialog");
+ d.style.cssText="width:min(92vw,540px);max-height:85vh;overflow:auto;background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:14px;padding:18px";
+ d.innerHTML='<h2>Normas de convivencia de Gyste</h2><p>Versión beta · guía de uso responsable</p><ul><li>Respeta a los demás: no se permiten amenazas, acoso, explotación sexual ni discriminación.</li><li>No publiques imágenes ni datos personales ajenos sin autorización.</li><li>Respeta los derechos de autor. No publiques material que no tienes derecho a compartir.</li><li>Si eres menor, no publiques tu dirección, teléfono, centro escolar ni ubicación. Pide ayuda a un adulto de confianza si alguien te incomoda.</li><li>Utiliza las opciones de privacidad y bloqueo. El contenido que compartas con otras personas puede ser copiado.</li><li>Denuncia el contenido inapropiado. Las denuncias necesitan revisión y no sustituyen los servicios de emergencia.</li><li>Tu correo sirve para acceder a tu cuenta. No lo incluyas en tu nombre público.</li></ul><p class="muted">Estas normas son una guía inicial, no la política de privacidad definitiva ni una garantía de seguridad.</p><form method="dialog"><button class="primary full">Cerrar</button></form>';
+ document.body.appendChild(d);d.addEventListener("close",()=>d.remove(),{once:true});d.showModal();
 }
 
 function recoveryView(){
@@ -546,7 +555,9 @@ async function signup(){
   const password=document.getElementById("password").value;
   const button=document.getElementById("signup");
   if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
-  if(password.length<6)return say("La contraseña debe tener al menos 6 caracteres.",true);
+  if(password.length<8)return say("Para crear una cuenta, elige una contraseña de al menos 8 caracteres.",true);
+  if(!document.getElementById("signup-accept")?.checked)return say("Lee y acepta las normas de convivencia para registrarte.",true);
+  if(button.disabled)return;
   button.disabled=true;button.textContent="Creando cuenta…";
   try{
     const {data,error}=await db.auth.signUp({email,password});
@@ -574,7 +585,7 @@ async function signup(){
 async function logout(){
 const {error}=await db.auth.signOut();
 if(error)return say("No se pudo cerrar sesión: "+error.message,true);
-session=null;me=null;chatUser=null;authView();
+session=null;me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=null;homeFilter="all";authView();
 }
 
 async function boot(){
@@ -584,8 +595,8 @@ me={id:user.id,email:user.email};
 let {data:p,error:profileError}=await db.from("gyste_profiles").select("*").eq("user_id",user.id).maybeSingle();
 if(profileError)return authViewWithError("No se pudo cargar tu perfil: "+profileError.message);
 if(!p){
-const name=user.email?.split("@")[0]||"Usuario";
-const username=(name.replace(/[^a-z0-9_]/gi,"").toLowerCase()||"usuario").slice(0,22)+"_"+user.id.slice(0,6);
+const name="Miembro de Gyste "+user.id.slice(0,6);
+const username="gyste_"+user.id.replace(/-/g,"").slice(0,16);
 const {data:created,error:createError}=await db.from("gyste_profiles").upsert({user_id:user.id,display_name:name,username}).select().single();
 if(createError)return authViewWithError("No se pudo crear tu perfil: "+createError.message);
 p=created;
