@@ -283,7 +283,8 @@ function spaceLabel(id){return spaceById(id)?.name||"Espacio";}
 function navButton(dest,label,symbol){return `<button data-tab="${dest}" class="${tab===dest?"active":""}" aria-label="${label}" ${tab===dest?'aria-current="page"':''}><b aria-hidden="true">${symbol}</b>${label}</button>`;}
 
 function shell(content){
-if(tab!=="messages"){stopChatRefresh();stopVoiceCapture();}
+if(tab!=="messages"){stopChatRefresh();stopVoiceCapture();chatMediaCache.clear();}
+if(tab!=="stories")stopStoryTimer();
 app.innerHTML=`
 <header>
 <button class="brand-button" data-tab="feed" aria-label="Ir al inicio de Gyste"><span class="brand-mark">G</span><span class="brand-copy">GYSTE<small>Un mundo para compartir</small></span></button>
@@ -299,7 +300,7 @@ app.innerHTML=`
 <button data-tab="explore">🔎 Personas</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
-<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button>
+<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button><button data-tab="help">❔ Cómo usar Gyste</button>
 </div></details>
 </div>
 </header>
@@ -334,12 +335,14 @@ sharedPostId=null;selectedSpaceId=b.dataset.space;homeFilter="all";tab="feed";no
 }
 
 function goTab(next){
-if(next==="feed"){sharedPostId=null;selectedSpaceId=null;homeFilter="all";}
+if(next!=="stories")stopStoryTimer();
+if(next!=="messages"){stopChatRefresh();stopVoiceCapture();}
+if(next==="feed"){sharedPostId=null;selectedSpaceId=null;homeFilter="all";const u=new URL(location.href);if(u.searchParams.has("post")){u.searchParams.delete("post");history.replaceState(null,"",u.href);}}
 if(next!=="messages")chatUser=null;
 tab=next;notice="";noticeError=false;renderTab();window.scrollTo({top:0,behavior:"smooth"});
 }
 async function goCompose(){
-selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
+sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
 const input=document.getElementById("posttext");if(input){input.focus();input.scrollIntoView({behavior:"smooth",block:"center"});}
 }
 
@@ -353,6 +356,7 @@ return;
 spaces=data||[];spacesReady=true;
 }
 
+function helpView(){shell(`<section class="panel"><h2>Cómo usar Gyste</h2><p>Bienvenido a la comunidad. Elige lo que quieras hacer:</p><div class="userrow"><div class="userinfo"><b>Publicar una foto o vídeo</b><p>En Crear puedes escribir, adjuntar archivos y seleccionar quién los verá.</p></div><button class="secondary" id="help-create">Crear</button></div><div class="userrow"><div class="userinfo"><b>Hablar con una persona</b><p>En Mensajes busca un nombre y abre una conversación. Puedes adjuntar fotos, vídeo o grabar voz.</p></div><button class="secondary" data-tab="messages">Mensajes</button></div><div class="userrow"><div class="userinfo"><b>Aprender con vídeos y cursos</b><p>Selecciona una especialidad. Solo se abre un vídeo de la academia cada vez.</p></div><button class="secondary" data-tab="learn">Aprender</button></div><div class="userrow"><div class="userinfo"><b>Historias temporales</b><p>Comparte un momento que dejará de mostrarse tras 24 horas.</p></div><button class="secondary" data-tab="stories">Historias</button></div><div class="userrow"><div class="userinfo"><b>Privacidad y seguridad</b><p>Controla quién te puede escribir y bloquea o denuncia cuentas. Los destinatarios pueden conservar contenido que reciben.</p></div><button class="secondary" data-tab="safety">Seguridad</button></div><div class="userrow"><div class="userinfo"><b>Guardar o enviar una publicación</b><p>Abre sus tres puntos y selecciona la opción. Solo las públicas pueden reenviarse desde Gyste.</p></div><button class="secondary" data-tab="feed">Inicio</button></div><p class="muted">Gyste · versión beta. No compartas datos personales de otras personas sin permiso. Si detectas una publicación inapropiada, utiliza Denunciar.</p></section>`);document.getElementById("help-create").onclick=goCompose;}
 function shortcutsHTML(){
 return `<section class="shortcut-section" aria-label="Accesos rápidos">
 <div class="section-heading"><h2>Tu mundo, a un toque</h2><button class="text-link" data-tab="spaces">Ver espacios ›</button></div>
@@ -373,6 +377,7 @@ return `<div class="home-tabs" role="group" aria-label="Elegir publicaciones">
 }
 
 function authView(){
+stopChatRefresh();stopVoiceCapture();stopStoryTimer();chatMediaCache.clear();mediaUrlCache.clear();
 app.innerHTML=`
 <section class="auth">
 <h1>Gyste</h1>
@@ -559,6 +564,7 @@ if(tab==="stories")return storiesView();
 if(tab==="profile")return profileView();
 if(tab==="saved")return savedView();
 if(tab==="safety")return safetyView();
+if(tab==="help")return helpView();
 if(tab==="notifications")return notificationView();
 if(tab==="messages")return messagesView();
 }
@@ -607,7 +613,10 @@ function professionalWorkshop(){
  return `<section class="panel"><h2>Escuela de oficios y artes · Talleres completos</h2><p class="muted">Guías escritas por proyectos, materiales, métodos, ejercicios y control de calidad. Estas guías escritas no sustituyen una demostración filmada por un profesional.</p><label for="pro-group">Área de formación</label><select class="field" id="pro-group">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="pro-list"></div></section>`;
 }
 const STORY_BUCKET="gyste-story-media";
+let storyExpiryTimer=null;
+function stopStoryTimer(){if(storyExpiryTimer!==null){clearInterval(storyExpiryTimer);storyExpiryTimer=null;}}
 async function storiesView(){
+ stopStoryTimer();
  const uid=me.id;
  const {data,error}=await db.from("gyste_stories").select("id,user_id,content,audience,media_path,media_type,created_at,expires_at").order("created_at",{ascending:false}).limit(80);
  if(tab!=="stories"||me?.id!==uid)return;
@@ -620,7 +629,7 @@ async function storiesView(){
  shell(`<section class="panel"><h2>⏳ Historias de 24 horas</h2><p>Comparte un momento con texto, foto o vídeo. Tu historia deja de aparecer tras 24 horas.</p><form id="story-form"><textarea id="story-text" class="field" maxlength="1000" placeholder="¿Qué estás haciendo hoy?"></textarea><label>Quién puede verla<select id="story-audience" class="field"><option value="members">Miembros de Gyste</option><option value="mutual">Seguimiento mutuo</option><option value="only_me">Solo yo</option></select></label><label>Foto o vídeo (máximo 50 MB)<input type="file" id="story-file" class="field" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"></label><button class="primary full" id="story-publish">Publicar historia</button><p id="story-status" role="status"></p></form></section>${items.map(s=>`<article class="post" data-story="${esc(s.id)}" data-expires="${esc(s.expires_at)}"><div class="posthead"><b>${esc(names[s.user_id]?.display_name||"Miembro")}</b><small>Caduca en ${Math.max(0,Math.ceil((new Date(s.expires_at)-Date.now())/3600000))} h</small></div><div class="bodytext">${esc(s.content)}</div>${s.media_path?urls[s.media_path]?`<div class="media-frame">${s.media_type?.startsWith("video/")?`<video class="media" controls playsinline preload="metadata" src="${esc(safeMediaUrl(urls[s.media_path]))}"></video>`:`<img class="media" alt="Historia" src="${esc(safeMediaUrl(urls[s.media_path]))}" loading="lazy">`}<button class="media-expand" type="button">⛶ Ampliar</button></div>`:'<p class="muted">Archivo temporalmente no disponible.</p>':""}${s.user_id===uid?`<button class="secondary" data-delete-story="${esc(s.id)}">Eliminar historia</button>`:""}</article>`).join("")||'<p class="panel muted">Todavía no hay historias. Publica la primera.</p>'}<button class="secondary full" id="refresh-stories">Actualizar historias</button>`);
  bindMediaActions();
  document.getElementById("refresh-stories").onclick=storiesView;
- const timer=setInterval(()=>{if(tab!=="stories"||!document.getElementById("story-form")){clearInterval(timer);return;}app.querySelectorAll("[data-expires]").forEach(n=>{if(Date.parse(n.dataset.expires)<=Date.now())n.remove();});},10000);
+ storyExpiryTimer=setInterval(()=>{if(tab!=="stories"||!document.getElementById("story-form")){stopStoryTimer();return;}app.querySelectorAll("[data-expires]").forEach(n=>{if(Date.parse(n.dataset.expires)<=Date.now())n.remove();});},10000);
  app.querySelectorAll("[data-delete-story]").forEach(b=>b.onclick=async()=>{if(!confirm("¿Eliminar esta historia?"))return;const s=items.find(x=>x.id===b.dataset.deleteStory);if(!s)return;b.disabled=true;const {error}=await db.from("gyste_stories").delete().eq("id",s.id).eq("user_id",uid);if(error){say("No se pudo eliminar.",true);b.disabled=false;return;}if(s.media_path)await db.storage.from(STORY_BUCKET).remove([s.media_path]);say("Historia eliminada.");await storiesView();});
  document.getElementById("story-form").onsubmit=async e=>{
  e.preventDefault();const b=document.getElementById("story-publish"),status=document.getElementById("story-status"),content=document.getElementById("story-text").value.trim(),audience=document.getElementById("story-audience").value,file=document.getElementById("story-file").files[0];
@@ -895,17 +904,21 @@ async function savedView(){
  const cards=await prepareCards(items);shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="muted">Solo tú puedes ver esta lista.</p></section>${cards||'<p class="muted">Todavía no has guardado publicaciones.</p>'}`);bindPostActions();
 }
 async function feedView(){
-const filter=selectedSpaceId?"space":homeFilter;
+const filter=selectedSpaceId?"space":homeFilter,viewKey=JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId]);
+const valid=()=>tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
 const {data,error}=await readPosts(filter);
+if(!valid())return;
 if(error){shell(`<p class="error">No se pudo cargar el inicio: ${esc(error.message)}</p>`);return;}
 const cards=await prepareCards(data||[]);
+if(!valid())return;
+if(sharedPostId&&!(data||[]).length){shell(`<section class="panel"><h2>Publicación no disponible</h2><p>Puede haber sido eliminada o no tienes permiso para verla.</p><button class="primary" data-tab="feed">Volver al inicio</button></section>`);return;}
 const activeSpace=selectedSpaceId?spaceById(selectedSpaceId):null;
 const title=sharedPostId?"Publicación compartida":activeSpace?`${activeSpace.emoji||"✦"} ${activeSpace.name}`:homeFilter==="following"?"Personas que sigues":homeFilter==="mine"?"Mis estados":"Para ti";
 const intro=sharedPostId?"Abre Inicio para ver el resto de publicaciones.":activeSpace?(activeSpace.description||"Comparte y aprende en este espacio."):homeFilter==="following"?"Publicaciones de personas que sigues y las tuyas.":homeFilter==="mine"?"Tus publicaciones, siempre a mano.":"Comparte lo que sabes. Descubre lo que te inspira.";
 const selectOptions=`<option value="">Mi estado personal</option>${spaces.map(s=>`<option value="${esc(s.id)}" ${selectedSpaceId===s.id?"selected":""}>${esc(s.emoji||"✦")} ${esc(s.name)}</option>`).join("")}`;
 shell(`
 <div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p></div>
-${shortcutsHTML()}<section class="panel"><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>
+${shortcutsHTML()}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
 <div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
@@ -1015,7 +1028,7 @@ async function deletePost(id,button){
   const ownedPaths=postMediaItems(post).map(m=>m.path).filter(path=>typeof path==="string"&&path.startsWith(me.id+"/"));
    if(ownedPaths.length){const {error:storageError}=await db.storage.from(bucketFor(post)).remove(ownedPaths);if(storageError)console.warn("La publicación se borró, pero quedaron archivos pendientes de limpieza:",storageError.message);}
   posts=posts.filter(p=>p.id!==id);
-  ownedPaths.forEach(path=>mediaUrlCache.delete(path));
+  ownedPaths.forEach(path=>mediaUrlCache.delete(bucketFor(post)+":"+path));
   say("Publicación eliminada.");await renderTab();
  }catch(e){say("No se pudo eliminar: "+(e?.message||"Error"),true);if(button){button.disabled=false;button.textContent="🗑 Eliminar";}}
 }
