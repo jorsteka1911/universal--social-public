@@ -1281,13 +1281,30 @@ await loadSpaces();selectedSpaceId=data.id;tab="feed";homeFilter="all";notice="E
 
 async function exploreView(){
 const uid=me?.id;if(!uid)return;
-const {data,error}=await db.from("gyste_profiles").select("user_id,username,display_name,bio,avatar_url").neq("user_id",uid).order("display_name").limit(100);
-if(tab!=="explore"||me?.id!==uid)return;
-if(error){shell(`<p class="error">Error al descubrir personas: ${esc(error.message)}</p>`);return;}
-profiles=data||[];
-shell(`<section class="panel"><h3>Descubre personas</h3><input id="search" class="field" placeholder="Buscar por nombre o usuario…"></section><div id="people">${peopleHTML(profiles)}</div>`);
-document.getElementById("search").oninput=e=>{const q=e.target.value.toLowerCase();document.getElementById("people").innerHTML=peopleHTML(profiles.filter(p=>(p.display_name+" "+p.username).toLowerCase().includes(q)));bindPeople();};
-bindPeople();
+shell(`<section class="panel"><h3>Descubre personas</h3><label>Buscar por nombre o usuario<input id="search" class="field" type="search" maxlength="60" placeholder="Escribe al menos dos letras…" autocomplete="off"></label><p id="people-status" class="muted" role="status">Busca personas que conozcas o consulta miembros recientes.</p></section><div id="people"></div><button class="secondary full" id="people-more" hidden>Ver más resultados</button>`);
+const input=document.getElementById("search"),box=document.getElementById("people"),status=document.getElementById("people-status"),more=document.getElementById("people-more");
+let serial=0,timer=null,offset=0;const size=30,valid=()=>tab==="explore"&&me?.id===uid&&input.isConnected;
+async function search(append=false){
+ const n=++serial,term=input.value.trim().replace(/^@/,"").replace(/[^\p{L}\p{N}_ .-]/gu,"").replace(/[%_,]/g,"").trim();
+ if(!valid())return;
+ if(!append){offset=0;box.replaceChildren();profiles=[];}
+ more.hidden=true;
+ if(input.value.trim()&&term.length<2){status.textContent="Escribe al menos dos letras o números.";return;}
+ status.textContent="Buscando…";
+ try{
+ const base=()=>db.from("gyste_profiles").select("user_id,username,display_name,bio,avatar_url").neq("user_id",uid).order("display_name").order("user_id");
+ const query=term?base().or("display_name.ilike.%"+term+"%,username.ilike.%"+term+"%"):base();
+ const {data,error}=await query.range(offset,offset+size-1);
+ if(!valid()||n!==serial)return;if(error)throw error;
+ const batch=data||[];profiles=[...new Map([...profiles,...batch].map(p=>[p.user_id,p])).values()];offset+=batch.length;
+ box.innerHTML=peopleHTML(profiles);bindPeople();
+ status.textContent=profiles.length?profiles.length+" personas encontradas":"No se encontraron personas.";
+ more.hidden=batch.length<size;
+ }catch{if(valid()&&n===serial){status.textContent="No se pudo buscar. Comprueba la conexión y vuelve a intentarlo.";more.hidden=false;}}
+}
+input.oninput=()=>{clearTimeout(timer);++serial;offset=0;profiles=[];box.replaceChildren();more.hidden=true;status.textContent="Buscando…";timer=setTimeout(()=>search(),300);};
+more.onclick=()=>search(true);
+await search();
 }
 
 function peopleHTML(list){
@@ -1300,16 +1317,21 @@ return list.map(p=>`<div class="userrow">
 }
 
 function bindPeople(){
-document.querySelectorAll("[data-follow]").forEach(b=>{b.onclick=()=>follow(b.dataset.follow);});
+app.querySelectorAll("[data-follow]").forEach(b=>{b.onclick=()=>follow(b.dataset.follow,b);});
 document.querySelectorAll("[data-chat]").forEach(b=>{b.onclick=()=>{chatUser=b.dataset.chat;tab="messages";messagesView();};});
 }
 
-async function follow(id){
-const was=following.has(id);
-const q=was?db.from("gyste_follows").delete().eq("follower_id",me.id).eq("followed_id",id):db.from("gyste_follows").insert({follower_id:me.id,followed_id:id});
-const {error}=await q;if(error)return say(error.message,true);
-was?following.delete(id):following.add(id);
-await exploreView();say(was?"Has dejado de seguir a esta persona.":"Ahora sigues a esta persona.");
+async function follow(id,b){
+const uid=me?.id;if(!uid||!b||b.disabled)return;
+b.disabled=true;const was=following.has(id);
+try{
+const q=was?db.from("gyste_follows").delete().eq("follower_id",uid).eq("followed_id",id):db.from("gyste_follows").insert({follower_id:uid,followed_id:id});
+const {error}=await q;if(error)throw error;
+if(me?.id!==uid)return;was?following.delete(id):following.add(id);
+if(b.isConnected)b.textContent=was?"Seguir":"Siguiendo";
+say(was?"Has dejado de seguir a esta persona.":"Ahora sigues a esta persona.");
+}catch(e){if(me?.id===uid)say("No se pudo cambiar el seguimiento.",true);}
+finally{b.disabled=false;}
 }
 
 const BUSINESS_CATEGORIES={artesania:"Artesanía",comercio:"Comercio",servicios:"Servicios",educacion:"Educación",arte:"Arte",deporte:"Deporte",otro:"Otros"};
