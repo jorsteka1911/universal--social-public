@@ -182,6 +182,27 @@ body{padding-bottom:0}
 .profile-photo-status.error{color:var(--red)}
 .comment-author{display:flex;align-items:center;gap:8px}
 .comment-author .face{width:28px;height:28px;font-size:12px}
+
+/* Apariencia personal: solo en el navegador del usuario. */
+:root[data-gyste-theme="claro"]{--bg:#edf2f6;--panel:#ffffff;--line:#aabac8;--mint:#075d62;--txt:#142c3c;--muted:#485d6b;--red:#b62338;--theme-ink:#fff;--theme-grad:linear-gradient(145deg,#d9eaf2,#f6f9fb)}
+:root[data-gyste-theme="violeta"]{--bg:#20152d;--panel:#352346;--line:#6d5486;--mint:#e2bcff;--txt:#fff5ff;--muted:#e2d0e8;--red:#ff9caa;--theme-ink:#281235;--theme-grad:linear-gradient(155deg,#53366d,#20152d)}
+:root[data-gyste-theme="verde"]{--bg:#10271f;--panel:#1c392d;--line:#517865;--mint:#9be9b6;--txt:#f0fff5;--muted:#c1ddcd;--red:#ff9caa;--theme-ink:#10291a;--theme-grad:linear-gradient(155deg,#325b45,#10271f)}
+:root[data-gyste-theme="negro"]{--bg:#101010;--panel:#202020;--line:#595959;--mint:#a6ebdf;--txt:#fafafa;--muted:#d1d1d1;--red:#ff9caa;--theme-ink:#10211e;--theme-grad:linear-gradient(#101010,#101010)}
+:root[data-gyste-theme] body{background-color:var(--bg);background-image:var(--theme-grad,radial-gradient(circle at 50% -10%,#17475b 0%,#081722 40%))}
+:root[data-gyste-wallpaper="yes"] body{background-image:linear-gradient(#0005,#0005),var(--gyste-wallpaper);background-size:cover;background-position:center;background-attachment:fixed}
+:root[data-gyste-wallpaper="yes"] .welcome,:root[data-gyste-wallpaper="yes"] .shortcut-section,:root[data-gyste-wallpaper="yes"] .section-heading{background:var(--panel);border-radius:12px;padding:10px}
+:root[data-gyste-theme] header,:root[data-gyste-theme] .mobile-nav,:root[data-gyste-theme] .desktop-nav,:root[data-gyste-theme] .menu-dropdown{background:var(--panel);border-color:var(--line)}
+:root[data-gyste-theme] .icon-btn,:root[data-gyste-theme] .desktop-nav button,:root[data-gyste-theme] .home-tabs button,:root[data-gyste-theme] .space-chip,:root[data-gyste-theme] .archive-card,:root[data-gyste-theme] .sketch-card,:root[data-gyste-theme] .space-tile,:root[data-gyste-theme] .shortcut-circle{background:var(--panel);border-color:var(--line);color:var(--txt)}
+:root[data-gyste-theme] .menu-dropdown button:hover,:root[data-gyste-theme] .menu-dropdown button:active{background:var(--bg)}
+:root[data-gyste-theme] a,:root[data-gyste-theme] .mobile-nav button.active{color:var(--mint)}
+:root[data-gyste-theme] .mobile-nav button{color:var(--muted)}
+:root[data-gyste-theme] .primary,:root[data-gyste-theme] .desktop-nav button.active,:root[data-gyste-theme] .home-tabs button.active,:root[data-gyste-theme] .create-icon{background:var(--mint);color:var(--theme-ink,#08202b)}
+:root[data-gyste-theme] .liked{color:var(--red)}
+.gyste-theme-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin:12px 0}
+.gyste-theme-choice{min-height:76px;border:2px solid var(--line);border-radius:12px;background:var(--panel);color:var(--txt);padding:8px;display:grid;gap:6px;text-align:left}
+.gyste-theme-choice[aria-pressed="true"]{border-color:var(--mint);outline:1px solid var(--mint)}
+.gyste-theme-swatch{height:30px;border-radius:7px;border:1px solid #808080}
+
 </style>
 </head>
 <body>
@@ -264,6 +285,7 @@ function spaceLabel(id){return spaceById(id)?.name||"Espacio";}
 function navButton(dest,label,symbol){return `<button data-tab="${dest}" class="${tab===dest?"active":""}" aria-label="${label}" ${tab===dest?'aria-current="page"':''}><b aria-hidden="true">${symbol}</b>${label}</button>`;}
 
 function shell(content){
+ applyGysteAppearance(me?.id);
 if(tab!=="messages")stopChatRefresh();
 app.innerHTML=`
 <header>
@@ -275,6 +297,7 @@ app.innerHTML=`
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">☰</summary>
 <div class="menu-dropdown">
 <button data-tab="learn">📚 Aprender</button>
+ <button data-tab="appearance">⚙ Ajustes · Temas</button>
 <button data-tab="history">📷 Historia</button>
 <button data-tab="series">🎬 Frutinovelas</button>
 <button data-tab="explore">🔎 Personas</button>
@@ -354,6 +377,7 @@ return `<div class="home-tabs" role="group" aria-label="Elegir publicaciones">
 }
 
 function authView(){
+ applyGysteAppearance(null);
 app.innerHTML=`
 <section class="auth">
 <h1>Gyste</h1>
@@ -371,6 +395,7 @@ document.getElementById("signup").onclick=signup;
 }
 
 function recoveryView(){
+ applyGysteAppearance(null);
 app.innerHTML=`
 <section class="auth">
 <h1>Crear contraseña nueva</h1>
@@ -525,12 +550,63 @@ if(!error)following=new Set((data||[]).map(x=>x.followed_id));
 else following=new Set();
 }
 
+
+const gysteThemes=[["original","Azul GYSTE","#10283a","#5de1c3"],["claro","Claro","#ffffff","#075d62"],["negro","Oscuro","#202020","#a6ebdf"],["violeta","Violeta","#352346","#e2bcff"],["verde","Naturaleza","#1c392d","#9be9b6"]];
+function gysteAppearanceKey(uid){return "gyste:appearance:v1:"+uid;}
+function readGysteAppearance(uid){
+ const defaults={theme:"original",wallpaper:""};
+ if(!uid)return defaults;
+ try{
+ const x=JSON.parse(localStorage.getItem(gysteAppearanceKey(uid))||"null");
+ return {theme:gysteThemes.some(t=>t[0]===x?.theme)?x.theme:"original",wallpaper:typeof x?.wallpaper==="string"&&x.wallpaper.length<=900000&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(x.wallpaper)?x.wallpaper:""};
+ }catch{return defaults;}
+}
+function applyGysteAppearance(uid){
+ const a=readGysteAppearance(uid),root=document.documentElement;
+ root.dataset.gysteTheme=a.theme;
+ if(a.wallpaper){root.style.setProperty("--gyste-wallpaper",'url("'+a.wallpaper+'")');root.dataset.gysteWallpaper="yes";}
+ else{root.style.removeProperty("--gyste-wallpaper");delete root.dataset.gysteWallpaper;}
+ return a;
+}
+function saveGysteAppearance(uid,a){
+ if(!uid||me?.id!==uid||session?.user?.id!==uid)throw Error("La sesión cambió. Vuelve a Ajustes.");
+ localStorage.setItem(gysteAppearanceKey(uid),JSON.stringify(a));applyGysteAppearance(uid);
+}
+async function resizeGysteWallpaper(file){
+ if(!file||!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>5*1024*1024)throw Error("Elige una imagen JPG, PNG o WebP de hasta 5 MB.");
+ const url=URL.createObjectURL(file);
+ try{
+ const image=new Image();image.src=url;await image.decode();
+ if(!image.naturalWidth||!image.naturalHeight||image.naturalWidth*image.naturalHeight>40000000)throw Error("La imagen es demasiado grande.");
+ const scale=Math.min(1,960/Math.max(image.naturalWidth,image.naturalHeight)),canvas=document.createElement("canvas");
+ canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+ const ctx=canvas.getContext("2d");if(!ctx)throw Error("No se pudo procesar la imagen.");
+ ctx.fillStyle="#172737";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);
+ let data=canvas.toDataURL("image/jpeg",0.72);if(data.length>900000)data=canvas.toDataURL("image/jpeg",0.45);
+ if(data.length>900000||!data.startsWith("data:image/jpeg;base64,"))throw Error("No se pudo reducir la imagen.");
+ return data;
+ }finally{URL.revokeObjectURL(url);}
+}
+function gysteAppearanceView(){
+ const uid=me?.id;if(!uid)return authView();
+ const a=readGysteAppearance(uid);
+ shell(`<section class="panel"><h2>Ajustes · Temas y fondo</h2><p>Personaliza GYSTE solo para ti. Tus preferencias se guardan en este navegador, no se publican ni se sincronizan con otros dispositivos.</p><h3>Elige tu tema</h3><div class="gyste-theme-options">${gysteThemes.map(t=>`<button type="button" class="gyste-theme-choice" data-gyste-theme-choice="${t[0]}" aria-pressed="${a.theme===t[0]}"><span class="gyste-theme-swatch" style="background:linear-gradient(110deg,${t[2]} 70%,${t[3]} 70%)"></span>${esc(t[1])}</button>`).join("")}</div><h3>Tu propia foto de fondo</h3><label for="gyste-wallpaper-file">Elige una foto de tu teléfono (hasta 5 MB)</label><input class="field" id="gyste-wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp"><div class="row"><button class="secondary" id="gyste-wallpaper-remove">Quitar foto</button><button class="ghost" id="gyste-theme-reset">Restablecer todo</button></div><p id="gyste-appearance-status" role="status">${a.wallpaper?"Foto personal activa.":"Sin foto personalizada."}</p><button class="secondary" data-tab="feed">Volver al inicio</button></section>`);
+ const status=document.getElementById("gyste-appearance-status");
+ const run=fn=>{try{fn();gysteAppearanceView();}catch(e){status.textContent="No se pudo guardar: "+e.message;}};
+ app.querySelectorAll("[data-gyste-theme-choice]").forEach(b=>b.onclick=()=>run(()=>saveGysteAppearance(uid,{...readGysteAppearance(uid),theme:b.dataset.gysteThemeChoice})));
+ document.getElementById("gyste-wallpaper-remove").onclick=()=>run(()=>saveGysteAppearance(uid,{...readGysteAppearance(uid),wallpaper:""}));
+ document.getElementById("gyste-theme-reset").onclick=()=>run(()=>{saveGysteAppearance(uid,{theme:"original",wallpaper:""});});
+ const input=document.getElementById("gyste-wallpaper-file");
+ input.onchange=async()=>{const file=input.files?.[0];if(!file)return;input.disabled=true;status.textContent="Preparando imagen…";try{const wallpaper=await resizeGysteWallpaper(file);if(!input.isConnected||tab!=="appearance"||me?.id!==uid)return;saveGysteAppearance(uid,{...readGysteAppearance(uid),wallpaper});gysteAppearanceView();}catch(e){status.textContent="No se pudo guardar: "+e.message;}finally{input.disabled=false;}};
+}
+
 async function renderTab(){
 if(!session)return authView();
 if(tab==="feed")return feedView();
 if(tab==="spaces")return spacesView();
 if(tab==="explore")return exploreView();
 if(tab==="learn")return learnView();
+ if(tab==="appearance")return gysteAppearanceView();
 if(tab==="series")return seriesView();
 if(tab==="history")return historyView();
 if(tab==="profile")return profileView();
