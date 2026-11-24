@@ -198,6 +198,7 @@ body{padding-bottom:0}
 .media-selection{font-size:13px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
 .reaction-bar{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}.reaction-bar button{border:1px solid var(--line);border-radius:18px;background:transparent;color:var(--txt);padding:7px 9px;font-size:17px}.reaction-bar button.chosen{background:#21566a;border-color:#7fe2d8}.post-menu{position:relative;margin-left:auto}.post-menu summary{cursor:pointer;list-style:none;padding:6px 12px;font-size:22px}.post-menu summary::-webkit-details-marker{display:none}.post-menu-items{position:absolute;right:0;top:100%;z-index:8;background:var(--panel);border:1px solid var(--line);border-radius:12px;min-width:205px;padding:6px;box-shadow:0 6px 22px #0005}.post-menu-items button{display:block;width:100%;text-align:left;padding:12px;color:var(--txt);background:transparent;border:0}.repost-label{color:var(--muted);font-size:13px;margin-bottom:8px}.reactors-list{margin:8px 0}.reactors-list div{padding:5px 0}.media-gallery.multi .media-frame .media{width:100%;height:auto}
 .academy-video-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:12px}.academy-video{border:1px solid #70839a55;border-radius:12px;padding:12px;min-width:0}.academy-video iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:8px}.academy-video .video-launch{display:flex;align-items:center;justify-content:center;min-height:92px;width:100%;border-radius:10px;background:#193b56;color:#fff;font-weight:700}.academy-video a{display:inline-block;margin-top:10px;color:inherit;text-decoration:underline}
+.vertical-video-stage .post{max-width:600px;margin:0 auto}.vertical-video-stage .media-frame:not(.media-overlay):not(:fullscreen) video{display:block;width:100%;max-height:65dvh;aspect-ratio:9/16;object-fit:contain;background:#05090e}.vertical-video-controls{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px 0}.vertical-video-controls button{min-height:44px}.vertical-video-stage .media-gallery{display:block}
 </style>
 </head>
 <body>
@@ -910,20 +911,43 @@ async function reportPost(id,b){
  const d=document.createElement("dialog");d.style.cssText="width:min(90vw,420px);border-radius:12px;padding:18px;background:#14263b;color:white";d.innerHTML='<form method="dialog"><h3>Denunciar publicación</h3><label>Motivo<select class="field" id="report-reason"><option value="bullying">Acoso o bullying</option><option value="sexual">Contenido sexual inapropiado</option><option value="violence">Violencia o amenazas</option><option value="spam">Spam</option><option value="privacy">Privacidad</option><option value="other">Otro</option></select></label><label>Detalles opcionales<textarea class="field" maxlength="500" id="report-details"></textarea></label><p id="report-status"></p><button type="button" class="primary" id="report-send">Enviar</button> <button class="secondary" value="cancel">Cancelar</button></form>';document.body.append(d);d.addEventListener("close",()=>d.remove(),{once:true});d.showModal();const send=d.querySelector("#report-send");send.onclick=async()=>{send.disabled=true;const {error}=await db.from("gyste_reports").insert({reporter_id:me.id,post_id:id,reason:d.querySelector("#report-reason").value,details:d.querySelector("#report-details").value.trim()});if(error&&error.code!=="23505"){d.querySelector("#report-status").textContent="No se pudo enviar.";send.disabled=false;return;}d.close();say(error?"Ya has denunciado esta publicación.":"Denuncia recibida para revisión.");};
 }
 let videoFilter="all",videoLimit=60;
+let videoLayout="list",verticalVideoKey="";
 async function videosView(){
+ const uid=me?.id,filter=videoFilter,limit=videoLimit,layout=videoLayout;
+ const valid=()=>tab==="videos"&&me?.id===uid&&videoFilter===filter&&videoLimit===limit&&videoLayout===layout;
  let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":""));
  if(videoFilter==="mine")q=q.eq("user_id",me.id);
  if(videoFilter==="following")q=q.in("user_id",[...new Set([me.id,...following])]);
- const {data,error}=await q.order("created_at",{ascending:false}).limit(videoLimit);
- if(tab!=="videos")return;
+ const {data,error}=await q.order("created_at",{ascending:false}).limit(limit);
+ if(!valid())return;
  if(error){shell(`<p class="error">${esc(error.message)}</p>`);return;}
  const items=(data||[]).filter(p=>postMediaItems(p).some(m=>m.type?.startsWith("video/")));
- const cards=await prepareCards(items);if(tab!=="videos")return;
- shell(`<section class="panel"><h2>▶ Vídeos de Gyste</h2><p class="muted">Descubre vídeos, reacciona, comenta y guarda tus favoritos.</p><div class="actions"><button class="secondary" data-vfilter="all">Todos</button><button class="secondary" data-vfilter="following">Siguiendo</button><button class="secondary" data-vfilter="mine">Mis vídeos</button><button class="primary" id="new-video">+ Publicar vídeo</button></div><p class="muted">${videoFilter==="all"?"Todos los vídeos":videoFilter==="following"?"Personas que sigues":"Mis vídeos"}</p></section>${cards||'<p class="muted">No hay vídeos en esta selección.</p>'}${(data||[]).length===videoLimit&&videoLimit<300?'<button class="secondary full" id="more-videos">Buscar más vídeos</button>':""}`);
- bindPostActions();
- app.querySelectorAll("[data-vfilter]").forEach(b=>b.onclick=()=>{videoFilter=b.dataset.vfilter;videoLimit=60;videosView();});
+ const cards=await prepareCards(items);if(!valid())return;
+ shell(`<section class="panel"><h2>▶ Vídeos de Gyste</h2><p class="muted">Descubre vídeos, reacciona, comenta y guarda tus favoritos.</p><div class="actions"><button class="secondary" data-video-layout="list" aria-pressed="${videoLayout==="list"}">☷ Lista</button><button class="secondary" data-video-layout="vertical" aria-pressed="${videoLayout==="vertical"}">▯ Un vídeo a la vez</button></div><div class="actions"><button class="secondary" data-vfilter="all">Todos</button><button class="secondary" data-vfilter="following">Siguiendo</button><button class="secondary" data-vfilter="mine">Mis vídeos</button><button class="primary" id="new-video">+ Publicar vídeo</button></div><p class="muted">${videoFilter==="all"?"Todos los vídeos":videoFilter==="following"?"Personas que sigues":"Mis vídeos"}</p></section>${videoLayout==="vertical"?`<section class="panel"><p class="muted">Modo vertical · vídeos de cualquier duración. Tú decides cuándo reproducirlos.</p><div class="vertical-video-controls"><button class="secondary" id="vertical-prev">↑ Anterior</button><span id="vertical-count" role="status"></span><button class="secondary" id="vertical-next">Siguiente ↓</button></div><div class="vertical-video-stage" id="vertical-stage"></div></section>`:(cards||'<p class="muted">No hay vídeos en esta selección.</p>')}${(data||[]).length===videoLimit&&videoLimit<300?'<button class="secondary full" id="more-videos">Buscar más vídeos</button>':""}`);
+ if(videoLayout==="vertical")bindVerticalVideos(items);else bindPostActions();
+ app.querySelectorAll("[data-video-layout]").forEach(b=>b.onclick=()=>{if(videoLayout===b.dataset.videoLayout)return;videoLayout=b.dataset.videoLayout;videosView();});
+ app.querySelectorAll("[data-vfilter]").forEach(b=>b.onclick=()=>{videoFilter=b.dataset.vfilter;videoLimit=60;verticalVideoKey="";videosView();});
  document.getElementById("new-video").onclick=async()=>{tab="feed";homeFilter="all";selectedSpaceId=null;sharedPostId=null;await feedView();document.getElementById("composer")?.scrollIntoView({behavior:"smooth"});};
  const more=document.getElementById("more-videos");if(more)more.onclick=()=>{videoLimit=Math.min(300,videoLimit+60);videosView();};
+}
+function bindVerticalVideos(items){
+ const entries=items.flatMap(p=>postMediaItems(p).map((m,i)=>({p,m,i,key:p.id+":"+i})).filter(x=>x.m.type?.startsWith("video/")));
+ const stage=document.getElementById("vertical-stage"),count=document.getElementById("vertical-count"),prev=document.getElementById("vertical-prev"),next=document.getElementById("vertical-next");
+ let index=Math.max(0,entries.findIndex(x=>x.key===verticalVideoKey));
+ const draw=()=>{
+  stage.querySelectorAll("video").forEach(v=>v.pause());
+  prev.disabled=index<=0;next.disabled=index>=entries.length-1;
+  count.textContent=entries.length?(index+1)+" de "+entries.length:"0 vídeos";
+  const x=entries[index];if(!x){stage.innerHTML='<p class="muted">Aún no hay vídeos para mostrar. Puedes publicar el primero.</p>';return;}
+  verticalVideoKey=x.key;
+  stage.innerHTML=postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===me.id?me:null));
+  const gallery=stage.querySelector(".media-gallery"),url=mediaItemUrl(x.m,x.p);
+  if(gallery)gallery.innerHTML=url?`<div class="media-frame video-frame"><video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video><button type="button" class="media-expand">⛶ Pantalla completa</button></div><p class="muted" data-duration></p>`:'<p class="muted">Vídeo no disponible temporalmente. Actualiza la sección.</p>';
+  const v=stage.querySelector("video");if(v){v.addEventListener("loadedmetadata",()=>{const n=stage.querySelector("[data-duration]");if(n&&Number.isFinite(v.duration)){const seconds=Math.ceil(v.duration);n.textContent=seconds<60?seconds+" s":Math.floor(seconds/60)+" min "+(seconds%60)+" s";}});v.addEventListener("error",()=>{const n=stage.querySelector("[data-duration]");if(n)n.textContent="No se pudo cargar el vídeo. Prueba actualizando la sección.";});}
+  bindPostActions();
+ };
+ prev.onclick=()=>{if(index>0){index--;draw();}};next.onclick=()=>{if(index<entries.length-1){index++;draw();}};
+ draw();
 }
 async function savedView(){
  const {data,error}=await db.from("gyste_saved_posts").select("post_id").eq("user_id",me.id).order("created_at",{ascending:false}).limit(100);
