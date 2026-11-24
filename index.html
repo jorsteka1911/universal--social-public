@@ -182,6 +182,20 @@ body{padding-bottom:0}
 .profile-photo-status.error{color:var(--red)}
 .comment-author{display:flex;align-items:center;gap:8px}
 .comment-author .face{width:28px;height:28px;font-size:12px}
+
+/* Galería y pantalla completa: conserva el elemento multimedia al ampliar. */
+.media-gallery{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:10px}
+.media-gallery.multi{grid-template-columns:repeat(2,minmax(0,1fr))}
+.media-frame{position:relative;min-width:0;background:#07121e;border-radius:12px;overflow:hidden}
+.media-frame .media{display:block;margin:0;width:100%;object-fit:contain;max-height:520px}
+.media-gallery.multi .media-frame .media{max-height:330px}
+.media-frame.video-frame{grid-column:1/-1}
+.media-expand{display:block;width:100%;border:0;border-radius:0;padding:10px;background:#172e45;color:#fff;font-size:13px;cursor:pointer}
+.media-frame:fullscreen,.media-frame.media-overlay{display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;border-radius:0;width:100%;height:100%;max-height:none}
+.media-frame.media-overlay{position:fixed;inset:0;z-index:9999}
+.media-frame:fullscreen .media,.media-frame.media-overlay .media{width:100%;height:calc(100% - 48px);max-height:none;object-fit:contain;flex:1;min-height:0}
+.media-frame:fullscreen .media-expand,.media-frame.media-overlay .media-expand{flex:none;min-height:48px}
+.media-selection{font-size:13px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -205,6 +219,7 @@ let session=null;
 let me=null;
 let tab="feed";
 let homeFilter="all"; // all | following | mine
+let sharedPostId=null;
 let selectedSpaceId=null;
 let spaces=[];
 let spacesReady=false;
@@ -303,18 +318,18 @@ app.querySelectorAll("[data-tab]").forEach(b=>{b.onclick=()=>goTab(b.dataset.tab
 const create=document.getElementById("compose-btn");if(create)create.onclick=goCompose;
 bindSpaceButtons();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
-selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
+sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
 }
 
 function bindSpaceButtons(){
 app.querySelectorAll("[data-space]").forEach(b=>b.onclick=()=>{
-selectedSpaceId=b.dataset.space;homeFilter="all";tab="feed";notice="";renderTab();window.scrollTo({top:0,behavior:"smooth"});
+sharedPostId=null;selectedSpaceId=b.dataset.space;homeFilter="all";tab="feed";notice="";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
 }
 
 function goTab(next){
-if(next==="feed"){selectedSpaceId=null;homeFilter="all";}
+if(next==="feed"){sharedPostId=null;selectedSpaceId=null;homeFilter="all";}
 if(next!=="messages")chatUser=null;
 tab=next;notice="";noticeError=false;renderTab();window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -513,6 +528,8 @@ p=created;
 me={...me,...p};
 await loadFollowing();
 await loadSpaces();
+const requestedPost=new URLSearchParams(location.search).get("post");
+if(requestedPost&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedPost)){sharedPostId=requestedPost;tab="feed";selectedSpaceId=null;homeFilter="all";}
 await renderTab();
 }
 
@@ -634,11 +651,12 @@ if(error){dest.innerHTML=`<p class="error">No se pudieron cargar los capítulos:
 const items=data||[];await prepareMediaUrls(items);
 const authors=[...new Set(items.map(x=>x.user_id))];let names={};
 if(authors.length){const {data:users}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",authors);(users||[]).forEach(u=>names[u.user_id]=u.display_name);}
-dest.innerHTML=items.map(p=>{const url=safeMediaUrl(postMediaUrl(p));const media=p.media_type?.startsWith("video/")&&url?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`:p.media_type?.startsWith("image/")&&url?`<img class="media" loading="lazy" src="${esc(url)}" alt="Imagen del capítulo">`:"";return `<article class="post"><div class="posthead"><b class="author">${esc(names[p.user_id]||"Miembro de Gyste")}</b><span>${time(p.created_at)}</span></div><div class="bodytext">${esc(p.content)}</div>${media}</article>`;}).join("")||'<p class="muted">Todavía no hay capítulos. ¡Publica el primero!</p>';
+dest.innerHTML=items.map(p=>`<article class="post"><div class="posthead"><b class="author">${esc(names[p.user_id]||"Miembro de Gyste")}</b><span>${time(p.created_at)}</span></div><div class="bodytext">${esc(p.content)}</div>${postMediaHTML(p)}</article>`).join("")||'<p class="muted">Todavía no hay capítulos. ¡Publica el primero!</p>';
+bindMediaActions();
 }
 
 async function prepareMediaUrls(list){
-const paths=[...new Set(list.map(p=>p.media_path).filter(Boolean))];
+const paths=[...new Set(list.flatMap(p=>postMediaItems(p).map(m=>m.path)).filter(Boolean))];
 if(!paths.length)return;
 const {data,error}=await db.storage.from(BUCKET).createSignedUrls(paths,MEDIA_SIGNED_URL_TTL);
 if(error){
@@ -656,18 +674,63 @@ function safeMediaUrl(value){
  try{const u=new URL(value,location.href);return u.protocol==="https:"?u.href:"";}catch{return "";}
 }
 
-function postMediaUrl(p){
-if(p.media_path){
-const cached=mediaUrlCache.get(p.media_path);
-if(cached&&cached.expiresAt>Date.now()+60000)return cached.url;
+const MEDIA_TYPES=["image/jpeg","image/png","image/webp","video/mp4","video/webm"];
+const MEDIA_MANIFEST="gyste-gallery-v1:";
+const MAX_POST_FILES=10;
+const MAX_POST_BYTES=50*1024*1024;
+function postMediaItems(p){
+ if(typeof p.media_url==="string"&&p.media_url.startsWith(MEDIA_MANIFEST)){
+  try{
+   const items=JSON.parse(p.media_url.slice(MEDIA_MANIFEST.length));
+   if(Array.isArray(items)&&items.length>=2&&items.length<=MAX_POST_FILES&&items[0]?.path===p.media_path&&items.every(m=>m&&typeof m.path==="string"&&m.path.startsWith(p.user_id+"/")&&/^[0-9a-z-]+\.(jpg|png|webp|mp4|webm)$/i.test(m.path.slice(p.user_id.length+1))&&MEDIA_TYPES.includes(m.type)))return items.map(m=>({path:m.path,type:m.type,url:null}));
+  }catch(e){console.warn("Galería no válida",e);}
+ }
+ return p.media_path||p.media_url?[{path:p.media_path,type:p.media_type,url:typeof p.media_url==="string"&&!p.media_url.startsWith(MEDIA_MANIFEST)?p.media_url:null}]:[];
 }
-return MEDIA_BUCKET_PRIVATE?"":(p.media_url||"");
+function mediaItemUrl(m){
+ if(m.path){
+  const cached=mediaUrlCache.get(m.path);
+  if(cached&&cached.expiresAt>Date.now()+60000)return safeMediaUrl(cached.url);
+  if(!MEDIA_BUCKET_PRIVATE)return safeMediaUrl(db.storage.from(BUCKET).getPublicUrl(m.path).data.publicUrl);
+ }
+ return MEDIA_BUCKET_PRIVATE?"":(m.url?safeMediaUrl(m.url):"");
+}
+function postMediaHTML(p){
+ const items=postMediaItems(p);if(!items.length)return "";
+ return `<div class="media-gallery ${items.length>1?"multi":""}">${items.map((m,i)=>{
+  const url=mediaItemUrl(m);if(!url)return '<p class="muted">Archivo no disponible temporalmente.</p>';
+  const video=m.type?.startsWith("video/");
+  const element=video?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`:`<img class="media" loading="lazy" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
+  return `<div class="media-frame ${video?"video-frame":""}">${element}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
+ }).join("")}</div>`;
+}
+function bindMediaActions(){
+ app.querySelectorAll(".media-expand").forEach(b=>{
+  const frame=b.closest(".media-frame"),original=b.textContent;
+  const refresh=()=>{b.textContent=(document.fullscreenElement===frame||frame.classList.contains("media-overlay"))?"✕ Salir de pantalla completa":original;};
+  frame.addEventListener("fullscreenchange",refresh);
+  b.onclick=async()=>{
+   if(document.fullscreenElement===frame){await document.exitFullscreen();return;}
+   if(frame.classList.contains("media-overlay")){frame.classList.remove("media-overlay");refresh();return;}
+   if(frame.requestFullscreen){try{await frame.requestFullscreen();refresh();return;}catch{}}
+   frame.classList.add("media-overlay");refresh();
+  };
+ });
+}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")app.querySelectorAll(".media-overlay .media-expand").forEach(b=>b.click());});
+
+async function sharePost(id){
+ const url=new URL(location.origin+location.pathname);url.searchParams.set("post",id);
+ if(navigator.share){try{await navigator.share({title:"Publicación de Gyste",url:url.href});return;}catch(e){if(e.name==="AbortError")return;}}
+ try{await navigator.clipboard.writeText(url.href);say("Enlace de la publicación copiado.");}
+ catch{window.prompt("Copia el enlace de esta publicación:",url.href);}
 }
 
 const POST_COLUMNS="id,content,user_id,likes,created_at,media_url,media_type,media_path";
 async function readPosts(queryMode){
 let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":""));
-if(queryMode==="mine")q=q.eq("user_id",me.id);
+if(sharedPostId)q=q.eq("id",sharedPostId);
+ else if(queryMode==="mine")q=q.eq("user_id",me.id);
 else if(queryMode==="following")q=q.in("user_id",[...new Set([me.id,...following])]);
 else if(selectedSpaceId&&spacesReady)q=q.eq("space_id",selectedSpaceId);
 return q.order("created_at",{ascending:false}).limit(60);
@@ -692,6 +755,8 @@ return posts.map(p=>postCard(p,names[p.user_id]|| (p.user_id===me.id?me:null))).
 }
 
 function bindPostActions(){
+ bindMediaActions();
+ app.querySelectorAll("[data-sharepost]").forEach(b=>{b.onclick=()=>sharePost(b.dataset.sharepost);});
 app.querySelectorAll("[data-like]").forEach(b=>{b.onclick=()=>like(b.dataset.like);});
 app.querySelectorAll("[data-comment-form]").forEach(f=>{f.onsubmit=sendComment;});
 app.querySelectorAll("[data-comments]").forEach(b=>{b.onclick=()=>toggleComments(b.dataset.comments);});
@@ -704,19 +769,19 @@ const {data,error}=await readPosts(filter);
 if(error){shell(`<p class="error">No se pudo cargar el inicio: ${esc(error.message)}</p>`);return;}
 const cards=await prepareCards(data||[]);
 const activeSpace=selectedSpaceId?spaceById(selectedSpaceId):null;
-const title=activeSpace?`${activeSpace.emoji||"✦"} ${activeSpace.name}`:homeFilter==="following"?"Personas que sigues":homeFilter==="mine"?"Mis estados":"Para ti";
-const intro=activeSpace?(activeSpace.description||"Comparte y aprende en este espacio."):homeFilter==="following"?"Publicaciones de personas que sigues y las tuyas.":homeFilter==="mine"?"Tus publicaciones, siempre a mano.":"Comparte lo que sabes. Descubre lo que te inspira.";
+const title=sharedPostId?"Publicación compartida":activeSpace?`${activeSpace.emoji||"✦"} ${activeSpace.name}`:homeFilter==="following"?"Personas que sigues":homeFilter==="mine"?"Mis estados":"Para ti";
+const intro=sharedPostId?"Abre Inicio para ver el resto de publicaciones.":activeSpace?(activeSpace.description||"Comparte y aprende en este espacio."):homeFilter==="following"?"Publicaciones de personas que sigues y las tuyas.":homeFilter==="mine"?"Tus publicaciones, siempre a mano.":"Comparte lo que sabes. Descubre lo que te inspira.";
 const selectOptions=`<option value="">Mi estado personal</option>${spaces.map(s=>`<option value="${esc(s.id)}" ${selectedSpaceId===s.id?"selected":""}>${esc(s.emoji||"✦")} ${esc(s.name)}</option>`).join("")}`;
 shell(`
 <div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p></div>
 ${shortcutsHTML()}
-${activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
+${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
 <div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
-<label>Foto o vídeo (máx. 50 MB)<input id="media" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"></label>
+<label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label>
 </div>
 <button id="publish" class="primary full">Compartir publicación</button>
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
@@ -724,15 +789,15 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
 <div id="feed">${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
 document.getElementById("publish").onclick=publish;
+ document.getElementById("media").onchange=e=>{
+ const files=Array.from(e.target.files||[]),bytes=files.reduce((n,f)=>n+f.size,0);
+ document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":""):"Puedes seleccionar varias fotos de una vez.";
+ };
 bindPostActions();
 }
 
 function postCard(p,author){
-const url=safeMediaUrl(postMediaUrl(p));
-const media=url?(p.media_type?.startsWith("video/")
-?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`
-:`<img class="media" loading="lazy" src="${esc(url)}" alt="Imagen compartida">`)
-:(p.media_path||p.media_url?'<p class="muted">El archivo multimedia no está disponible temporalmente.</p>':"");
+const media=postMediaHTML(p);
 const sp=p.space_id?spaceById(p.space_id):null;
 return `<article class="post">
 <div class="posthead"><div class="posthead-left"><span class="face">${avatarContent(author)}</span><div><span class="author">${esc(author?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(p.created_at)}</span></div></div>
@@ -743,6 +808,7 @@ ${media}
 <div class="actions">
 <button class="action ${liked.has(p.id)?"liked":""}" data-like="${esc(p.id)}">${liked.has(p.id)?"♥ Me gusta":"♡ Me gusta"} · ${Number(p.likes||0)}</button>
 <button class="action" data-comments="${esc(p.id)}">◯ Comentar</button>
+<button class="action" data-sharepost="${esc(p.id)}">↗ Compartir enlace</button>
 </div>
 <div id="comments-${esc(p.id)}" class="hidden"><div id="list-${esc(p.id)}"></div>
 <form class="commentform" data-comment-form="${esc(p.id)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form></div>
@@ -750,40 +816,37 @@ ${media}
 }
 
 async function publish(){
-const text=document.getElementById("posttext").value.trim();
-const file=document.getElementById("media").files[0];
-if(!text&&!file)return say("Escribe algo o elige una foto o vídeo.",true);
-if(file&&(!["image/jpeg","image/png","image/webp","video/mp4","video/webm"].includes(file.type)||file.size>50*1024*1024))
-return say("Formato no válido o archivo superior a 50 MB.",true);
-const b=document.getElementById("publish");
-b.disabled=true;b.textContent="Publicando…";
-let path=null;
-let postCommitted=false;
-try{
-let url=null;let type=null;
-if(file){
-const ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type];
-path=me.id+"/"+Date.now()+"-"+Math.random().toString(36).slice(2)+"."+ext;
-const {error}=await db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type});
-if(error)throw error;
-url=db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-type=file.type;
+ const text=document.getElementById("posttext").value.trim();
+ const files=Array.from(document.getElementById("media").files||[]);
+ if(!text&&!files.length)return say("Escribe algo o elige fotos o vídeos.",true);
+ if(files.length>MAX_POST_FILES||files.some(f=>!MEDIA_TYPES.includes(f.type)||f.size>MAX_POST_BYTES)||files.reduce((n,f)=>n+f.size,0)>MAX_POST_BYTES)
+ return say("Selecciona hasta 10 archivos compatibles, con un máximo de 50 MB en total.",true);
+ const b=document.getElementById("publish");if(b.disabled)return;
+ const uid=me.id,space=document.getElementById("postspace")?.value||null;
+ b.disabled=true;b.textContent="Publicando…";
+ const uploaded=[];let postCommitted=false;
+ try{
+  for(let i=0;i<files.length;i++){
+   const file=files[i],ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type];
+   const path=uid+"/"+Date.now()+"-"+crypto.randomUUID()+"."+ext;
+   b.textContent="Subiendo "+(i+1)+" de "+files.length+"…";
+   const {error}=await db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type});if(error)throw error;
+   uploaded.push({path,type:file.type});
+  }
+  const first=uploaded[0];
+  const url=uploaded.length>1?MEDIA_MANIFEST+JSON.stringify(uploaded):first?db.storage.from(BUCKET).getPublicUrl(first.path).data.publicUrl:null;
+  const newPost={content:text,user_id:uid,media_url:url,media_type:first?.type||null,media_path:first?.path||null};
+  if(spacesReady)newPost.space_id=space;
+  const {error}=await db.from("posts").insert(newPost);if(error)throw error;
+  postCommitted=true;sharedPostId=null;
+  say("Publicación compartida.");
+  try{await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
+ }catch(e){
+  if(uploaded.length&&!postCommitted){const {error}=await db.storage.from(BUCKET).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}
+  say("No se pudo publicar: "+(e?.message||"Error desconocido"),true);
+  if(b.isConnected){b.disabled=false;b.textContent="Compartir publicación";}
+ }
 }
-const newPost={content:text,user_id:me.id,media_url:url,media_type:type,media_path:path};
-if(spacesReady)newPost.space_id=document.getElementById("postspace")?.value||null;
-const {error}=await db.from("posts").insert(newPost);
-if(error)throw error;
-postCommitted=true;
-say("Publicación compartida.");
-try{await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización del inicio:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
-}catch(e){
-if(path&&!postCommitted){const {error:removeError}=await db.storage.from(BUCKET).remove([path]);if(removeError)console.warn("No se pudo limpiar el archivo subido:",removeError.message);}
-say("No se pudo publicar: "+(e?.message||"Error desconocido"),true);
-const current=document.getElementById("publish");
-if(current){current.disabled=false;current.textContent="Publicar";}
-}
-}
-
 
 // Primero borra la fila protegida por RLS; después intenta limpiar el objeto.
 // Esto evita dejar una publicación visible con un enlace multimedia roto.
@@ -797,9 +860,10 @@ async function deletePost(id,button){
   const {data,error}=await db.from("posts").delete().eq("id",id).eq("user_id",me.id).select("id").maybeSingle();
   if(error)throw error;
   if(!data)throw new Error("No se confirmó el borrado; revisa los permisos de Supabase.");
-  if(post.media_path&&post.media_path.startsWith(me.id+"/")){const {error:storageError}=await db.storage.from(BUCKET).remove([post.media_path]);if(storageError)console.warn("La publicación se borró, pero quedó un archivo pendiente de limpieza:",storageError.message);}
+  const ownedPaths=postMediaItems(post).map(m=>m.path).filter(path=>typeof path==="string"&&path.startsWith(me.id+"/"));
+   if(ownedPaths.length){const {error:storageError}=await db.storage.from(BUCKET).remove(ownedPaths);if(storageError)console.warn("La publicación se borró, pero quedaron archivos pendientes de limpieza:",storageError.message);}
   posts=posts.filter(p=>p.id!==id);
-  if(post.media_path)mediaUrlCache.delete(post.media_path);
+  ownedPaths.forEach(path=>mediaUrlCache.delete(path));
   say("Publicación eliminada.");await feedView();
  }catch(e){say("No se pudo eliminar: "+(e?.message||"Error"),true);if(button){button.disabled=false;button.textContent="🗑 Eliminar";}}
 }
