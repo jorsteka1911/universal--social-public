@@ -1024,17 +1024,29 @@ async function videosView(){
 function bindVerticalVideos(items){
  const entries=items.flatMap(p=>postMediaItems(p).map((m,i)=>({p,m,i,key:p.id+":"+i})).filter(x=>x.m.type?.startsWith("video/")));
  const stage=document.getElementById("vertical-stage"),count=document.getElementById("vertical-count"),prev=document.getElementById("vertical-prev"),next=document.getElementById("vertical-next");
- let index=Math.max(0,entries.findIndex(x=>x.key===verticalVideoKey));
- const draw=()=>{
+ const uid=me?.id;let index=Math.max(0,entries.findIndex(x=>x.key===verticalVideoKey)),serial=0;
+ const draw=async()=>{
+  const n=++serial,valid=()=>n===serial&&tab==="videos"&&videoLayout==="vertical"&&me?.id===uid&&stage.isConnected;
   stage.querySelectorAll("video").forEach(v=>v.pause());
-  prev.disabled=index<=0;next.disabled=index>=entries.length-1;
+  prev.disabled=index<=0||!entries.length;next.disabled=index>=entries.length-1;
   count.textContent=entries.length?(index+1)+" de "+entries.length:"0 vídeos";
   const x=entries[index];if(!x){stage.innerHTML='<p class="muted">Aún no hay vídeos para mostrar. Puedes publicar el primero.</p>';return;}
   verticalVideoKey=x.key;
-  stage.innerHTML=postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===me.id?me:null));
-  const gallery=stage.querySelector(".media-gallery"),url=mediaItemUrl(x.m,x.p);
-  if(gallery)gallery.innerHTML=url?`<div class="media-frame video-frame"><video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video><button type="button" class="media-expand">⛶ Pantalla completa</button></div><p class="muted" data-duration></p>`:'<p class="muted">Vídeo no disponible temporalmente. Actualiza la sección.</p>';
-  const v=stage.querySelector("video");if(v){v.addEventListener("loadedmetadata",()=>{const n=stage.querySelector("[data-duration]");if(n&&Number.isFinite(v.duration)){const seconds=Math.ceil(v.duration);n.textContent=seconds<60?seconds+" s":Math.floor(seconds/60)+" min "+(seconds%60)+" s";}});v.addEventListener("error",()=>{const n=stage.querySelector("[data-duration]");if(n)n.textContent="No se pudo cargar el vídeo. Prueba actualizando la sección.";});}
+  stage.innerHTML='<p class="muted" role="status">Preparando vídeo…</p>';
+  let url=mediaItemUrl(x.m,x.p);
+  if(!url&&x.m.path){
+   try{
+    const bucket=bucketFor(x.p),ttl=bucket===PRIVATE_BUCKET?300:MEDIA_SIGNED_URL_TTL;
+    const {data,error}=await db.storage.from(bucket).createSignedUrl(x.m.path,ttl);
+    if(!valid())return;
+    if(!error&&data?.signedUrl){mediaUrlCache.set(bucket+":"+x.m.path,{url:data.signedUrl,expiresAt:Date.now()+ttl*1000});url=mediaItemUrl(x.m,x.p);}
+   }catch{}
+  }
+  if(!valid())return;
+  const media=url?`<div class="media-gallery"><div class="media-frame video-frame"><video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video><button type="button" class="media-expand">⛶ Pantalla completa</button></div><p class="muted" data-duration></p><button type="button" class="secondary" data-retry-video hidden>Reintentar vídeo</button></div>`:'<p class="muted">Vídeo no disponible. Puede que ya no tengas acceso.</p><button type="button" class="secondary" data-retry-video>Reintentar vídeo</button>';
+  stage.innerHTML=postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===uid?me:null),media);
+  const retry=stage.querySelector("[data-retry-video]");if(retry)retry.onclick=()=>{if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);draw();};
+  const v=stage.querySelector("video");if(v){v.addEventListener("loadedmetadata",()=>{if(!valid())return;const label=stage.querySelector("[data-duration]");if(label&&Number.isFinite(v.duration)){const seconds=Math.ceil(v.duration);label.textContent=seconds<60?seconds+" s":Math.floor(seconds/60)+" min "+(seconds%60)+" s";}});v.addEventListener("error",()=>{if(!valid())return;const label=stage.querySelector("[data-duration]");if(label)label.textContent="No se pudo cargar el vídeo.";if(retry)retry.hidden=false;});}
   bindPostActions();
  };
  prev.onclick=()=>{if(index>0){index--;draw();}};next.onclick=()=>{if(index<entries.length-1){index++;draw();}};
@@ -1087,7 +1099,7 @@ document.getElementById("publish").onclick=publish;
 bindPostActions();
 }
 
-function postCard(p,author){
+function postCard(p,author,mediaOverride=null){
  const original=p.repost_of?originals.get(p.repost_of):p;
  const sp=p.space_id?spaceById(p.space_id):null;
  const sourceAuthor=original?(postAuthors[original.user_id]||(original.user_id===me.id?me:null)):null;
@@ -1108,7 +1120,7 @@ function postCard(p,author){
  ${sp?`<button class="space-chip" data-space="${esc(sp.id)}">${esc(sp.emoji||"✦")} ${esc(sp.name)}</button>`:""}
  ${original&&!isPublic?`<p class="muted">🔒 ${esc(({only_me:"Solo yo",friends:"Amigos",selected:"Personas específicas",except:"Audiencia limitada"})[original.audience]||"Privada")}</p>`:""}
  <div class="bodytext">${esc(original?.content||(!original?"Publicación original no disponible.":""))}</div>
- ${original?postMediaHTML(original):""}
+ ${original?(mediaOverride!==null?mediaOverride:postMediaHTML(original)):""}
  <div class="reaction-bar">${REACTION_TYPES.map(([key,emoji,label])=>`<button type="button" data-target="${esc(target)}" data-react="${key}" class="${reactionMine.get(target)===key?"chosen":""}" aria-pressed="${reactionMine.get(target)===key}" title="${label}" aria-label="${label}">${emoji}</button>`).join("")}</div>
  <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${isPublic?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button><button class="action" data-sendpost="${esc(source)}">✉ Enviar</button>`:""}</div>
  <div class="reactors-list hidden" id="reactors-${esc(target)}"></div>
