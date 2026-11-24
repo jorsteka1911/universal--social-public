@@ -760,6 +760,26 @@ function bindMediaActions(){
 }
 document.addEventListener("keydown",e=>{if(e.key==="Escape")app.querySelectorAll(".media-overlay .media-expand").forEach(b=>b.click());});
 
+async function sendPostDialog(id){
+ const post=posts.find(p=>p.id===id)||originals.get(id);
+ if(!post||post.audience&&post.audience!=="public")return say("Solo puedes enviar publicaciones públicas.",true);
+ const d=document.createElement("dialog");d.style.cssText="width:min(90vw,440px);max-height:80vh;overflow:auto;border:1px solid #789;border-radius:14px;padding:18px;background:#14263b;color:white";
+ d.innerHTML='<form method="dialog"><h3>Enviar publicación</h3><label>Buscar persona por nombre o usuario<input class="field" id="sendpost-search" placeholder="Escribe al menos dos letras" autocomplete="off"></label><div id="sendpost-results" aria-live="polite"></div><label>Mensaje opcional<textarea class="field" maxlength="4000" id="sendpost-note"></textarea></label><p id="sendpost-status" role="status"></p><button class="secondary" value="cancel">Cerrar</button></form>';
+ document.body.appendChild(d);d.addEventListener("close",()=>d.remove(),{once:true});d.showModal();
+ const search=d.querySelector("#sendpost-search"),results=d.querySelector("#sendpost-results"),status=d.querySelector("#sendpost-status");let serial=0,busy=false;
+ search.oninput=async()=>{const n=++serial,q=search.value.trim().replace(/[^\p{L}\p{N}_ .-]/gu,"").replace(/[%_,]/g,"");results.replaceChildren();if(q.length<2)return;results.textContent="Buscando…";
+ const [a,b]=await Promise.all([db.from("gyste_profiles").select("user_id,display_name,username").ilike("display_name","%"+q+"%").neq("user_id",me.id).limit(20),db.from("gyste_profiles").select("user_id,display_name,username").ilike("username","%"+q+"%").neq("user_id",me.id).limit(20)]);
+ if(n!==serial||!d.isConnected)return;results.replaceChildren();if(a.error&&b.error){results.textContent="No se pudo buscar.";return;}
+ const members=[...new Map([...(a.data||[]),...(b.data||[])].map(p=>[p.user_id,p])).values()];
+ if(!members.length){results.textContent="No se encontraron personas.";return;}
+ for(const p of members){const row=document.createElement("div");row.className="userrow";const name=document.createElement("span");name.textContent=(p.display_name||"Miembro")+" @"+(p.username||"");const send=document.createElement("button");send.type="button";send.className="secondary";send.textContent="Enviar";send.onclick=async()=>{if(busy)return;busy=true;send.disabled=true;status.textContent="Enviando…";try{
+ const {data:current,error:checkError}=await db.from("posts").select("id,audience").eq("id",id).maybeSingle();if(checkError||!current||current.audience!=="public")throw Error("Esta publicación ya no está disponible para compartir.");
+ const url=new URL(location.origin+location.pathname);url.searchParams.set("post",id);const note=d.querySelector("#sendpost-note").value.trim();
+ const {error}=await db.from("gyste_messages").insert({sender_id:me.id,recipient_id:p.user_id,content:(note?note+"\n":"")+"📎 Publicación de Gyste: "+url.href});if(error)throw error;d.close();say("Publicación enviada a "+(p.display_name||"tu contacto")+".");
+ }catch(e){status.textContent=e.code==="42501"?"No puedes enviar mensajes a esta persona por sus preferencias de privacidad.":e.message||"No se pudo enviar.";busy=false;send.disabled=false;}};
+ row.append(name,send);results.append(row);}
+ };
+}
 async function sharePost(id){
  const url=new URL(location.origin+location.pathname);url.searchParams.set("post",id);
  if(navigator.share){try{await navigator.share({title:"Publicación de Gyste",url:url.href});return;}catch(e){if(e.name==="AbortError")return;}}
@@ -798,6 +818,7 @@ function bindPostActions(){
  bindMediaActions();
  const bind=(selector,fn)=>app.querySelectorAll(selector).forEach(b=>b.onclick=()=>fn(b));
  bind("[data-sharepost]",b=>sharePost(b.dataset.sharepost));
+ bind("[data-sendpost]",b=>sendPostDialog(b.dataset.sendpost));
  bind("[data-react]",b=>reactPost(b.dataset.target,b.dataset.react,b));
  bind("[data-reactors]",b=>showReactors(b.dataset.reactors,b));
  bind("[data-savepost]",b=>savePost(b.dataset.savepost,b));
@@ -894,7 +915,7 @@ function postCard(p,author){
  <details class="post-menu"><summary aria-label="Más opciones">⋯</summary><div class="post-menu-items">
  <button data-savepost="${esc(target)}">${savedIds.has(target)?"Quitar de guardados":"🔖 Guardar publicación"}</button>
  ${isPublic?`<button data-repost="${esc(source)}">🔁 Republicar en mi perfil</button>`:""}
- ${isPublic?`<button data-sharepost="${esc(target)}">↗ Compartir enlace</button>`:""}
+ ${isPublic?`<button data-sendpost="${esc(source)}">✉ Enviar a una persona</button><button data-sharepost="${esc(target)}">↗ Compartir enlace</button>`:""}
  ${hasVideo&&original.user_id===me.id?`<button data-downloadpost="${esc(source)}">⬇ Descargar mi vídeo</button>`:""}
  ${p.user_id!==me.id?`<button data-reportpost="${esc(target)}">⚑ Denunciar publicación</button><button data-blockuser="${esc(p.user_id)}">⊘ Bloquear usuario</button>`:""}
  ${p.user_id===me.id?`<button data-deletepost="${esc(target)}">Eliminar publicación</button>`:""}
@@ -904,7 +925,7 @@ function postCard(p,author){
  <div class="bodytext">${esc(original?.content||(!original?"Publicación original no disponible.":""))}</div>
  ${original?postMediaHTML(original):""}
  <div class="reaction-bar">${REACTION_TYPES.map(([key,emoji,label])=>`<button type="button" data-target="${esc(target)}" data-react="${key}" class="${reactionMine.get(target)===key?"chosen":""}" aria-pressed="${reactionMine.get(target)===key}" title="${label}" aria-label="${label}">${emoji}</button>`).join("")}</div>
- <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${isPublic?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button>`:""}</div>
+ <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${isPublic?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button><button class="action" data-sendpost="${esc(source)}">✉ Enviar</button>`:""}</div>
  <div class="reactors-list hidden" id="reactors-${esc(target)}"></div>
  <div id="comments-${esc(target)}" class="hidden"><div id="list-${esc(target)}"></div><form class="commentform" data-comment-form="${esc(target)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form></div>
  </article>`;
@@ -1242,7 +1263,11 @@ function chatAttachment(m){
  const video=m.media_type?.startsWith("video/");
  return `<div class="media-frame" style="max-width:100%;margin:8px 0;text-align:center">${video?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`:`<img class="media" loading="lazy" alt="Fotografía privada" src="${esc(url)}">`}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
 }
-function chatMarkup(items){return (items||[]).map(m=>`<div class="comment" style="text-align:${m.sender_id===me.id?"right":"left"}"><div class="comment-author" style="justify-content:${m.sender_id===me.id?"flex-end":"flex-start"}"><span class="face">${avatarContent(m.sender_id===me.id?me:chatPeerProfile)}</span></div><div class="bodytext">${esc(m.content)}</div>${chatAttachment(m)}<small>${time(m.created_at)}</small></div>`).join("")||'<p class="muted">Inicia la conversación.</p>';}
+function chatBody(content){
+ const s=String(content||""),match=s.match(/(?:^|\n)📎 Publicación de Gyste: ([^\s]+)$/);if(!match)return esc(s);
+ try{const u=new URL(match[1]);const id=u.searchParams.get("post");if(u.origin!==location.origin||!id||!/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id))return esc(s);return esc(s.slice(0,match.index).trim())+`<div><button type="button" class="secondary" data-chat-post="${esc(id)}">▶ Ver publicación compartida</button></div>`;}catch{return esc(s);}
+}
+function chatMarkup(items){return (items||[]).map(m=>`<div class="comment" style="text-align:${m.sender_id===me.id?"right":"left"}"><div class="comment-author" style="justify-content:${m.sender_id===me.id?"flex-end":"flex-start"}"><span class="face">${avatarContent(m.sender_id===me.id?me:chatPeerProfile)}</span></div><div class="bodytext">${chatBody(m.content)}</div>${chatAttachment(m)}<small>${time(m.created_at)}</small></div>`).join("")||'<p class="muted">Inicia la conversación.</p>';}
 async function refreshChatMessages(target,markRead=false){
  if(!me||tab!=="messages"||chatUser!==target)return;
  const {data,error}=await db.from("gyste_messages").select("id,sender_id,recipient_id,content,created_at,read_at,media_path,media_type")
@@ -1259,7 +1284,7 @@ async function refreshChatMessages(target,markRead=false){
  if(document.fullscreenElement||document.querySelector("#chatlist .media-overlay")||Array.from(document.querySelectorAll("#chatlist video,#chatlist audio")).some(v=>!v.paused&&!v.ended))return;
  if(signature!==chatRenderSignature){
   const list=document.getElementById("chatlist");
-  if(list){const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();if(nearBottom)list.scrollTop=list.scrollHeight;}
+  if(list){const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});if(nearBottom)list.scrollTop=list.scrollHeight;}
   chatRenderSignature=signature;
  }
  if(markRead&&(data||[]).some(m=>m.recipient_id===me.id&&!m.read_at)){
