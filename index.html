@@ -306,7 +306,7 @@ app.innerHTML=`
 <button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">☰</summary>
 <div class="menu-dropdown">
-<button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
+<button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
 <button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
 <button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
 <button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
@@ -411,6 +411,29 @@ function installView(){
  const standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
  shell(`<section class="panel"><h2>📲 Instalar Gyste</h2><p>${standalone?"Gyste se está ejecutando como aplicación instalada.":"Añade Gyste a la pantalla principal de tu teléfono."}</p><img src="/gyste-icon-192.svg" width="96" height="96" alt="Icono Gyste"><p>En Chrome para Android, abre el menú de tres puntos del navegador y busca Instalar aplicación o Añadir a pantalla de inicio. No confundas ese menú con el de Gyste.</p>${!standalone&&gysteInstallPrompt?'<button class="primary full" id="install-gyste">Instalar aplicación</button>':""}<p class="muted">Necesitas conexión a Internet para consultar publicaciones y mensajes. Esta versión web no está todavía en Google Play.</p></section>`);
  const b=document.getElementById("install-gyste");if(b)b.onclick=async()=>{const prompt=gysteInstallPrompt;if(!prompt)return;gysteInstallPrompt=null;b.disabled=true;try{await prompt.prompt();await prompt.userChoice;}catch{}if(tab==="install")installView();};
+}
+const GYSTE_CHALLENGES=[
+ {tag:"GysteDibujo",icon:"🎨",title:"Mi mundo en un dibujo",description:"Dibuja un objeto, un paisaje imaginario o una escena que te inspire."},
+ {tag:"GysteFoto",icon:"📷",title:"La belleza de lo cotidiano",description:"Fotografía un objeto, una planta o un detalle sin revelar datos personales ni ubicaciones privadas."},
+ {tag:"GysteArtesania",icon:"🧵",title:"Creado con mis manos",description:"Comparte una manualidad propia o un proyecto realizado con materiales seguros."},
+ {tag:"GysteHistoria",icon:"📖",title:"Una historia que inspira",description:"Escribe un relato breve original sobre amistad, empatía o superación."},
+ {tag:"GysteMusica",icon:"🎵",title:"Mi expresión artística",description:"Comparte música, baile o interpretación de tu autoría, respetando los derechos de terceros."},
+ {tag:"GysteAprendo",icon:"📚",title:"Hoy aprendí algo nuevo",description:"Explica una habilidad o conocimiento que hayas practicado."}
+];
+let challengeTag="GysteDibujo",challengeSerial=0;
+async function challengesView(){
+ const uid=me?.id;if(!uid)return;
+ const serial=++challengeSerial,chosen=GYSTE_CHALLENGES.find(x=>x.tag===challengeTag)||GYSTE_CHALLENGES[0];
+ const valid=()=>tab==="challenges"&&me?.id===uid&&serial===challengeSerial;
+ shell(`<section class="panel"><h2>🏆 Retos y talentos Gyste</h2><p>Descubre lo que puedes crear. Participa a tu ritmo, sin premios de dinero, clasificaciones ni obligación de mostrar tu rostro.</p><div class="wallpaper-options">${GYSTE_CHALLENGES.map(x=>`<button class="secondary" data-challenge="${x.tag}" aria-pressed="${x.tag===chosen.tag}">${x.icon} ${esc(x.title)}</button>`).join("")}</div></section><section class="panel"><h2>${chosen.icon} ${esc(chosen.title)}</h2><p>${esc(chosen.description)}</p><p class="muted">Utiliza contenido propio. Evita compartir información personal y respeta la privacidad de otras personas. Tu audiencia seguirá siendo la que elijas al publicar.</p><button class="primary full" id="join-challenge">Participar en este reto</button><button class="secondary full" data-tab="learn">Aprender antes de participar</button></section><div id="challenge-results" aria-live="polite"><p class="muted">Buscando creaciones…</p></div>`);
+ app.querySelectorAll("[data-challenge]").forEach(b=>b.onclick=()=>{challengeTag=b.dataset.challenge;challengesView();});
+ document.getElementById("join-challenge").onclick=async()=>{await goCompose();if(tab!=="feed"||me?.id!==uid)return;const input=document.getElementById("posttext");if(input){input.value="#"+chosen.tag+"\n";input.focus();}};
+ const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).ilike("content","%#"+chosen.tag+"%").order("created_at",{ascending:false}).limit(40);
+ if(!valid())return;const box=document.getElementById("challenge-results");
+ if(error){box.textContent="No se pudieron cargar las creaciones.";return;}
+ const items=(data||[]).filter(p=>p.content?.split(/\s+/).some(w=>w.toLowerCase()===("#"+chosen.tag).toLowerCase()));
+ const cards=await prepareCards(items);if(!valid()||!box.isConnected)return;
+ box.innerHTML=cards||'<section class="panel"><h3>¡Anímate a participar!</h3><p>Todavía no hay creaciones visibles para ti en este reto.</p></section>';bindPostActions();bindSpaceButtons();
 }
 const FEEDBACK_LABELS={idea:"Nueva idea",error:"Error técnico",accessibility:"Accesibilidad",safety:"Seguridad y privacidad",other:"Otra propuesta"};
 const FEEDBACK_STATES={pending:"Recibida",reviewed:"Revisada",implemented:"Implementada",closed:"Cerrada"};
@@ -647,6 +670,7 @@ if(tab==="profile")return profileView();
 if(tab==="saved")return savedView();
 if(tab==="safety")return safetyView();
 if(tab==="moderation")return moderationView();
+if(tab==="challenges")return challengesView();
 if(tab==="feedback")return feedbackView();
 if(tab==="about")return aboutGysteView();
 if(tab==="commercial")return commercialView();
@@ -1094,7 +1118,7 @@ const intro=sharedPostId?"Abre Inicio para ver el resto de publicaciones.":activ
 const selectOptions=`<option value="">Mi estado personal</option>${spaces.map(s=>`<option value="${esc(s.id)}" ${selectedSpaceId===s.id?"selected":""}>${esc(s.emoji||"✦")} ${esc(s.name)}</option>`).join("")}`;
 shell(`
 <div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p></div>
-${shortcutsHTML()}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>
+${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
 <div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
