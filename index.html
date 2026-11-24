@@ -298,7 +298,7 @@ app.innerHTML=`
 <button data-tab="explore">🔎 Personas</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
-<button data-tab="saved">🔖 Guardados</button>
+<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button>
 </div></details>
 </div>
 </header>
@@ -555,6 +555,7 @@ if(tab==="series")return seriesView();
 if(tab==="history")return historyView();
 if(tab==="profile")return profileView();
 if(tab==="saved")return savedView();
+if(tab==="safety")return safetyView();
 if(tab==="notifications")return notificationView();
 if(tab==="messages")return messagesView();
 }
@@ -650,7 +651,7 @@ function learnView(){
 async function seriesView(){
 shell(`<section class="panel"><h2>Frutinovelas de Gyste</h2><p>Historias originales protagonizadas por frutas y verduras. Publica episodios en vídeo y sigue las series de otros creadores.</p><p class="muted">Para agrupar una serie escribe en la publicación <b>#Frutinovela</b>, el título de tu serie y el número de capítulo. Ejemplo: #Frutinovela La fresa viajera — Capítulo 1.</p><button class="primary" id="new-episode">Publicar un capítulo</button><div class="panel" style="margin-top:1rem"><h3>Serie original para comenzar: La fresa y el limón</h3><p><b>Capítulo 1 · El mercado de los sueños</b></p><p>Fresa quiere abrir una tienda donde todas las frutas compartan sus talentos. Limón piensa que nadie ayudará gratis. Cuando una tormenta arruina el puesto de Mandarina, ambos deben decidir si compiten o colaboran.</p><p><b>Guion breve:</b> Fresa: «¿Y si construimos algo entre todos?» Limón: «¿Y qué ganamos nosotros?» Mandarina: «Un lugar donde nadie se quede solo». Fresa: «Eso también es una riqueza».</p><p class="muted">Este es un guion de ejemplo, no un vídeo publicado. Para que aparezca un episodio reproducible hay que crear o subir su vídeo.</p></div></section><section class="panel"><h3>Capítulos de la comunidad</h3><div id="episodes"><p class="muted">Buscando capítulos…</p></div></section>`);
 document.getElementById("new-episode").onclick=async()=>{tab="feed";await feedView();const field=document.getElementById("posttext");if(field){field.value="#Frutinovela Mi serie — Capítulo 1\n";field.focus();}};
-const {data,error}=await db.from("posts").select("id,content,user_id,likes,created_at,media_url,media_type,media_path").ilike("content","%#Frutinovela%").order("created_at",{ascending:false}).limit(40);
+const {data,error}=await db.from("posts").select(POST_COLUMNS).ilike("content","%#Frutinovela%").order("created_at",{ascending:false}).limit(40);
 const dest=document.getElementById("episodes");if(!dest)return;
 if(error){dest.innerHTML=`<p class="error">No se pudieron cargar los capítulos: ${esc(error.message)}</p>`;return;}
 const items=data||[];await prepareMediaUrls(items);
@@ -660,21 +661,18 @@ dest.innerHTML=items.map(p=>`<article class="post"><div class="posthead"><b clas
 bindMediaActions();
 }
 
+const PRIVATE_BUCKET="gyste-private-media";
+const bucketFor=p=>p.audience&&p.audience!=="public"?PRIVATE_BUCKET:BUCKET;
 async function prepareMediaUrls(list){
-const paths=[...new Set(list.flatMap(p=>postMediaItems(p).map(m=>m.path)).filter(Boolean))];
-if(!paths.length)return;
-const {data,error}=await db.storage.from(BUCKET).createSignedUrls(paths,MEDIA_SIGNED_URL_TTL);
-if(error){
-console.warn("No se pudieron generar enlaces firmados para medios:",error.message);
-return;
+ for(const bucket of [BUCKET,PRIVATE_BUCKET]){
+ const paths=[...new Set(list.filter(p=>bucketFor(p)===bucket).flatMap(p=>postMediaItems(p).map(m=>m.path)).filter(Boolean))];
+ if(!paths.length)continue;
+ const ttl=bucket===PRIVATE_BUCKET?300:MEDIA_SIGNED_URL_TTL;
+ const {data,error}=await db.storage.from(bucket).createSignedUrls(paths,ttl);
+ if(error){console.warn("No se pudieron generar enlaces firmados",error.message);continue;}
+ (data||[]).forEach(item=>{if(item.path&&item.signedUrl)mediaUrlCache.set(bucket+":"+item.path,{url:item.signedUrl,expiresAt:Date.now()+ttl*1000});});
+ }
 }
-(data||[]).forEach(item=>{
-if(item.path&&item.signedUrl){
-mediaUrlCache.set(item.path,{url:item.signedUrl,expiresAt:Date.now()+MEDIA_SIGNED_URL_TTL*1000});
-}
-});
-}
-
 function safeMediaUrl(value){
  try{const u=new URL(value,location.href);return u.protocol==="https:"?u.href:"";}catch{return "";}
 }
@@ -692,18 +690,19 @@ function postMediaItems(p){
  }
  return p.media_path||p.media_url?[{path:p.media_path,type:p.media_type,url:typeof p.media_url==="string"&&!p.media_url.startsWith(MEDIA_MANIFEST)?p.media_url:null}]:[];
 }
-function mediaItemUrl(m){
+function mediaItemUrl(m,p){
+ const bucket=bucketFor(p);
  if(m.path){
-  const cached=mediaUrlCache.get(m.path);
+  const cached=mediaUrlCache.get(bucket+":"+m.path);
   if(cached&&cached.expiresAt>Date.now()+60000)return safeMediaUrl(cached.url);
-  if(!MEDIA_BUCKET_PRIVATE)return safeMediaUrl(db.storage.from(BUCKET).getPublicUrl(m.path).data.publicUrl);
+  if(bucket===BUCKET&&!MEDIA_BUCKET_PRIVATE)return safeMediaUrl(db.storage.from(BUCKET).getPublicUrl(m.path).data.publicUrl);
  }
- return MEDIA_BUCKET_PRIVATE?"":(m.url?safeMediaUrl(m.url):"");
+ return bucket===PRIVATE_BUCKET||MEDIA_BUCKET_PRIVATE?"":(m.url?safeMediaUrl(m.url):"");
 }
 function postMediaHTML(p){
  const items=postMediaItems(p);if(!items.length)return "";
  return `<div class="media-gallery ${items.length>1?"multi":""}">${items.map((m,i)=>{
-  const url=mediaItemUrl(m);if(!url)return '<p class="muted">Archivo no disponible temporalmente.</p>';
+  const url=mediaItemUrl(m,p);if(!url)return '<p class="muted">Archivo no disponible temporalmente.</p>';
   const video=m.type?.startsWith("video/");
   const element=video?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`:`<img class="media" loading="lazy" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
   return `<div class="media-frame ${video?"video-frame":""}">${element}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
@@ -731,7 +730,7 @@ async function sharePost(id){
  catch{window.prompt("Copia el enlace de esta publicación:",url.href);}
 }
 
-const POST_COLUMNS="id,content,user_id,likes,created_at,media_url,media_type,media_path,repost_of";
+const POST_COLUMNS="id,content,user_id,likes,created_at,media_url,media_type,media_path,repost_of,audience";
 async function readPosts(queryMode){
 let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":""));
 if(sharedPostId)q=q.eq("id",sharedPostId);
@@ -767,9 +766,25 @@ function bindPostActions(){
  bind("[data-savepost]",b=>savePost(b.dataset.savepost,b));
  bind("[data-repost]",b=>repost(b.dataset.repost,b));
  bind("[data-downloadpost]",b=>downloadPostVideo(b.dataset.downloadpost,b));
+ bind("[data-reportpost]",b=>reportPost(b.dataset.reportpost,b));
+ bind("[data-blockuser]",b=>blockUser(b.dataset.blockuser,b));
  app.querySelectorAll("[data-comment-form]").forEach(f=>f.onsubmit=sendComment);
  bind("[data-comments]",b=>toggleComments(b.dataset.comments));
  bind("[data-deletepost]",b=>deletePost(b.dataset.deletepost,b));
+}
+async function safetyView(){
+ const {data,error}=await db.from("gyste_blocks").select("blocked_id").eq("blocker_id",me.id);
+ if(error){shell(`<p class="error">${esc(error.message)}</p>`);return;}
+ const ids=(data||[]).map(x=>x.blocked_id);let names={};if(ids.length){const {data:p}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",ids);(p||[]).forEach(x=>names[x.user_id]=x.display_name);}
+ shell(`<section class="panel"><h2>Seguridad y convivencia</h2><p>Respeta a los demás. No compartas datos personales ni imágenes ajenas sin permiso. Si eres menor y algo te preocupa, habla con un adulto de confianza.</p><p>Las denuncias se registran para revisión, no se eliminan automáticamente.</p><h3>Usuarios bloqueados</h3>${ids.map(id=>`<div class="userrow"><b>${esc(names[id]||"Miembro")}</b><button class="secondary" data-unblock="${esc(id)}">Desbloquear</button></div>`).join("")||"<p>No tienes usuarios bloqueados.</p>"}</section>`);
+ app.querySelectorAll("[data-unblock]").forEach(b=>b.onclick=async()=>{if(!confirm("¿Desbloquear esta cuenta?"))return;const {error}=await db.from("gyste_blocks").delete().eq("blocker_id",me.id).eq("blocked_id",b.dataset.unblock);if(error)say(error.message,true);else await safetyView();});
+}
+async function blockUser(id,b){
+ if(!id||id===me.id||b.disabled||!confirm("¿Bloquear esta cuenta? No podrá enviarte nuevos mensajes ni seguirte."))return;b.disabled=true;
+ const {error}=await db.from("gyste_blocks").insert({blocker_id:me.id,blocked_id:id});if(error&&error.code!=="23505"){say(error.message,true);b.disabled=false;return;}say("Cuenta bloqueada.");if(tab==="messages")chatUser=null;await renderTab();
+}
+async function reportPost(id,b){
+ const d=document.createElement("dialog");d.style.cssText="width:min(90vw,420px);border-radius:12px;padding:18px;background:#14263b;color:white";d.innerHTML='<form method="dialog"><h3>Denunciar publicación</h3><label>Motivo<select class="field" id="report-reason"><option value="bullying">Acoso o bullying</option><option value="sexual">Contenido sexual inapropiado</option><option value="violence">Violencia o amenazas</option><option value="spam">Spam</option><option value="privacy">Privacidad</option><option value="other">Otro</option></select></label><label>Detalles opcionales<textarea class="field" maxlength="500" id="report-details"></textarea></label><p id="report-status"></p><button type="button" class="primary" id="report-send">Enviar</button> <button class="secondary" value="cancel">Cancelar</button></form>';document.body.append(d);d.addEventListener("close",()=>d.remove(),{once:true});d.showModal();const send=d.querySelector("#report-send");send.onclick=async()=>{send.disabled=true;const {error}=await db.from("gyste_reports").insert({reporter_id:me.id,post_id:id,reason:d.querySelector("#report-reason").value,details:d.querySelector("#report-details").value.trim()});if(error&&error.code!=="23505"){d.querySelector("#report-status").textContent="No se pudo enviar.";send.disabled=false;return;}d.close();say(error?"Ya has denunciado esta publicación.":"Denuncia recibida para revisión.");};
 }
 async function savedView(){
  const {data,error}=await db.from("gyste_saved_posts").select("post_id").eq("user_id",me.id).order("created_at",{ascending:false}).limit(100);
@@ -796,7 +811,7 @@ ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">←
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
-<label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label>
+<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="public">Todos</option><option value="friends">Amigos (seguimiento mutuo)</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label>
 </div>
 <button id="publish" class="primary full">Compartir publicación</button>
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
@@ -804,6 +819,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
 <div id="feed">${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
 document.getElementById("publish").onclick=publish;
+ bindAudiencePicker();
  document.getElementById("media").onchange=e=>{
  const files=Array.from(e.target.files||[]),bytes=files.reduce((n,f)=>n+f.size,0);
  document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":""):"Puedes seleccionar varias fotos de una vez.";
@@ -816,25 +832,35 @@ function postCard(p,author){
  const sp=p.space_id?spaceById(p.space_id):null;
  const sourceAuthor=original?(postAuthors[original.user_id]||(original.user_id===me.id?me:null)):null;
  const target=p.id,source=original?.id||p.id;
+ const isPublic=original&&(!original.audience||original.audience==="public");
  const hasVideo=original&&postMediaItems(original).some(m=>m.type?.startsWith("video/"));
  return `<article class="post">
  ${p.repost_of?`<div class="repost-label">🔁 ${esc(author?.display_name||"Miembro")} republicó esta publicación</div>`:""}
  <div class="posthead"><div class="posthead-left"><span class="face">${avatarContent(sourceAuthor)}</span><div><span class="author">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
  <details class="post-menu"><summary aria-label="Más opciones">⋯</summary><div class="post-menu-items">
  <button data-savepost="${esc(target)}">${savedIds.has(target)?"Quitar de guardados":"🔖 Guardar publicación"}</button>
- ${original?`<button data-repost="${esc(source)}">🔁 Republicar en mi perfil</button>`:""}
- <button data-sharepost="${esc(target)}">↗ Compartir enlace</button>
+ ${isPublic?`<button data-repost="${esc(source)}">🔁 Republicar en mi perfil</button>`:""}
+ ${isPublic?`<button data-sharepost="${esc(target)}">↗ Compartir enlace</button>`:""}
  ${hasVideo&&original.user_id===me.id?`<button data-downloadpost="${esc(source)}">⬇ Descargar mi vídeo</button>`:""}
+ ${p.user_id!==me.id?`<button data-reportpost="${esc(target)}">⚑ Denunciar publicación</button><button data-blockuser="${esc(p.user_id)}">⊘ Bloquear usuario</button>`:""}
  ${p.user_id===me.id?`<button data-deletepost="${esc(target)}">Eliminar publicación</button>`:""}
  </div></details></div>
  ${sp?`<button class="space-chip" data-space="${esc(sp.id)}">${esc(sp.emoji||"✦")} ${esc(sp.name)}</button>`:""}
+ ${original&&!isPublic?`<p class="muted">🔒 ${esc(({only_me:"Solo yo",friends:"Amigos",selected:"Personas específicas",except:"Audiencia limitada"})[original.audience]||"Privada")}</p>`:""}
  <div class="bodytext">${esc(original?.content||(!original?"Publicación original no disponible.":""))}</div>
  ${original?postMediaHTML(original):""}
  <div class="reaction-bar">${REACTION_TYPES.map(([key,emoji,label])=>`<button type="button" data-target="${esc(target)}" data-react="${key}" class="${reactionMine.get(target)===key?"chosen":""}" aria-pressed="${reactionMine.get(target)===key}" title="${label}" aria-label="${label}">${emoji}</button>`).join("")}</div>
- <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${original?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button>`:""}</div>
+ <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${isPublic?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button>`:""}</div>
  <div class="reactors-list hidden" id="reactors-${esc(target)}"></div>
  <div id="comments-${esc(target)}" class="hidden"><div id="list-${esc(target)}"></div><form class="commentform" data-comment-form="${esc(target)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form></div>
  </article>`;
+}
+let audienceChosen=new Map();
+function bindAudiencePicker(){
+ audienceChosen=new Map();const mode=document.getElementById("audience"),picker=document.getElementById("audience-picker"),search=document.getElementById("audience-search");let serial=0;
+ const draw=()=>{const node=document.getElementById("audience-chosen");node.replaceChildren();for(const [id,name] of audienceChosen){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=name+" ×";b.onclick=()=>{audienceChosen.delete(id);draw();};node.append(b);}};
+ mode.onchange=()=>{picker.hidden=!["selected","except"].includes(mode.value);};
+ search.oninput=async()=>{const n=++serial,q=search.value.trim().replace(/[%_,]/g,""),out=document.getElementById("audience-results");out.replaceChildren();if(q.length<2)return;const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username").ilike("display_name","%"+q+"%").neq("user_id",me.id).limit(20);if(n!==serial||!out.isConnected)return;if(error){out.textContent="No se pudo buscar.";return;}for(const p of data||[]){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=(p.display_name||"Miembro")+" @"+(p.username||"");b.onclick=()=>{if(audienceChosen.size>=100)return;audienceChosen.set(p.user_id,b.textContent);draw();};out.append(b);}};
 }
 async function publish(){
  const text=document.getElementById("posttext").value.trim();
@@ -844,26 +870,30 @@ async function publish(){
  return say("Selecciona hasta 10 archivos compatibles, con un máximo de 50 MB en total.",true);
  const b=document.getElementById("publish");if(b.disabled)return;
  const uid=me.id,space=document.getElementById("postspace")?.value||null;
+ const audience=document.getElementById("audience")?.value||"public",members=[...audienceChosen.keys()],postId=crypto.randomUUID(),bucket=audience==="public"?BUCKET:PRIVATE_BUCKET;
+ if(["selected","except"].includes(audience)&&!members.length)return say("Elige al menos una persona.",true);
  b.disabled=true;b.textContent="Publicando…";
  const uploaded=[];let postCommitted=false;
  try{
   for(let i=0;i<files.length;i++){
    const file=files[i],ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type];
-   const path=uid+"/"+Date.now()+"-"+crypto.randomUUID()+"."+ext;
+   const path=uid+"/"+postId+"-"+crypto.randomUUID()+"."+ext;
    b.textContent="Subiendo "+(i+1)+" de "+files.length+"…";
-   const {error}=await db.storage.from(BUCKET).upload(path,file,{upsert:false,contentType:file.type});if(error)throw error;
+   const {error}=await db.storage.from(bucket).upload(path,file,{upsert:false,contentType:file.type});if(error)throw error;
    uploaded.push({path,type:file.type});
   }
   const first=uploaded[0];
-  const url=uploaded.length>1?MEDIA_MANIFEST+JSON.stringify(uploaded):first?db.storage.from(BUCKET).getPublicUrl(first.path).data.publicUrl:null;
-  const newPost={content:text,user_id:uid,media_url:url,media_type:first?.type||null,media_path:first?.path||null};
+  const url=uploaded.length>1?MEDIA_MANIFEST+JSON.stringify(uploaded):first&&audience==="public"?db.storage.from(BUCKET).getPublicUrl(first.path).data.publicUrl:null;
+  const newPost={id:postId,content:text,user_id:uid,audience,media_url:url,media_type:first?.type||null,media_path:first?.path||null};
   if(spacesReady)newPost.space_id=space;
   const {error}=await db.from("posts").insert(newPost);if(error)throw error;
-  postCommitted=true;sharedPostId=null;
+  postCommitted=true;
+ if(["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
+ sharedPostId=null;
   say("Publicación compartida.");
   try{await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
-  if(uploaded.length&&!postCommitted){const {error}=await db.storage.from(BUCKET).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}
+  if(uploaded.length&&!postCommitted){const {error}=await db.storage.from(bucket).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}
   say("No se pudo publicar: "+(e?.message||"Error desconocido"),true);
   if(b.isConnected){b.disabled=false;b.textContent="Compartir publicación";}
  }
@@ -882,7 +912,7 @@ async function deletePost(id,button){
   if(error)throw error;
   if(!data)throw new Error("No se confirmó el borrado; revisa los permisos de Supabase.");
   const ownedPaths=postMediaItems(post).map(m=>m.path).filter(path=>typeof path==="string"&&path.startsWith(me.id+"/"));
-   if(ownedPaths.length){const {error:storageError}=await db.storage.from(BUCKET).remove(ownedPaths);if(storageError)console.warn("La publicación se borró, pero quedaron archivos pendientes de limpieza:",storageError.message);}
+   if(ownedPaths.length){const {error:storageError}=await db.storage.from(bucketFor(post)).remove(ownedPaths);if(storageError)console.warn("La publicación se borró, pero quedaron archivos pendientes de limpieza:",storageError.message);}
   posts=posts.filter(p=>p.id!==id);
   ownedPaths.forEach(path=>mediaUrlCache.delete(path));
   say("Publicación eliminada.");await renderTab();
@@ -924,7 +954,7 @@ async function downloadPostVideo(id,b){
  const p=posts.find(x=>x.id===id)||originals.get(id);if(!p||p.user_id!==me.id)return;
  const videos=postMediaItems(p).filter(x=>x.type?.startsWith("video/"));if(!videos.length)return;
  b.disabled=true;
- try{for(const m of videos){if(!m.path||!m.path.startsWith(me.id+"/"))throw Error("Archivo no disponible para descarga.");const {data,error}=await db.storage.from(BUCKET).download(m.path);if(error)throw error;const url=URL.createObjectURL(data),a=document.createElement("a");a.href=url;a.download=m.path.split("/").pop();document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}say("Descarga solicitada.");}
+ try{for(const m of videos){if(!m.path||!m.path.startsWith(me.id+"/"))throw Error("Archivo no disponible para descarga.");const {data,error}=await db.storage.from(bucketFor(p)).download(m.path);if(error)throw error;const url=URL.createObjectURL(data),a=document.createElement("a");a.href=url;a.download=m.path.split("/").pop();document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}say("Descarga solicitada.");}
  catch(e){say("No se pudo descargar: "+e.message,true);}finally{b.disabled=false;}
 }
 async function toggleComments(id){
@@ -1202,9 +1232,10 @@ async function messagesView(){
  if(chatUser!==target||tab!=="messages")return;
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
- shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · mensajes de texto</p><div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chatstatus" class="error" role="status"></p><form id="sendmsg" class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" required autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></form></section>`);
+ shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · mensajes de texto</p><div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chatstatus" class="error" role="status"></p><form id="sendmsg" class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" required autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></form></section>`);
  document.getElementById("back").onclick=()=>{stopChatRefresh();chatUser=null;messagesView();};
  document.getElementById("sendmsg").onsubmit=sendMessage;
+ document.getElementById("block-chat").onclick=e=>blockUser(target,e.currentTarget);
  await refreshChatMessages(target,true);
  if(chatUser===target&&tab==="messages")chatRefreshTimer=setInterval(()=>{if(document.visibilityState!=="hidden")refreshChatMessages(target,true);},8000);
 }
