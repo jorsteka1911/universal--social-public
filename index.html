@@ -309,7 +309,7 @@ app.innerHTML=`
 <button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
 <button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
 <button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
-<button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
+<button data-tab="searchposts">🔎 Buscar publicaciones</button><button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
 <button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button><button data-tab="appearance">🎨 Personalizar fondo</button><button data-tab="feedback">💡 Sugerencias y mejoras</button><button data-tab="commercial">📈 Promocionar mi negocio</button><button data-tab="about">ℹ Acerca de Gyste</button><button data-tab="help">❔ Cómo usar Gyste</button><button data-tab="install">📲 Instalar Gyste</button>
@@ -456,7 +456,7 @@ return `<section class="shortcut-section" aria-label="Accesos rápidos">
 <button class="shortcut mine" data-tab="profile"><span class="shortcut-circle">${avatarContent(me)}</span><span class="shortcut-label">Mi perfil</span></button>
 <button class="shortcut ${!selectedSpaceId&&homeFilter==="mine"?"active":""}" data-filter="mine"><span class="shortcut-circle">✎</span><span class="shortcut-label">Mis estados</span></button>
 ${spaces.slice(0,24).map(s=>`<button class="shortcut ${selectedSpaceId===s.id?"active":""}" data-space="${esc(s.id)}"><span class="shortcut-circle">${esc(s.emoji||"✦")}</span><span class="shortcut-label">${esc(s.name)}</span></button>`).join("")}
-<button class="shortcut" data-tab="spaces"><span class="shortcut-circle">＋</span><span class="shortcut-label">Más espacios</span></button>
+<button class="shortcut" data-tab="searchposts"><span class="shortcut-circle">⌕</span><span class="shortcut-label">Buscar contenido</span></button><button class="shortcut" data-tab="spaces"><span class="shortcut-circle">＋</span><span class="shortcut-label">Más espacios</span></button>
 </div></section>`;
 }
 
@@ -661,6 +661,7 @@ if(!session)return authView();
 if(tab==="feed")return feedView();
 if(tab==="spaces")return spacesView();
 if(tab==="explore")return exploreView();
+if(tab==="searchposts")return searchPostsView();
 if(tab==="learn")return learnView();
 if(tab==="series")return seriesView();
 if(tab==="videos")return videosView();
@@ -1355,6 +1356,32 @@ if(error)return say(error.code==="23505"?"Ya existe un espacio con ese nombre o 
 await loadSpaces();selectedSpaceId=data.id;tab="feed";homeFilter="all";notice="Espacio creado. Ya puedes publicar en él.";noticeError=false;await feedView();
 }
 
+let postSearch={uid:null,term:"",scope:"all",limit:30},postSearchSerial=0;
+function cleanPostSearch(value){return String(value||"").replace(/[%_\\]/g," ").replace(/\s+/g," ").trim().slice(0,80);}
+async function searchPostsView(){
+ const uid=me?.id;if(!uid)return;
+ if(postSearch.uid!==uid)postSearch={uid,term:"",scope:"all",limit:30};
+ const serial=++postSearchSerial,state={...postSearch},valid=()=>tab==="searchposts"&&me?.id===uid&&serial===postSearchSerial;
+ shell(`<section class="panel"><h2>🔎 Buscar publicaciones</h2><p>Encuentra creaciones, experiencias, ideas y temas que te interesen.</p><form id="post-search-form"><label>Palabra, frase o etiqueta<input class="field" type="search" maxlength="80" id="post-search-term" value="${esc(state.term)}" placeholder="Ej.: dibujo, música, #GysteFoto"></label><label>Buscar en<select class="field" id="post-search-scope">${[["all","Contenido visible para mí"],["following","Personas que sigo"],["mine","Mis publicaciones"]].map(([k,v])=>`<option value="${k}" ${state.scope===k?"selected":""}>${v}</option>`).join("")}</select></label><button class="primary full">Buscar</button></form><p class="muted">Se busca el texto de las publicaciones. Solo aparecerán contenidos que la base de datos te permita ver.</p><div class="actions">${["#GysteDibujo","#GysteFoto","#GysteAprendo","#Frutinovela"].map(t=>`<button class="secondary" data-search-topic="${t}">${t}</button>`).join("")}</div></section><div id="post-search-results" aria-live="polite"></div><button class="secondary full" id="post-search-more" hidden>Ver más publicaciones</button>`);
+ const form=document.getElementById("post-search-form"),input=document.getElementById("post-search-term"),scope=document.getElementById("post-search-scope"),box=document.getElementById("post-search-results"),more=document.getElementById("post-search-more");
+ const run=term=>{postSearch={uid,term:cleanPostSearch(term),scope:scope.value,limit:30};searchPostsView();};
+ form.onsubmit=e=>{e.preventDefault();run(input.value);};
+ app.querySelectorAll("[data-search-topic]").forEach(b=>b.onclick=()=>run(b.dataset.searchTopic));
+ more.onclick=()=>{postSearch.limit=Math.min(150,state.limit+30);searchPostsView();};
+ if(state.term.length<2){box.textContent="Escribe al menos dos caracteres o elige una etiqueta.";return;}
+ box.textContent="Buscando publicaciones…";
+ try{
+ let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).ilike("content","%"+state.term+"%");
+ if(state.scope==="mine")q=q.eq("user_id",uid);
+ if(state.scope==="following")q=q.in("user_id",[...new Set([uid,...following])]);
+ const {data,error}=await q.order("created_at",{ascending:false}).order("id").limit(state.limit);
+ if(!valid())return;if(error)throw error;
+ const items=data||[],cards=await prepareCards(items);
+ if(!valid()||!box.isConnected)return;
+ box.innerHTML=`<p class="muted">${items.length} publicaciones encontradas en esta consulta.</p>`+(cards||'<p class="panel">No se encontraron publicaciones visibles con ese texto.</p>');
+ more.hidden=items.length<state.limit||state.limit>=150;bindPostActions();bindSpaceButtons();
+ }catch{if(valid())box.textContent="No se pudo completar la búsqueda. Pulsa Buscar para reintentar.";}
+}
 async function exploreView(){
 const uid=me?.id;if(!uid)return;
 shell(`<section class="panel"><h3>Descubre personas</h3><label>Buscar por nombre o usuario<input id="search" class="field" type="search" maxlength="60" placeholder="Escribe al menos dos letras…" autocomplete="off"></label><p id="people-status" class="muted" role="status">Busca personas que conozcas o consulta miembros recientes.</p></section><div id="people"></div><button class="secondary full" id="people-more" hidden>Ver más resultados</button>`);
