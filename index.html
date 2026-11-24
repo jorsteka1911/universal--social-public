@@ -771,10 +771,33 @@ function bindAcademyVideos(){
  }
  filter.onchange=search.oninput=()=>{restorePlayer();draw();};draw();
 }
+const LEARNING_JOURNEYS={
+ dibujo:{label:"Dibujo",tasks:["Revisar la lección de encaje y proporciones.","Dibujar tres objetos sencillos observando sus formas.","Practicar luz y sombra con tres tonos.","Realizar un dibujo propio y comparar con el primero."]},
+ pintura:{label:"Pintura",tasks:["Revisar la lección de color y composición.","Preparar una paleta reducida y practicar mezclas.","Realizar una composición sencilla.","Revisar el resultado y anotar lo aprendido."]},
+ arcilla:{label:"Escultura y arcilla",tasks:["Revisar la guía de modelado y volumen.","Elegir un material de modelado apropiado.","Practicar formas básicas a mano sin herramientas peligrosas.","Completar una pequeña figura y revisar sus proporciones."]},
+ cuero:{label:"Cuero y artesanía",tasks:["Consultar las guías y conocer los materiales.","Diseñar en papel una plantilla sencilla.","Practicar el trazado y montaje con material de prueba y herramientas seguras.","Completar un proyecto adecuado a tu experiencia."]},
+ calistenia:{label:"Calistenia",tasks:["Consultar las guías de iniciación y técnica.","Elegir una rutina adecuada a tu capacidad con descansos.","Practicar movimientos básicos sin dolor ni forzar.","Revisar tu técnica y ajustar tu siguiente sesión."]},
+ matematicas:{label:"Matemáticas",tasks:["Revisar una explicación de ecuaciones.","Resolver tres ejercicios básicos.","Corregir tus respuestas y entender los errores.","Intentar un problema nuevo sin consultar la solución."]}
+};
+function learningJourneyPanel(){return `<section class="panel"><h2>Mi ruta de aprendizaje</h2><p>Convierte lo que aprendes en proyectos y registra tus avances a tu ritmo.</p><label>Elige una especialidad<select class="field" id="journey-select">${Object.entries(LEARNING_JOURNEYS).map(([k,v])=>`<option value="${k}">${esc(v.label)}</option>`).join("")}</select></label><div id="journey-content"></div><p class="muted">Tu progreso es personal, se guarda en este navegador y no se publica. No equivale a una certificación profesional.</p><button type="button" class="secondary full" id="journey-share">Compartir una creación (opcional)</button></section>`;}
+function bindLearningJourney(){
+ const uid=me.id,key="gyste-learning-v1:"+uid,select=document.getElementById("journey-select"),box=document.getElementById("journey-content");
+ let data={};try{const parsed=JSON.parse(localStorage.getItem(key));if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))data=parsed;}catch{}
+ if(Object.hasOwn(LEARNING_JOURNEYS,data.selected))select.value=data.selected;
+ const save=()=>{try{localStorage.setItem(key,JSON.stringify(data));return true;}catch{return false;}};
+ const draw=()=>{const route=select.value,tasks=LEARNING_JOURNEYS[route].tasks,done=Array.isArray(data[route])?data[route]:[];
+ box.innerHTML=`<p><b>${tasks.filter((_,i)=>done[i]===true).length} de ${tasks.length} pasos completados</b></p><progress max="${tasks.length}" value="${tasks.filter((_,i)=>done[i]===true).length}" style="width:100%" aria-label="Progreso de aprendizaje"></progress>${tasks.map((task,i)=>`<label style="display:flex;gap:10px;align-items:flex-start;margin:14px 0"><input type="checkbox" data-journey-task="${i}" ${done[i]===true?"checked":""}><span>${esc(task)}</span></label>`).join("")}<p id="journey-save-status" role="status"></p>`;
+ box.querySelectorAll("[data-journey-task]").forEach(b=>b.onchange=()=>{const i=Number(b.dataset.journeyTask);if(!Array.isArray(data[route]))data[route]=[];data[route][i]=b.checked;const ok=save();draw();if(!ok)document.getElementById("journey-save-status").textContent="El progreso no se ha podido guardar en el dispositivo.";});
+ };
+ select.onchange=()=>{data.selected=select.value;save();draw();};
+ document.getElementById("journey-share").onclick=goCompose;
+ draw();
+}
 function studyResourcesPanel(){return `<section class="panel"><h2>📚 Apoyo escolar y competencias profesionales</h2><p>Recursos educativos externos para seguir aprendiendo. Se abren en su página original.</p><div class="academy-video-grid"><article class="academy-video"><h3>Matemáticas</h3><p>Ecuaciones de primer grado · Math2me</p><a href="https://cursos.math2me.com/secundaria/1/28/" target="_blank" rel="noopener noreferrer">Abrir lección y ejercicios</a></article><article class="academy-video"><h3>Ofimática</h3><p>Excel desde cero · Zalathun Learning</p><a href="https://www.zalathun.com/curso-excel-desde-cero/" target="_blank" rel="noopener noreferrer">Abrir curso de 18 vídeos</a></article></div><p class="muted">Gyste no exige comprar cursos externos ni facilita certificados por estos recursos.</p></section>`;}
 function learnView(){
  const groups=[...new Set(lessons.map(x=>x.group))];
- shell(`${academyVideoPanel()}${studyResourcesPanel()}${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
+ shell(`${learningJourneyPanel()}${academyVideoPanel()}${studyResourcesPanel()}${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
+ bindLearningJourney();
  bindAcademyVideos();
  activateMasterclasses();
  activateAcademy();
