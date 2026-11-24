@@ -185,10 +185,10 @@ body{padding-bottom:0}
 
 /* Galería y pantalla completa: conserva el elemento multimedia al ampliar. */
 .media-gallery{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:10px}
-.media-gallery.multi{grid-template-columns:repeat(2,minmax(0,1fr))}
+.media-gallery.multi{grid-template-columns:minmax(0,1fr)}
 .media-frame{position:relative;min-width:0;background:#07121e;border-radius:12px;overflow:hidden}
 .media-frame .media{display:block;margin:0;width:100%;object-fit:contain;max-height:520px}
-.media-gallery.multi .media-frame .media{max-height:330px}
+.media-gallery.multi .media-frame .media{max-height:650px}
 .media-frame.video-frame{grid-column:1/-1}
 .media-expand{display:block;width:100%;border:0;border-radius:0;padding:10px;background:#172e45;color:#fff;font-size:13px;cursor:pointer}
 .media-frame:fullscreen,.media-frame.media-overlay{display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;border-radius:0;width:100%;height:100%;max-height:none}
@@ -196,6 +196,7 @@ body{padding-bottom:0}
 .media-frame:fullscreen .media,.media-frame.media-overlay .media{width:100%;height:calc(100% - 48px);max-height:none;object-fit:contain;flex:1;min-height:0}
 .media-frame:fullscreen .media-expand,.media-frame.media-overlay .media-expand{flex:none;min-height:48px}
 .media-selection{font-size:13px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
+.reaction-bar{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}.reaction-bar button{border:1px solid var(--line);border-radius:18px;background:transparent;color:var(--txt);padding:7px 9px;font-size:17px}.reaction-bar button.chosen{background:#21566a;border-color:#7fe2d8}.post-menu{position:relative;margin-left:auto}.post-menu summary{cursor:pointer;list-style:none;padding:6px 12px;font-size:22px}.post-menu summary::-webkit-details-marker{display:none}.post-menu-items{position:absolute;right:0;top:100%;z-index:8;background:var(--panel);border:1px solid var(--line);border-radius:12px;min-width:205px;padding:6px;box-shadow:0 6px 22px #0005}.post-menu-items button{display:block;width:100%;text-align:left;padding:12px;color:var(--txt);background:transparent;border:0}.repost-label{color:var(--muted);font-size:13px;margin-bottom:8px}.reactors-list{margin:8px 0}.reactors-list div{padding:5px 0}.media-gallery.multi .media-frame .media{width:100%;height:auto}
 </style>
 </head>
 <body>
@@ -229,6 +230,8 @@ let notice="";
 let noticeError=false;
 let commentCache={};
 let liked=new Set();
+let reactionMine=new Map(),savedIds=new Set(),originals=new Map(),postAuthors={};
+const REACTION_TYPES=[["like","👍","Me gusta"],["love","❤️","Me encanta"],["laugh","😂","Me divierte"],["sad","😢","Me entristece"],["wow","😮","Me sorprende"],["dislike","👎","No me gusta"],["fire","🔥","Genial"],["star","⭐","Estrella"]];
 let following=new Set();
 let chatUser=null;
 const mediaUrlCache=new Map();
@@ -295,6 +298,7 @@ app.innerHTML=`
 <button data-tab="explore">🔎 Personas</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
+<button data-tab="saved">🔖 Guardados</button>
 </div></details>
 </div>
 </header>
@@ -550,6 +554,7 @@ if(tab==="learn")return learnView();
 if(tab==="series")return seriesView();
 if(tab==="history")return historyView();
 if(tab==="profile")return profileView();
+if(tab==="saved")return savedView();
 if(tab==="notifications")return notificationView();
 if(tab==="messages")return messagesView();
 }
@@ -726,7 +731,7 @@ async function sharePost(id){
  catch{window.prompt("Copia el enlace de esta publicación:",url.href);}
 }
 
-const POST_COLUMNS="id,content,user_id,likes,created_at,media_url,media_type,media_path";
+const POST_COLUMNS="id,content,user_id,likes,created_at,media_url,media_type,media_path,repost_of";
 async function readPosts(queryMode){
 let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":""));
 if(sharedPostId)q=q.eq("id",sharedPostId);
@@ -737,32 +742,42 @@ return q.order("created_at",{ascending:false}).limit(60);
 }
 
 async function prepareCards(list){
-posts=list||[];
-mediaUrlCache.clear();await prepareMediaUrls(posts);
-const ids=posts.map(p=>p.id);
-liked=new Set();
-if(ids.length){
-const {data:r,error}=await db.from("reactions").select("post_id").eq("user_id",me.id).in("post_id",ids);
-if(!error)liked=new Set((r||[]).map(x=>x.post_id));
+ posts=list||[];originals=new Map();
+ const refs=[...new Set(posts.map(p=>p.repost_of).filter(Boolean))];
+ if(refs.length){const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",refs);if(!error)(data||[]).forEach(p=>originals.set(p.id,p));}
+ const all=[...posts,...originals.values()];
+ mediaUrlCache.clear();await prepareMediaUrls(all);
+ const ids=[...new Set(all.map(p=>p.id))];
+ reactionMine=new Map();savedIds=new Set();
+ if(ids.length){
+ const [r,s]=await Promise.all([db.from("reactions").select("post_id,reaction_type").eq("user_id",me.id).in("post_id",ids),db.from("gyste_saved_posts").select("post_id").eq("user_id",me.id).in("post_id",ids)]);
+ if(!r.error)(r.data||[]).forEach(x=>reactionMine.set(x.post_id,x.reaction_type));
+ if(!s.error)(s.data||[]).forEach(x=>savedIds.add(x.post_id));
+ }
+ const authorIds=[...new Set(all.map(p=>p.user_id))];postAuthors={};
+ if(authorIds.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,username,avatar_url").in("user_id",authorIds);(u||[]).forEach(x=>postAuthors[x.user_id]=x);}
+ return posts.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===me.id?me:null))).join("");
 }
-const authorIds=[...new Set(posts.map(p=>p.user_id))];
-const names={};
-if(authorIds.length){
-const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,username,avatar_url").in("user_id",authorIds);
-(u||[]).forEach(x=>names[x.user_id]=x);
-}
-return posts.map(p=>postCard(p,names[p.user_id]|| (p.user_id===me.id?me:null))).join("");
-}
-
 function bindPostActions(){
  bindMediaActions();
- app.querySelectorAll("[data-sharepost]").forEach(b=>{b.onclick=()=>sharePost(b.dataset.sharepost);});
-app.querySelectorAll("[data-like]").forEach(b=>{b.onclick=()=>like(b.dataset.like);});
-app.querySelectorAll("[data-comment-form]").forEach(f=>{f.onsubmit=sendComment;});
-app.querySelectorAll("[data-comments]").forEach(b=>{b.onclick=()=>toggleComments(b.dataset.comments);});
-app.querySelectorAll("[data-deletepost]").forEach(b=>{b.onclick=()=>deletePost(b.dataset.deletepost,b);});
+ const bind=(selector,fn)=>app.querySelectorAll(selector).forEach(b=>b.onclick=()=>fn(b));
+ bind("[data-sharepost]",b=>sharePost(b.dataset.sharepost));
+ bind("[data-react]",b=>reactPost(b.dataset.target,b.dataset.react,b));
+ bind("[data-reactors]",b=>showReactors(b.dataset.reactors,b));
+ bind("[data-savepost]",b=>savePost(b.dataset.savepost,b));
+ bind("[data-repost]",b=>repost(b.dataset.repost,b));
+ bind("[data-downloadpost]",b=>downloadPostVideo(b.dataset.downloadpost,b));
+ app.querySelectorAll("[data-comment-form]").forEach(f=>f.onsubmit=sendComment);
+ bind("[data-comments]",b=>toggleComments(b.dataset.comments));
+ bind("[data-deletepost]",b=>deletePost(b.dataset.deletepost,b));
 }
-
+async function savedView(){
+ const {data,error}=await db.from("gyste_saved_posts").select("post_id").eq("user_id",me.id).order("created_at",{ascending:false}).limit(100);
+ if(error){shell(`<p class="error">${esc(error.message)}</p>`);return;}
+ const ids=(data||[]).map(x=>x.post_id);let items=[];
+ if(ids.length){const result=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",ids);if(result.error){shell(`<p class="error">${esc(result.error.message)}</p>`);return;}const map=new Map((result.data||[]).map(p=>[p.id,p]));items=ids.map(id=>map.get(id)).filter(Boolean);}
+ const cards=await prepareCards(items);shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="muted">Solo tú puedes ver esta lista.</p></section>${cards||'<p class="muted">Todavía no has guardado publicaciones.</p>'}`);bindPostActions();
+}
 async function feedView(){
 const filter=selectedSpaceId?"space":homeFilter;
 const {data,error}=await readPosts(filter);
@@ -797,24 +812,30 @@ bindPostActions();
 }
 
 function postCard(p,author){
-const media=postMediaHTML(p);
-const sp=p.space_id?spaceById(p.space_id):null;
-return `<article class="post">
-<div class="posthead"><div class="posthead-left"><span class="face">${avatarContent(author)}</span><div><span class="author">${esc(author?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(p.created_at)}</span></div></div>
-${p.user_id===me.id?`<button class="action delete-action" data-deletepost="${esc(p.id)}" aria-label="Eliminar mi publicación">Eliminar</button>`:""}</div>
-${sp?`<button class="space-chip" data-space="${esc(sp.id)}">${esc(sp.emoji||"✦")} ${esc(sp.name)}</button>`:`<span class="muted" style="font-size:11px">Estado personal</span>`}
-<div class="bodytext">${esc(p.content||"")}</div>
-${media}
-<div class="actions">
-<button class="action ${liked.has(p.id)?"liked":""}" data-like="${esc(p.id)}">${liked.has(p.id)?"♥ Me gusta":"♡ Me gusta"} · ${Number(p.likes||0)}</button>
-<button class="action" data-comments="${esc(p.id)}">◯ Comentar</button>
-<button class="action" data-sharepost="${esc(p.id)}">↗ Compartir enlace</button>
-</div>
-<div id="comments-${esc(p.id)}" class="hidden"><div id="list-${esc(p.id)}"></div>
-<form class="commentform" data-comment-form="${esc(p.id)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form></div>
-</article>`;
+ const original=p.repost_of?originals.get(p.repost_of):p;
+ const sp=p.space_id?spaceById(p.space_id):null;
+ const sourceAuthor=original?(postAuthors[original.user_id]||(original.user_id===me.id?me:null)):null;
+ const target=p.id,source=original?.id||p.id;
+ const hasVideo=original&&postMediaItems(original).some(m=>m.type?.startsWith("video/"));
+ return `<article class="post">
+ ${p.repost_of?`<div class="repost-label">🔁 ${esc(author?.display_name||"Miembro")} republicó esta publicación</div>`:""}
+ <div class="posthead"><div class="posthead-left"><span class="face">${avatarContent(sourceAuthor)}</span><div><span class="author">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
+ <details class="post-menu"><summary aria-label="Más opciones">⋯</summary><div class="post-menu-items">
+ <button data-savepost="${esc(target)}">${savedIds.has(target)?"Quitar de guardados":"🔖 Guardar publicación"}</button>
+ ${original?`<button data-repost="${esc(source)}">🔁 Republicar en mi perfil</button>`:""}
+ <button data-sharepost="${esc(target)}">↗ Compartir enlace</button>
+ ${hasVideo&&original.user_id===me.id?`<button data-downloadpost="${esc(source)}">⬇ Descargar mi vídeo</button>`:""}
+ ${p.user_id===me.id?`<button data-deletepost="${esc(target)}">Eliminar publicación</button>`:""}
+ </div></details></div>
+ ${sp?`<button class="space-chip" data-space="${esc(sp.id)}">${esc(sp.emoji||"✦")} ${esc(sp.name)}</button>`:""}
+ <div class="bodytext">${esc(original?.content||(!original?"Publicación original no disponible.":""))}</div>
+ ${original?postMediaHTML(original):""}
+ <div class="reaction-bar">${REACTION_TYPES.map(([key,emoji,label])=>`<button type="button" data-target="${esc(target)}" data-react="${key}" class="${reactionMine.get(target)===key?"chosen":""}" aria-pressed="${reactionMine.get(target)===key}" title="${label}" aria-label="${label}">${emoji}</button>`).join("")}</div>
+ <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${original?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button>`:""}</div>
+ <div class="reactors-list hidden" id="reactors-${esc(target)}"></div>
+ <div id="comments-${esc(target)}" class="hidden"><div id="list-${esc(target)}"></div><form class="commentform" data-comment-form="${esc(target)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form></div>
+ </article>`;
 }
-
 async function publish(){
  const text=document.getElementById("posttext").value.trim();
  const files=Array.from(document.getElementById("media").files||[]);
@@ -864,19 +885,48 @@ async function deletePost(id,button){
    if(ownedPaths.length){const {error:storageError}=await db.storage.from(BUCKET).remove(ownedPaths);if(storageError)console.warn("La publicación se borró, pero quedaron archivos pendientes de limpieza:",storageError.message);}
   posts=posts.filter(p=>p.id!==id);
   ownedPaths.forEach(path=>mediaUrlCache.delete(path));
-  say("Publicación eliminada.");await feedView();
+  say("Publicación eliminada.");await renderTab();
  }catch(e){say("No se pudo eliminar: "+(e?.message||"Error"),true);if(button){button.disabled=false;button.textContent="🗑 Eliminar";}}
 }
 
-async function like(id){
-const p=posts.find(x=>x.id===id);if(!p)return;
-const was=liked.has(id);
-const q=was?db.from("reactions").delete().eq("post_id",id).eq("user_id",me.id):db.from("reactions").insert({post_id:id,user_id:me.id});
-const {error}=await q;
-if(error)return say(error.message,true);
-await feedView();
+async function reactPost(id,type,b){
+ if(b.disabled)return;const bar=b.closest(".reaction-bar");bar.querySelectorAll("button").forEach(x=>x.disabled=true);
+ try{const old=reactionMine.get(id);let q;
+ if(old===type)q=db.from("reactions").delete().eq("post_id",id).eq("user_id",me.id);
+ else if(old)q=db.from("reactions").update({reaction_type:type}).eq("post_id",id).eq("user_id",me.id);
+ else q=db.from("reactions").insert({post_id:id,user_id:me.id,reaction_type:type});
+ const {error}=await q;if(error)throw error;
+ await renderTab();
+ }catch(e){say("No se pudo reaccionar: "+e.message,true);bar.querySelectorAll("button").forEach(x=>x.disabled=false);}
 }
-
+async function showReactors(id,b){
+ const box=document.getElementById("reactors-"+id);if(!box)return;
+ box.classList.toggle("hidden");if(box.classList.contains("hidden"))return;
+ box.textContent="Cargando reacciones…";
+ const {data,error}=await db.from("reactions").select("user_id,reaction_type").eq("post_id",id).order("created_at",{ascending:false}).limit(200);
+ if(error){box.textContent="No se pudieron cargar las reacciones.";return;}
+ const users=[...new Set((data||[]).map(x=>x.user_id))];let names={};
+ if(users.length){const {data:p}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",users);(p||[]).forEach(x=>names[x.user_id]=x.display_name);}
+ box.innerHTML=(data||[]).map(x=>{const kind=REACTION_TYPES.find(t=>t[0]===x.reaction_type)||REACTION_TYPES[0];return `<div>${kind[1]} <b>${esc(names[x.user_id]||"Miembro de Gyste")}</b> · ${kind[2]}</div>`;}).join("")||"Todavía no hay reacciones.";
+}
+async function savePost(id,b){
+ if(b.disabled)return;b.disabled=true;
+ try{const was=savedIds.has(id);const q=was?db.from("gyste_saved_posts").delete().eq("user_id",me.id).eq("post_id",id):db.from("gyste_saved_posts").insert({user_id:me.id,post_id:id});
+ const {error}=await q;if(error)throw error;say(was?"Eliminado de guardados.":"Guardado en tu lista privada.");await renderTab();}
+ catch(e){say("No se pudo guardar: "+e.message,true);b.disabled=false;}
+}
+async function repost(id,b){
+ if(b.disabled)return;if(!confirm("¿Republicar esta publicación en tu perfil, conservando el autor original?"))return;b.disabled=true;
+ try{const {error}=await db.from("posts").insert({user_id:me.id,content:"",repost_of:id});if(error)throw error;say("Publicación republicada en tu perfil.");await renderTab();}
+ catch(e){say(e.code==="23505"?"Ya has republicado esta publicación.":"No se pudo republicar: "+e.message,true);b.disabled=false;}
+}
+async function downloadPostVideo(id,b){
+ const p=posts.find(x=>x.id===id)||originals.get(id);if(!p||p.user_id!==me.id)return;
+ const videos=postMediaItems(p).filter(x=>x.type?.startsWith("video/"));if(!videos.length)return;
+ b.disabled=true;
+ try{for(const m of videos){if(!m.path||!m.path.startsWith(me.id+"/"))throw Error("Archivo no disponible para descarga.");const {data,error}=await db.storage.from(BUCKET).download(m.path);if(error)throw error;const url=URL.createObjectURL(data),a=document.createElement("a");a.href=url;a.download=m.path.split("/").pop();document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}say("Descarga solicitada.");}
+ catch(e){say("No se pudo descargar: "+e.message,true);}finally{b.disabled=false;}
+}
 async function toggleComments(id){
 const box=document.getElementById("comments-"+id);if(!box)return;
 box.classList.toggle("hidden");
@@ -994,7 +1044,7 @@ ${[ ["avatar","Foto de perfil",p?.avatar_url], ["cover","Foto de portada",p?.cov
 <label>Nombre visible<input id="display" class="field" maxlength="60" value="${esc(p?.display_name||"")}"></label>
 <label>Nombre de usuario<input id="username" class="field" maxlength="30" value="${esc(p?.username||"")}"></label>
 <label>Biografía<textarea id="bio" class="field" maxlength="300">${esc(p?.bio||"")}</textarea></label>
-<div class="profile-actions"><button id="saveprofile" class="primary">Guardar cambios</button><button class="secondary" id="logout">Salir de mi cuenta</button></div>
+<div class="profile-actions"><button class="secondary" data-tab="saved">🔖 Guardados</button><button id="saveprofile" class="primary">Guardar cambios</button><button class="secondary" id="logout">Salir de mi cuenta</button></div>
 </div></section>
 <div class="section-heading"><h2>Mis publicaciones</h2><button class="text-link" data-filter="mine">Ver mis estados ›</button></div>
 ${postError?`<p class="error">No se pudieron cargar tus publicaciones: ${esc(postError.message)}</p>`:(myCards||'<div class="empty-state"><span class="symbol">✎</span>Todavía no has publicado nada.</div>')}`);
