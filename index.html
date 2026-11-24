@@ -294,7 +294,7 @@ app.innerHTML=`
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">☰</summary>
 <div class="menu-dropdown">
 <button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
-<button data-tab="history">📷 Historia</button>
+<button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
 <button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
 <button data-tab="explore">🔎 Personas</button>
 <button data-tab="notifications">🔔 Avisos</button>
@@ -555,6 +555,7 @@ if(tab==="learn")return learnView();
 if(tab==="series")return seriesView();
 if(tab==="videos")return videosView();
 if(tab==="history")return historyView();
+if(tab==="stories")return storiesView();
 if(tab==="profile")return profileView();
 if(tab==="saved")return savedView();
 if(tab==="safety")return safetyView();
@@ -604,6 +605,31 @@ const historicalImages=[{"region": "La Habana", "title": "Paseo del Prado, hacia
 function professionalWorkshop(){
  const groups=[...new Set(professionalCourses.map(x=>x.group))];
  return `<section class="panel"><h2>Escuela de oficios y artes · Talleres completos</h2><p class="muted">Guías escritas por proyectos, materiales, métodos, ejercicios y control de calidad. Estas guías escritas no sustituyen una demostración filmada por un profesional.</p><label for="pro-group">Área de formación</label><select class="field" id="pro-group">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="pro-list"></div></section>`;
+}
+const STORY_BUCKET="gyste-story-media";
+async function storiesView(){
+ const uid=me.id;
+ const {data,error}=await db.from("gyste_stories").select("id,user_id,content,audience,media_path,media_type,created_at,expires_at").order("created_at",{ascending:false}).limit(80);
+ if(tab!=="stories"||me?.id!==uid)return;
+ if(error){shell(`<section class="panel"><h2>Historias</h2><p class="error">${esc(error.message)}</p></section>`);return;}
+ const items=data||[],ids=[...new Set(items.map(s=>s.user_id))],names={},urls={};
+ if(ids.length){const {data:p}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(p||[]).forEach(x=>names[x.user_id]=x);}
+ const paths=items.map(x=>x.media_path).filter(Boolean);
+ if(paths.length){const {data:m}=await db.storage.from(STORY_BUCKET).createSignedUrls(paths,60);(m||[]).forEach(x=>{if(x.path&&x.signedUrl)urls[x.path]=x.signedUrl;});}
+ if(tab!=="stories"||me?.id!==uid)return;
+ shell(`<section class="panel"><h2>⏳ Historias de 24 horas</h2><p>Comparte un momento con texto, foto o vídeo. Tu historia deja de aparecer tras 24 horas.</p><form id="story-form"><textarea id="story-text" class="field" maxlength="1000" placeholder="¿Qué estás haciendo hoy?"></textarea><label>Quién puede verla<select id="story-audience" class="field"><option value="members">Miembros de Gyste</option><option value="mutual">Seguimiento mutuo</option><option value="only_me">Solo yo</option></select></label><label>Foto o vídeo (máximo 50 MB)<input type="file" id="story-file" class="field" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"></label><button class="primary full" id="story-publish">Publicar historia</button><p id="story-status" role="status"></p></form></section>${items.map(s=>`<article class="post" data-story="${esc(s.id)}" data-expires="${esc(s.expires_at)}"><div class="posthead"><b>${esc(names[s.user_id]?.display_name||"Miembro")}</b><small>Caduca en ${Math.max(0,Math.ceil((new Date(s.expires_at)-Date.now())/3600000))} h</small></div><div class="bodytext">${esc(s.content)}</div>${s.media_path?urls[s.media_path]?`<div class="media-frame">${s.media_type?.startsWith("video/")?`<video class="media" controls playsinline preload="metadata" src="${esc(safeMediaUrl(urls[s.media_path]))}"></video>`:`<img class="media" alt="Historia" src="${esc(safeMediaUrl(urls[s.media_path]))}" loading="lazy">`}<button class="media-expand" type="button">⛶ Ampliar</button></div>`:'<p class="muted">Archivo temporalmente no disponible.</p>':""}${s.user_id===uid?`<button class="secondary" data-delete-story="${esc(s.id)}">Eliminar historia</button>`:""}</article>`).join("")||'<p class="panel muted">Todavía no hay historias. Publica la primera.</p>'}<button class="secondary full" id="refresh-stories">Actualizar historias</button>`);
+ bindMediaActions();
+ document.getElementById("refresh-stories").onclick=storiesView;
+ const timer=setInterval(()=>{if(tab!=="stories"||!document.getElementById("story-form")){clearInterval(timer);return;}app.querySelectorAll("[data-expires]").forEach(n=>{if(Date.parse(n.dataset.expires)<=Date.now())n.remove();});},10000);
+ app.querySelectorAll("[data-delete-story]").forEach(b=>b.onclick=async()=>{if(!confirm("¿Eliminar esta historia?"))return;const s=items.find(x=>x.id===b.dataset.deleteStory);if(!s)return;b.disabled=true;const {error}=await db.from("gyste_stories").delete().eq("id",s.id).eq("user_id",uid);if(error){say("No se pudo eliminar.",true);b.disabled=false;return;}if(s.media_path)await db.storage.from(STORY_BUCKET).remove([s.media_path]);say("Historia eliminada.");await storiesView();});
+ document.getElementById("story-form").onsubmit=async e=>{
+ e.preventDefault();const b=document.getElementById("story-publish"),status=document.getElementById("story-status"),content=document.getElementById("story-text").value.trim(),audience=document.getElementById("story-audience").value,file=document.getElementById("story-file").files[0];
+ if(b.disabled||(!file&&!content))return;if(file&&(!MEDIA_TYPES.includes(file.type)||file.size>MAX_POST_BYTES)){status.textContent="Formato incompatible o archivo superior a 50 MB.";return;}
+ b.disabled=true;let path=null,committed=false;try{const id=crypto.randomUUID();
+ if(file){const ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type];path=uid+"/"+id+"."+ext;status.textContent="Subiendo archivo…";const {error}=await db.storage.from(STORY_BUCKET).upload(path,file,{contentType:file.type,upsert:false});if(error)throw error;}
+ const {error}=await db.from("gyste_stories").insert({id,user_id:uid,content,audience,media_path:path,media_type:file?.type||null});if(error)throw error;committed=true;say("Historia publicada durante 24 horas.");if(tab==="stories")await storiesView();
+ }catch(e){if(path&&!committed)await db.storage.from(STORY_BUCKET).remove([path]);status.textContent="No se pudo publicar la historia.";}finally{b.disabled=false;}
+ };
 }
 function historyView(){
  const cards=historicalImages.map(x=>{
@@ -879,7 +905,7 @@ const intro=sharedPostId?"Abre Inicio para ver el resto de publicaciones.":activ
 const selectOptions=`<option value="">Mi estado personal</option>${spaces.map(s=>`<option value="${esc(s.id)}" ${selectedSpaceId===s.id?"selected":""}>${esc(s.emoji||"✦")} ${esc(s.name)}</option>`).join("")}`;
 shell(`
 <div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p></div>
-${shortcutsHTML()}
+${shortcutsHTML()}<section class="panel"><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
 <div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
