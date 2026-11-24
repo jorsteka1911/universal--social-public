@@ -197,6 +197,7 @@ body{padding-bottom:0}
 .media-frame:fullscreen .media-expand,.media-frame.media-overlay .media-expand{flex:none;min-height:48px}
 .media-selection{font-size:13px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
 .reaction-bar{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}.reaction-bar button{border:1px solid var(--line);border-radius:18px;background:transparent;color:var(--txt);padding:7px 9px;font-size:17px}.reaction-bar button.chosen{background:#21566a;border-color:#7fe2d8}.post-menu{position:relative;margin-left:auto}.post-menu summary{cursor:pointer;list-style:none;padding:6px 12px;font-size:22px}.post-menu summary::-webkit-details-marker{display:none}.post-menu-items{position:absolute;right:0;top:100%;z-index:8;background:var(--panel);border:1px solid var(--line);border-radius:12px;min-width:205px;padding:6px;box-shadow:0 6px 22px #0005}.post-menu-items button{display:block;width:100%;text-align:left;padding:12px;color:var(--txt);background:transparent;border:0}.repost-label{color:var(--muted);font-size:13px;margin-bottom:8px}.reactors-list{margin:8px 0}.reactors-list div{padding:5px 0}.media-gallery.multi .media-frame .media{width:100%;height:auto}
+.academy-video-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:12px}.academy-video{border:1px solid #70839a55;border-radius:12px;padding:12px;min-width:0}.academy-video iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:8px}.academy-video .video-launch{display:flex;align-items:center;justify-content:center;min-height:92px;width:100%;border-radius:10px;background:#193b56;color:#fff;font-weight:700}.academy-video a{display:inline-block;margin-top:10px;color:inherit;text-decoration:underline}
 </style>
 </head>
 <body>
@@ -292,7 +293,7 @@ app.innerHTML=`
 <button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">☰</summary>
 <div class="menu-dropdown">
-<button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender</button>
+<button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
 <button data-tab="history">📷 Historia</button>
 <button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
 <button data-tab="explore">🔎 Personas</button>
@@ -636,9 +637,26 @@ function activateAcademy(){
  select.onchange=render;render();
 }
 
+const academyVideos=[
+ {area:"Calistenia",title:"Cómo empezar en calistenia",author:"Anke Calistenia",id:"Q59KQP7MADU",level:"Iniciación"},
+ {area:"Dibujo",title:"Paisaje urbano con un punto de fuga",author:"Arte Vivo y Divertido",id:"Icl1SBOyfdo",level:"Iniciación"},
+ {area:"Escultura",title:"Introducción al modelado en arcilla",author:"TICPlasTIC",id:"nPO7rHGSRUQ",level:"Iniciación"},
+ {area:"Pintura",title:"Paisaje con acuarela paso a paso",author:"YouTube · tutorial original",id:"J_QsXVNZuVM",level:"Iniciación"},
+ {area:"Cuero y marroquinería",title:"Tutorial de costura en cuero",author:"YouTube · tutorial original",id:"4n4hNrYjq8k",level:"Iniciación"}
+];
+function academyVideoPanel(){
+ return `<section class="panel" id="academy-videos"><h2>▶ Academia audiovisual Gyste</h2><p>Aprende con vídeos de los creadores originales y nuestras guías escritas. Selecciona una especialidad y pulsa Reproducir.</p><label>Especialidad<select id="academy-video-filter" class="field"><option value="">Todas</option>${[...new Set(academyVideos.map(v=>v.area))].map(a=>`<option>${esc(a)}</option>`).join("")}</select></label><div class="academy-video-grid" id="academy-video-grid"></div><p class="muted">Vídeos externos de YouTube: al reproducirlos se conecta con ese servicio. Si el propietario impide la reproducción integrada, utiliza el enlace original. En calistenia adapta los ejercicios a tu nivel; en artesanía utiliza herramientas adecuadas y supervisión adulta cuando corresponda.</p></section>`;
+}
+function bindAcademyVideos(){
+ const filter=document.getElementById("academy-video-filter"),grid=document.getElementById("academy-video-grid");
+ const draw=()=>{grid.innerHTML=academyVideos.filter(v=>!filter.value||v.area===filter.value).map(v=>`<article class="academy-video"><span class="muted">${esc(v.area)} · ${esc(v.level)}</span><h3>${esc(v.title)}</h3><p class="muted">${esc(v.author)}</p><div><button class="video-launch" type="button" data-lesson-video="${esc(v.id)}">▶ Reproducir vídeo</button></div><a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">Ver vídeo original en YouTube</a></article>`).join("");
+ grid.querySelectorAll("[data-lesson-video]").forEach(b=>b.onclick=()=>{const v=academyVideos.find(x=>x.id===b.dataset.lessonVideo);if(!v)return;const f=document.createElement("iframe");f.title=v.title;f.src="https://www.youtube-nocookie.com/embed/"+v.id;f.allow="encrypted-media; fullscreen; picture-in-picture";f.allowFullscreen=true;f.referrerPolicy="strict-origin-when-cross-origin";b.parentElement.replaceChildren(f);});};
+ filter.onchange=draw;draw();
+}
 function learnView(){
  const groups=[...new Set(lessons.map(x=>x.group))];
- shell(`${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
+ shell(`${academyVideoPanel()}${masterclassPanel()}${academyPanel()}${professionalWorkshop()}<section class="panel"><h2>Biblioteca de técnicas complementarias</h2><p class="muted">Cursos introductorios de cuero, dibujo, pintura, escultura, madera y manualidades, incluyendo tradiciones artesanales rusas.</p><label for="lesson-group">Especialidad</label><select id="lesson-group" class="field">${groups.map(g=>`<option>${esc(g)}</option>`).join("")}</select><div id="lesson-list"></div></section><section class="panel"><h3>Publica tu trabajo</h3><p>Comparte una fotografía o vídeo del proceso y describe materiales, técnica y dificultades.</p><button class="secondary" id="share-art">Compartir creación</button></section>`);
+ bindAcademyVideos();
  activateMasterclasses();
  activateAcademy();
  const pro=document.getElementById('pro-list');
