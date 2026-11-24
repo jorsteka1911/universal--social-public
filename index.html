@@ -427,7 +427,7 @@ async function challengesView(){
  const valid=()=>tab==="challenges"&&me?.id===uid&&serial===challengeSerial;
  shell(`<section class="panel"><h2>🏆 Retos y talentos Gyste</h2><p>Descubre lo que puedes crear. Participa a tu ritmo, sin premios de dinero, clasificaciones ni obligación de mostrar tu rostro.</p><div class="wallpaper-options">${GYSTE_CHALLENGES.map(x=>`<button class="secondary" data-challenge="${x.tag}" aria-pressed="${x.tag===chosen.tag}">${x.icon} ${esc(x.title)}</button>`).join("")}</div></section><section class="panel"><h2>${chosen.icon} ${esc(chosen.title)}</h2><p>${esc(chosen.description)}</p><p class="muted">Utiliza contenido propio. Evita compartir información personal y respeta la privacidad de otras personas. Tu audiencia seguirá siendo la que elijas al publicar.</p><button class="primary full" id="join-challenge">Participar en este reto</button><button class="secondary full" data-tab="learn">Aprender antes de participar</button></section><div id="challenge-results" aria-live="polite"><p class="muted">Buscando creaciones…</p></div>`);
  app.querySelectorAll("[data-challenge]").forEach(b=>b.onclick=()=>{challengeTag=b.dataset.challenge;challengesView();});
- document.getElementById("join-challenge").onclick=async()=>{await goCompose();if(tab!=="feed"||me?.id!==uid)return;const input=document.getElementById("posttext");if(input){input.value="#"+chosen.tag+"\n";input.focus();}};
+ document.getElementById("join-challenge").onclick=async()=>{await goCompose();if(tab!=="feed"||me?.id!==uid)return;const input=document.getElementById("posttext");if(input)addComposerTag("#"+chosen.tag+"\n");};
  const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).ilike("content","%#"+chosen.tag+"%").order("created_at",{ascending:false}).limit(40);
  if(!valid())return;const box=document.getElementById("challenge-results");
  if(error){box.textContent="No se pudieron cargar las creaciones.";return;}
@@ -860,11 +860,11 @@ function learnView(){
  const list=document.getElementById('lesson-list');
  const update=()=>{const g=document.getElementById('lesson-group').value;list.innerHTML=lessons.filter(x=>x.group===g).map(x=>`<details class="lesson"><summary><b>${esc(x.name)}</b><div class="muted">${esc(x.level)}</div></summary><ol>${x.steps.map(y=>`<li>${esc(y)}</li>`).join('')}</ol></details>`).join('');};
  document.getElementById('lesson-group').onchange=update;update();
- document.getElementById('share-art').onclick=async()=>{tab='feed';await feedView();const f=document.getElementById('posttext');if(f){f.value='#ArtesaniaGyste ';f.focus();}};
+ document.getElementById('share-art').onclick=async()=>{tab='feed';await feedView();const f=document.getElementById('posttext');if(f)addComposerTag('#ArtesaniaGyste ');};
 }
 async function seriesView(){
 shell(`<section class="panel"><h2>Frutinovelas de Gyste</h2><p>Historias originales protagonizadas por frutas y verduras. Publica episodios en vídeo y sigue las series de otros creadores.</p><p class="muted">Para agrupar una serie escribe en la publicación <b>#Frutinovela</b>, el título de tu serie y el número de capítulo. Ejemplo: #Frutinovela La fresa viajera — Capítulo 1.</p><button class="primary" id="new-episode">Publicar un capítulo</button><div class="panel" style="margin-top:1rem"><h3>Serie original para comenzar: La fresa y el limón</h3><p><b>Capítulo 1 · El mercado de los sueños</b></p><p>Fresa quiere abrir una tienda donde todas las frutas compartan sus talentos. Limón piensa que nadie ayudará gratis. Cuando una tormenta arruina el puesto de Mandarina, ambos deben decidir si compiten o colaboran.</p><p><b>Guion breve:</b> Fresa: «¿Y si construimos algo entre todos?» Limón: «¿Y qué ganamos nosotros?» Mandarina: «Un lugar donde nadie se quede solo». Fresa: «Eso también es una riqueza».</p><p class="muted">Este es un guion de ejemplo, no un vídeo publicado. Para que aparezca un episodio reproducible hay que crear o subir su vídeo.</p></div></section><section class="panel"><h3>Capítulos de la comunidad</h3><div id="episodes"><p class="muted">Buscando capítulos…</p></div></section>`);
-document.getElementById("new-episode").onclick=async()=>{tab="feed";await feedView();const field=document.getElementById("posttext");if(field){field.value="#Frutinovela Mi serie — Capítulo 1\n";field.focus();}};
+document.getElementById("new-episode").onclick=async()=>{tab="feed";await feedView();const field=document.getElementById("posttext");if(field)addComposerTag("#Frutinovela Mi serie — Capítulo 1\n");};
 const {data,error}=await db.from("posts").select(POST_COLUMNS).ilike("content","%#Frutinovela%").order("created_at",{ascending:false}).limit(40);
 const dest=document.getElementById("episodes");if(!dest)return;
 if(error){dest.innerHTML=`<p class="error">No se pudieron cargar los capítulos: ${esc(error.message)}</p>`;return;}
@@ -1103,6 +1103,26 @@ async function savedView(){
  if(ids.length){const result=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",ids);if(!valid())return;if(result.error){shell(`<p class="error">${esc(result.error.message)}</p>`);return;}const map=new Map((result.data||[]).map(p=>[p.id,p]));items=ids.map(id=>map.get(id)).filter(Boolean);}
  const cards=await prepareCards(items);if(!valid())return;shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="muted">Solo tú puedes ver esta lista.</p></section>${cards||'<p class="muted">Todavía no has guardado publicaciones.</p>'}`);bindPostActions();
 }
+const draftKey=uid=>"gyste-post-draft-v1:"+uid;
+function readPostDraft(uid){try{return (localStorage.getItem(draftKey(uid))||"").slice(0,5000);}catch{return "";}}
+function writePostDraft(uid,value){try{if(value.trim())localStorage.setItem(draftKey(uid),value.slice(0,5000));else localStorage.removeItem(draftKey(uid));return true;}catch{return false;}}
+function addComposerTag(tag){
+ const f=document.getElementById("posttext");if(!f||tab!=="feed")return;
+ if(f.value.trim()&&!confirm("¿Añadir esta etiqueta al texto que ya tienes escrito?"))return;
+ if(!f.value.includes(tag.trim()))f.value=(tag+f.value).slice(0,5000);
+ f.dispatchEvent(new Event("input",{bubbles:true}));f.focus();
+}
+function bindPostDraft(){
+ const uid=me?.id,input=document.getElementById("posttext"),status=document.getElementById("draft-status"),save=document.getElementById("draft-save"),discard=document.getElementById("draft-discard"),restore=document.getElementById("draft-restore");
+ if(!uid||!input)return;let active=false;
+ const existing=readPostDraft(uid);restore.hidden=!existing;discard.hidden=!existing;
+ if(existing)status.textContent="Tienes un borrador de texto guardado en este navegador.";
+ const persist=()=>{if(me?.id!==uid||!input.isConnected)return;const ok=writePostDraft(uid,input.value);status.textContent=ok?(input.value.trim()?"Borrador guardado en este dispositivo.":"Borrador vacío."):"No se pudo guardar el borrador.";discard.hidden=!readPostDraft(uid);return ok;};
+ save.onclick=()=>{active=persist()===true;restore.hidden=true;};
+ input.oninput=()=>{if(active)persist();};
+ restore.onclick=()=>{if(me?.id!==uid)return;const old=readPostDraft(uid);if(!old)return;if(input.value.trim()&&input.value!==old&&!confirm("¿Sustituir el texto actual por el borrador guardado?"))return;input.value=old;const audience=document.getElementById("audience");audience.value="only_me";audience.dispatchEvent(new Event("change"));active=true;restore.hidden=true;status.textContent="Borrador recuperado. Audiencia ajustada a Solo yo; revisa a quién quieres mostrarlo. Vuelve a seleccionar los archivos si los necesitas.";input.focus();};
+ discard.onclick=()=>{if(!confirm("¿Borrar el borrador guardado en este dispositivo? El texto abierto no se borrará."))return;active=false;if(writePostDraft(uid,"")){restore.hidden=true;discard.hidden=true;status.textContent="Borrador guardado eliminado.";}else status.textContent="No se pudo eliminar el borrador.";};
+}
 async function feedView(){
 const filter=selectedSpaceId?"space":homeFilter,viewKey=JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId]);
 const valid=()=>tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
@@ -1122,7 +1142,7 @@ ${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
 <div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
-<textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea>
+<textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea><div class="row"><button type="button" class="secondary" id="draft-save">Guardar borrador</button><button type="button" class="secondary" id="draft-restore" hidden>Recuperar borrador</button><button type="button" class="ghost" id="draft-discard" hidden>Borrar borrador</button></div><p id="draft-status" class="muted" role="status">Opcional: guarda solo el texto en este navegador. No se publica ni se sincroniza. Evita guardarlo en dispositivos compartidos. Los archivos no se conservan.</p>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
 <label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label>
@@ -1134,6 +1154,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 <div id="feed">${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
 document.getElementById("publish").onclick=publish;
  bindAudiencePicker();
+ bindPostDraft();
  document.getElementById("media").onchange=e=>{
  const files=Array.from(e.target.files||[]),bytes=files.reduce((n,f)=>n+f.size,0);
  document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":""):"Puedes seleccionar varias fotos de una vez.";
@@ -1184,7 +1205,7 @@ async function publish(){
  return say("Selecciona hasta 10 archivos compatibles, con un máximo de 50 MB en total.",true);
  const b=document.getElementById("publish");if(b.disabled)return;
  const uid=me.id,space=document.getElementById("postspace")?.value||null;
- const audience=document.getElementById("audience")?.value||"public",members=[...audienceChosen.keys()],postId=crypto.randomUUID(),bucket=audience==="public"?BUCKET:PRIVATE_BUCKET;
+ const audience=document.getElementById("audience")?.value||"only_me",members=[...audienceChosen.keys()],postId=crypto.randomUUID(),bucket=audience==="public"?BUCKET:PRIVATE_BUCKET;
  if(["selected","except"].includes(audience)&&!members.length)return say("Elige al menos una persona.",true);
  b.disabled=true;b.textContent="Publicando…";
  const uploaded=[];let postCommitted=false;
@@ -1202,6 +1223,7 @@ async function publish(){
   if(spacesReady)newPost.space_id=space;
   const {error}=await db.from("posts").insert(newPost);if(error)throw error;
   postCommitted=true;
+ if(readPostDraft(uid).trim()===text)writePostDraft(uid,"");
  if(["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
  sharedPostId=null;
   say("Publicación compartida.");
