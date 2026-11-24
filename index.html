@@ -166,6 +166,22 @@ body{padding-bottom:0}
 .menu-dropdown button{width:100%;display:block;background:transparent;color:var(--txt);border:0;text-align:left;padding:11px 8px;border-radius:8px}
 .menu-dropdown button:active,.menu-dropdown button:hover{background:#1d4760}
 #app{width:100%;max-width:none;padding:0}
+
+/* Profile images: preserve the existing navigation and cards. */
+.face,.top-avatar,.shortcut.mine .shortcut-circle,.avatar{position:relative;overflow:hidden}
+.profile-image{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit;position:absolute;inset:0}
+.profile-cover{position:relative;overflow:hidden;height:clamp(110px,28vw,220px)}
+.profile-cover .profile-image{border-radius:inherit}
+.profile-face{position:relative;z-index:1}
+.profile-photo-controls{display:grid;gap:8px;margin:12px 0 16px}
+.profile-photo-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.profile-photo-row .secondary{flex:1;min-height:44px}
+.profile-photo-row .ghost{min-height:44px}
+.profile-photo-row input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.profile-photo-status{font-size:13px;color:var(--mint);min-height:1em;overflow-wrap:anywhere}
+.profile-photo-status.error{color:var(--red)}
+.comment-author{display:flex;align-items:center;gap:8px}
+.comment-author .face{width:28px;height:28px;font-size:12px}
 </style>
 </head>
 <body>
@@ -219,6 +235,30 @@ return Number.isNaN(d.getTime())?"":d.toLocaleString("es-ES",{dateStyle:"short",
 };
 
 function initials(name){return String(name||"G").trim().slice(0,1).toUpperCase();}
+const PROFILE_BUCKET="gyste-profile-images";
+const PROFILE_MAX_BYTES=5*1024*1024;
+let profileImageBusy=false;
+let chatPeerProfile=null;
+function profileImageUrl(value){
+ if(!value)return "";
+ try{
+  const u=new URL(value);const root=new URL(URL_DB);
+  return u.protocol==="https:"&&u.origin===root.origin&&u.pathname.startsWith("/storage/v1/object/public/")?u.href:"";
+ }catch{return "";}
+}
+function profileImageHTML(value){
+ const url=profileImageUrl(value);
+ return url?`<img class="profile-image" src="${esc(url)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">`:"";
+}
+function avatarContent(person){return `${esc(initials(person?.display_name))}${profileImageHTML(person?.avatar_url)}`;}
+function ownProfileImagePath(value,uid){
+ const url=profileImageUrl(value);if(!url)return null;
+ const prefix=`/storage/v1/object/public/${PROFILE_BUCKET}/`;
+ const path=new URL(url).pathname;
+ if(!path.startsWith(prefix))return null;
+ const relative=path.slice(prefix.length);
+ return relative.startsWith(uid+"/")&&/^[a-zA-Z0-9_-]+\/(avatar|cover)-[a-zA-Z0-9-]+\.(jpg|png|webp)$/.test(relative)?relative:null;
+}
 function spaceById(id){return spaces.find(s=>s.id===id);}
 function spaceLabel(id){return spaceById(id)?.name||"Espacio";}
 function navButton(dest,label,symbol){return `<button data-tab="${dest}" class="${tab===dest?"active":""}" aria-label="${label}" ${tab===dest?'aria-current="page"':''}><b aria-hidden="true">${symbol}</b>${label}</button>`;}
@@ -231,7 +271,7 @@ app.innerHTML=`
 <div class="top-actions">
 <button class="icon-btn ${tab==="explore"?"selected":""}" data-tab="explore" aria-label="Buscar personas" title="Buscar personas">⌕</button>
 <button class="icon-btn ${tab==="notifications"?"selected":""}" data-tab="notifications" aria-label="Notificaciones" title="Notificaciones">♧</button>
-<button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${esc(initials(me?.display_name))}</button>
+<button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">☰</summary>
 <div class="menu-dropdown">
 <button data-tab="learn">📚 Aprender</button>
@@ -297,7 +337,7 @@ function shortcutsHTML(){
 return `<section class="shortcut-section" aria-label="Accesos rápidos">
 <div class="section-heading"><h2>Tu mundo, a un toque</h2><button class="text-link" data-tab="spaces">Ver espacios ›</button></div>
 <div class="shortcut-row">
-<button class="shortcut mine" data-tab="profile"><span class="shortcut-circle">${esc(initials(me?.display_name))}</span><span class="shortcut-label">Mi perfil</span></button>
+<button class="shortcut mine" data-tab="profile"><span class="shortcut-circle">${avatarContent(me)}</span><span class="shortcut-label">Mi perfil</span></button>
 <button class="shortcut ${!selectedSpaceId&&homeFilter==="mine"?"active":""}" data-filter="mine"><span class="shortcut-circle">✎</span><span class="shortcut-label">Mis estados</span></button>
 ${spaces.slice(0,24).map(s=>`<button class="shortcut ${selectedSpaceId===s.id?"active":""}" data-space="${esc(s.id)}"><span class="shortcut-circle">${esc(s.emoji||"✦")}</span><span class="shortcut-label">${esc(s.name)}</span></button>`).join("")}
 <button class="shortcut" data-tab="spaces"><span class="shortcut-circle">＋</span><span class="shortcut-label">Más espacios</span></button>
@@ -645,7 +685,7 @@ if(!error)liked=new Set((r||[]).map(x=>x.post_id));
 const authorIds=[...new Set(posts.map(p=>p.user_id))];
 const names={};
 if(authorIds.length){
-const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,username").in("user_id",authorIds);
+const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,username,avatar_url").in("user_id",authorIds);
 (u||[]).forEach(x=>names[x.user_id]=x);
 }
 return posts.map(p=>postCard(p,names[p.user_id]|| (p.user_id===me.id?me:null))).join("");
@@ -672,7 +712,7 @@ shell(`
 ${shortcutsHTML()}
 ${activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
-<div class="feed-hero"><div class="face">${esc(initials(me?.display_name))}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
+<div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
@@ -695,7 +735,7 @@ const media=url?(p.media_type?.startsWith("video/")
 :(p.media_path||p.media_url?'<p class="muted">El archivo multimedia no está disponible temporalmente.</p>':"");
 const sp=p.space_id?spaceById(p.space_id):null;
 return `<article class="post">
-<div class="posthead"><div class="posthead-left"><span class="face">${esc(initials(author?.display_name))}</span><div><span class="author">${esc(author?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(p.created_at)}</span></div></div>
+<div class="posthead"><div class="posthead-left"><span class="face">${avatarContent(author)}</span><div><span class="author">${esc(author?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(p.created_at)}</span></div></div>
 ${p.user_id===me.id?`<button class="action delete-action" data-deletepost="${esc(p.id)}" aria-label="Eliminar mi publicación">Eliminar</button>`:""}</div>
 ${sp?`<button class="space-chip" data-space="${esc(sp.id)}">${esc(sp.emoji||"✦")} ${esc(sp.name)}</button>`:`<span class="muted" style="font-size:11px">Estado personal</span>`}
 <div class="bodytext">${esc(p.content||"")}</div>
@@ -785,8 +825,8 @@ list.innerHTML='<p class="muted">Cargando comentarios…</p>';
 const {data,error}=await db.from("gyste_comments").select("id,user_id,content,created_at").eq("post_id",id).order("created_at");
 if(error){list.textContent="No se pudieron cargar los comentarios: "+error.message;return;}
 const ids=[...new Set((data||[]).map(c=>c.user_id))];let map={};
-if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x.display_name);}
-list.innerHTML=(data||[]).map(c=>`<div class="comment"><b>${esc(map[c.user_id]||"Miembro")}</b><div>${esc(c.content)}</div><small>${time(c.created_at)}</small></div>`).join("")||'<p class="muted">Sé el primero en comentar.</p>';
+if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
+list.innerHTML=(data||[]).map(c=>`<div class="comment"><div class="comment-author"><span class="face">${avatarContent(map[c.user_id])}</span><b>${esc(map[c.user_id]?.display_name||"Miembro")}</b></div><div>${esc(c.content)}</div><small>${time(c.created_at)}</small></div>`).join("")||'<p class="muted">Sé el primero en comentar.</p>';
 }
 
 async function sendComment(e){
@@ -836,7 +876,7 @@ await loadSpaces();selectedSpaceId=data.id;tab="feed";homeFilter="all";notice="E
 }
 
 async function exploreView(){
-const {data,error}=await db.from("gyste_profiles").select("user_id,username,display_name,bio").neq("user_id",me.id).order("display_name").limit(100);
+const {data,error}=await db.from("gyste_profiles").select("user_id,username,display_name,bio,avatar_url").neq("user_id",me.id).order("display_name").limit(100);
 if(error){shell(`<p class="error">Error al descubrir personas: ${esc(error.message)}</p>`);return;}
 profiles=data||[];
 shell(`<section class="panel"><h3>Descubre personas</h3><input id="search" class="field" placeholder="Buscar por nombre o usuario…"></section><div id="people">${peopleHTML(profiles)}</div>`);
@@ -846,7 +886,7 @@ bindPeople();
 
 function peopleHTML(list){
 return list.map(p=>`<div class="userrow">
-<div class="avatar">${esc((p.display_name||"G").slice(0,1).toUpperCase())}</div>
+<div class="avatar">${avatarContent(p)}</div>
 <div class="userinfo"><b>${esc(p.display_name)}</b><div class="muted">@${esc(p.username||"usuario")}</div><small>${esc(p.bio||"")}</small></div>
 <button class="secondary" data-follow="${esc(p.user_id)}">${following.has(p.user_id)?"Siguiendo":"Seguir"}</button>
 <button class="ghost" data-chat="${esc(p.user_id)}">Mensaje</button>
@@ -877,11 +917,16 @@ let myCards="";
 const {data:myPosts,error:postError}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).eq("user_id",me.id).order("created_at",{ascending:false}).limit(60);
 if(!postError)myCards=await prepareCards(myPosts||[]);
 shell(`<section class="panel profile-section">
-<div class="profile-cover"></div>
-<div class="face profile-face">${esc(initials(p?.display_name))}</div>
+<div class="profile-cover" id="profile-cover-preview">${profileImageHTML(p?.cover_url)}</div>
+<div class="face profile-face" id="profile-avatar-preview">${avatarContent(p)}</div>
 <div class="profile-heading"><h2>${esc(p?.display_name||"Mi perfil")}</h2><p class="muted">@${esc(p?.username||"usuario")}</p><p class="profile-stats">${followers||0} seguidores · ${followingCount||0} siguiendo · ${(myPosts||[]).length} estados recientes</p><p>${esc(p?.bio||"Tu historia empieza aquí.")}</p></div>
 <div class="profile-form">
 <h3>Editar perfil</h3>
+<div class="profile-photo-controls">
+<p class="muted" style="font-size:12px;margin:0">Fotos públicas de perfil y portada. JPG, PNG o WebP, hasta 5 MB por imagen.</p>
+${[ ["avatar","Foto de perfil",p?.avatar_url], ["cover","Foto de portada",p?.cover_url] ].map(([kind,label,url])=>`<div class="profile-photo-row"><input type="file" id="photo-${kind}" accept="image/jpeg,image/png,image/webp" aria-label="${label}"><button type="button" class="secondary" data-photo-pick="${kind}">${url?"Cambiar":"Añadir"} ${label.toLowerCase()}</button><button type="button" class="ghost" data-photo-remove="${kind}" ${url?"":"hidden"}>Quitar</button></div>`).join("")}
+<div id="profile-photo-status" class="profile-photo-status" role="status" aria-live="polite"></div>
+</div>
 <label>Nombre visible<input id="display" class="field" maxlength="60" value="${esc(p?.display_name||"")}"></label>
 <label>Nombre de usuario<input id="username" class="field" maxlength="30" value="${esc(p?.username||"")}"></label>
 <label>Biografía<textarea id="bio" class="field" maxlength="300">${esc(p?.bio||"")}</textarea></label>
@@ -890,8 +935,66 @@ shell(`<section class="panel profile-section">
 <div class="section-heading"><h2>Mis publicaciones</h2><button class="text-link" data-filter="mine">Ver mis estados ›</button></div>
 ${postError?`<p class="error">No se pudieron cargar tus publicaciones: ${esc(postError.message)}</p>`:(myCards||'<div class="empty-state"><span class="symbol">✎</span>Todavía no has publicado nada.</div>')}`);
 document.getElementById("saveprofile").onclick=saveProfile;
+for(const kind of ["avatar","cover"]){
+ const input=document.getElementById("photo-"+kind);
+ app.querySelector(`[data-photo-pick="${kind}"]`).onclick=()=>{if(!profileImageBusy)input.click();};
+ input.onchange=()=>{const file=input.files?.[0];input.value="";if(file)changeProfileImage(kind,file);};
+ app.querySelector(`[data-photo-remove="${kind}"]`).onclick=()=>{if(confirm("¿Quitar esta fotografía de tu perfil?"))changeProfileImage(kind,null);};
+}
 document.getElementById("logout").onclick=logout;
 bindPostActions();
+}
+
+function profilePhotoStatus(message,error=false){
+ const n=document.getElementById("profile-photo-status");
+ if(n){n.textContent=message;n.className="profile-photo-status"+(error?" error":"");}
+ else say(message,error);
+}
+function refreshProfilePhotoControls(){
+ if(tab!=="profile"||!me)return;
+ const a=document.getElementById("profile-avatar-preview"),c=document.getElementById("profile-cover-preview");
+ if(a)a.innerHTML=avatarContent(me);if(c)c.innerHTML=profileImageHTML(me.cover_url);
+ const head=app.querySelector(".top-avatar");if(head)head.innerHTML=avatarContent(me);
+ for(const k of ["avatar","cover"]){
+  const pick=app.querySelector(`[data-photo-pick="${k}"]`),remove=app.querySelector(`[data-photo-remove="${k}"]`);
+  const has=Boolean(me[k+"_url"]);
+  if(pick)pick.textContent=(has?"Cambiar ":"Añadir ")+(k==="avatar"?"foto de perfil":"foto de portada");
+  if(remove)remove.hidden=!has;
+ }
+ if(a)app.querySelectorAll(".posthead-left .face").forEach(el=>{el.innerHTML=avatarContent(me);});
+}
+async function changeProfileImage(kind,file){
+ if(!me||profileImageBusy||!["avatar","cover"].includes(kind))return;
+ const uid=me.id,key=kind+"_url";
+ const extensions={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"};
+ if(file&&(!Object.hasOwn(extensions,file.type)||file.size>PROFILE_MAX_BYTES||!file.size))return profilePhotoStatus("Elige una imagen JPG, PNG o WebP de hasta 5 MB.",true);
+ profileImageBusy=true;
+ app.querySelectorAll("[data-photo-pick],[data-photo-remove]").forEach(b=>b.disabled=true);
+ const storage=db.storage.from(PROFILE_BUCKET);let newPath=null;let oldPath=null;
+ try{
+  profilePhotoStatus(file?"Subiendo fotografía…":"Quitando fotografía…");
+  const current=await db.from("gyste_profiles").select(key).eq("user_id",uid).single();
+  if(current.error)throw current.error;
+  oldPath=ownProfileImagePath(current.data?.[key],uid);
+  let url=null;
+  if(file){
+   newPath=`${uid}/${kind}-${crypto.randomUUID()}.${extensions[file.type]}`;
+   const up=await storage.upload(newPath,file,{contentType:file.type,cacheControl:"3600",upsert:false});
+   if(up.error)throw up.error;
+   url=storage.getPublicUrl(newPath).data.publicUrl;
+   if(!profileImageUrl(url))throw new Error("No se obtuvo un enlace de imagen válido.");
+  }
+  if(me?.id!==uid)throw new Error("La sesión ha cambiado. Vuelve a intentarlo.");
+  const saved=await db.from("gyste_profiles").update({[key]:url,updated_at:new Date().toISOString()}).eq("user_id",uid).select().single();
+  if(saved.error)throw saved.error;
+  if(me?.id===uid){me={...me,...saved.data};refreshProfilePhotoControls();}
+  // Remove only objects belonging to this account, after the database update succeeds.
+  // Avoid deleting on uncertain network failures (the saved URL may already be in use).
+  let cleanupError=false;
+  if(oldPath&&oldPath!==newPath){try{const result=await storage.remove([oldPath]);cleanupError=Boolean(result.error);}catch{cleanupError=true;}}
+  if(me?.id===uid)profilePhotoStatus((file?"Fotografía guardada.":"Fotografía quitada del perfil.")+(cleanupError?" No se pudo limpiar el archivo anterior.":""),cleanupError);
+ }catch(e){if(me?.id===uid)profilePhotoStatus("No se pudo completar el cambio: "+(e?.message||"revisa la conexión")+". Actualiza el perfil antes de reintentar.",true);}
+ finally{profileImageBusy=false;app.querySelectorAll("[data-photo-pick],[data-photo-remove]").forEach(b=>b.disabled=false);}
 }
 
 async function saveProfile(){
@@ -903,7 +1006,7 @@ const b=document.getElementById("saveprofile");b.disabled=true;
 const {data,error}=await db.from("gyste_profiles").update({display_name,username,bio,updated_at:new Date().toISOString()}).eq("user_id",me.id).select().single();
 b.disabled=false;
 if(error)return say("No se pudo guardar: "+error.message,true);
-me={...me,...data};say("Perfil actualizado.");
+me={...me,...data};await profileView();say("Perfil actualizado.");
 }
 
 async function notificationView(){
@@ -919,7 +1022,7 @@ if(unread.length){const {error:updateError}=await db.from("gyste_notifications")
 let chatRefreshTimer=null;
 let chatRenderSignature="";
 function stopChatRefresh(){if(chatRefreshTimer){clearInterval(chatRefreshTimer);chatRefreshTimer=null;}}
-function chatMarkup(items){return (items||[]).map(m=>`<div class="comment" style="text-align:${m.sender_id===me.id?"right":"left"}"><div class="bodytext">${esc(m.content)}</div><small>${time(m.created_at)}</small></div>`).join("")||'<p class="muted">Inicia la conversación.</p>';}
+function chatMarkup(items){return (items||[]).map(m=>`<div class="comment" style="text-align:${m.sender_id===me.id?"right":"left"}"><div class="comment-author" style="justify-content:${m.sender_id===me.id?"flex-end":"flex-start"}"><span class="face">${avatarContent(m.sender_id===me.id?me:chatPeerProfile)}</span></div><div class="bodytext">${esc(m.content)}</div><small>${time(m.created_at)}</small></div>`).join("")||'<p class="muted">Inicia la conversación.</p>';}
 async function refreshChatMessages(target,markRead=false){
  if(!me||tab!=="messages"||chatUser!==target)return;
  const {data,error}=await db.from("gyste_messages").select("id,sender_id,recipient_id,content,created_at,read_at")
@@ -948,8 +1051,8 @@ async function messagesView(){
   .or(`sender_id.eq.${me.id},recipient_id.eq.${me.id}`).order("created_at",{ascending:false}).limit(200);
   if(error){shell(`<p class="error">No se pudieron cargar mensajes: ${esc(error.message)}</p>`);return;}
   const ids=[...new Set((data||[]).map(m=>m.sender_id===me.id?m.recipient_id:m.sender_id))];let map={};
-  if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x.display_name);}
-  shell(`<section class="panel"><h2>Gyste Chat</h2><p class="muted">Mensajería privada entre miembros. Abre un perfil desde Descubrir para iniciar una conversación.</p>${ids.map(id=>{const last=(data||[]).find(m=>m.sender_id===id||m.recipient_id===id);const unread=(data||[]).filter(m=>m.sender_id===id&&m.recipient_id===me.id&&!m.read_at).length;return `<div class="userrow"><div class="userinfo"><b>${esc(map[id]||"Miembro")}</b>${unread?` <strong aria-label="Mensajes sin leer">(${unread} nuevos)</strong>`:""}<small class="muted" style="display:block">${esc((last?.content||"").slice(0,100))}</small></div><button class="secondary" data-openchat="${esc(id)}">Abrir</button></div>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</section>`);
+  if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
+  shell(`<section class="panel"><h2>Gyste Chat</h2><p class="muted">Mensajería privada entre miembros. Abre un perfil desde Descubrir para iniciar una conversación.</p>${ids.map(id=>{const last=(data||[]).find(m=>m.sender_id===id||m.recipient_id===id);const unread=(data||[]).filter(m=>m.sender_id===id&&m.recipient_id===me.id&&!m.read_at).length;return `<div class="userrow"><span class="face">${avatarContent(map[id])}</span><div class="userinfo"><b>${esc(map[id]?.display_name||"Miembro")}</b>${unread?` <strong aria-label="Mensajes sin leer">(${unread} nuevos)</strong>`:""}<small class="muted" style="display:block">${esc((last?.content||"").slice(0,100))}</small></div><button class="secondary" data-openchat="${esc(id)}">Abrir</button></div>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</section>`);
   // Permite iniciar una conversación sin tener mensajes previos.
   const panel=document.querySelector(".panel");
   if(panel){
@@ -981,10 +1084,11 @@ async function messagesView(){
  }
  const target=chatUser;
  if(target===me.id){chatUser=null;return messagesView();}
- const {data:person,error:personError}=await db.from("gyste_profiles").select("display_name").eq("user_id",target).maybeSingle();
+ const {data:person,error:personError}=await db.from("gyste_profiles").select("display_name,avatar_url").eq("user_id",target).maybeSingle();
  if(chatUser!==target||tab!=="messages")return;
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
- shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><h2>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · mensajes de texto</p><div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chatstatus" class="error" role="status"></p><form id="sendmsg" class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" required autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></form></section>`);
+ chatPeerProfile=person;
+ shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · mensajes de texto</p><div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chatstatus" class="error" role="status"></p><form id="sendmsg" class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" required autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></form></section>`);
  document.getElementById("back").onclick=()=>{stopChatRefresh();chatUser=null;messagesView();};
  document.getElementById("sendmsg").onsubmit=sendMessage;
  await refreshChatMessages(target,true);
