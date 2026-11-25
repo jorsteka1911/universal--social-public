@@ -774,15 +774,46 @@ function pagesView(){const f=pageFollows();shell(`<section class="panel"><h2>Pá
 function pageShelf(mode){const f=pageFollows(),pages=mode==="following"?GYSTE_PAGES.filter(p=>f.has(p[0])):GYSTE_PAGES.slice(0,5);return `<section class="panel"><div class="section-heading"><h2>${mode==="following"?"Tus páginas":"Páginas recomendadas"}</h2><button class="text-link" data-tab="pages">Ver todas</button></div><div style="display:flex;gap:10px;overflow-x:auto">${pages.map(p=>`<div style="flex:0 0 min(85%,280px)">${pageCard(p)}</div>`).join("")||"<p>Elige páginas que te interesen.</p>"}</div><p class="muted">Fuentes de consulta, no noticias en directo.</p></section>`;}
 function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{b.textContent=f.has(id)?"Siguiendo":"Seguir";b.setAttribute("aria-pressed",String(f.has(id)));if(homeFilter==="following"&&!f.has(id))b.closest("article")?.remove();}});}
 const originalReels=[
-["🚘","El futuro ya se imaginaba",["1925: un automóvil controlado por radio","Los inventores exploraban el futuro","La tecnología sigue evolucionando"]],
-["🎨","Crea algo hoy",["Todo empieza con una idea","No necesitas hacerlo perfecto","Comparte tu talento en Gyste"]],
-["💛","El valor de la amistad",["Escucha con cariño","Comparte con respeto","Construyamos una comunidad amable"]]];
+{title:"El automóvil del futuro",caption:"Recreación artística de un automóvil radiocontrolado de 1925.",kind:"car",colors:["#183b58","#0c6671"]},
+{title:"El arte cobra vida",caption:"Una pequeña pintura animada, creada para Gyste.",kind:"art",colors:["#342155","#c36d6b"]},
+{title:"Una amistad que crece",caption:"Dos personajes originales comparten una flor.",kind:"friends",colors:["#294759","#526f47"]}
+];
 let reelIndex=0;
 function reelsView(){
- const r=originalReels[reelIndex];shell(`<section class="panel"><h2>Reels Gyste</h2><p>Animaciones originales con asistencia de IA, sin vídeos ni música ajenos.</p><div id="reelstage" style="width:min(100%,280px);aspect-ratio:9/16;margin:auto;background:linear-gradient(145deg,#102a47,#62427c);color:white;border-radius:18px;display:flex;flex-direction:column;justify-content:center;text-align:center;padding:20px;box-sizing:border-box"><div style="font-size:60px">${r[0]}</div><h2>${esc(r[1])}</h2><p id="reeltext" style="font-size:22px"></p><small>GYSTE · ORIGINAL IA</small></div><div class="actions"><button class="secondary" id="reelprev">Anterior</button><button class="primary" id="reelplay">Reproducir</button><button class="secondary" id="reelnext">Siguiente</button></div><p id="reelstatus"></p><button class="secondary full" data-tab="videos">Vídeos de la comunidad</button></section>`);
- const stage=document.getElementById("reelstage"),play=document.getElementById("reelplay");let timer=null,scene=0;const draw=()=>{document.getElementById("reeltext").textContent=r[2][scene];document.getElementById("reelstatus").textContent=(reelIndex+1)+"/3 · "+(scene+1)+"/3";};const stop=()=>{clearInterval(timer);timer=null;play.textContent="Reproducir";};draw();
- play.onclick=()=>{if(timer){stop();return;}scene=0;draw();play.textContent="Pausar";timer=setInterval(()=>{if(!stage.isConnected||tab!=="reels"||scene===2){stop();return;}scene++;draw();},4000);};
- document.getElementById("reelprev").onclick=()=>{stop();reelIndex=(reelIndex+2)%3;reelsView();};document.getElementById("reelnext").onclick=()=>{stop();reelIndex=(reelIndex+1)%3;reelsView();};
+ const r=originalReels[reelIndex]||originalReels[0];
+ shell(`<section class="panel"><h2>▶ Reels Gyste</h2><p>Animaciones originales · 3 cortos de 12 segundos.</p><div style="display:flex;gap:8px;overflow-x:auto">${originalReels.map((x,i)=>`<button class="secondary" data-reel-pick="${i}" aria-pressed="${i===reelIndex}">${i+1}. ${esc(x.title)}</button>`).join("")}</div><div style="position:relative;width:min(100%,300px);aspect-ratio:9/16;margin:12px auto;border-radius:16px;overflow:hidden;background:#101e2f"><canvas id="reelcanvas" width="360" height="640" role="img" aria-label="${esc(r.caption)}" style="display:block;width:100%;height:100%"></canvas></div><h3>${esc(r.title)}</h3><p class="muted">${esc(r.caption)} Sin música ni material audiovisual ajeno.</p><div class="actions"><button class="secondary" id="reelprev">Anterior</button><button class="primary" id="reelplay">▶ Reproducir</button><button class="secondary" id="reelnext">Siguiente</button></div><progress id="reelprogress" value="0" max="12" style="width:100%"></progress><p id="reelstatus" role="status">1 de 3 · Pulsa Reproducir</p><button class="secondary full" id="reelfull">Pantalla completa</button><button class="primary full" data-tab="videos">Ver vídeos reales de la comunidad</button><button class="secondary full" id="reelpublish">Publicar mi vídeo</button></section>`);
+ const canvas=document.getElementById("reelcanvas"),ctx=canvas.getContext("2d"),play=document.getElementById("reelplay"),status=document.getElementById("reelstatus"),progress=document.getElementById("reelprogress");if(!ctx){status.textContent="Este navegador no permite dibujar la animación.";play.disabled=true;return;}
+ let frame=0,running=false,elapsed=0,start=0;
+ const circle=(x,y,rad,color)=>{ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();};
+ const rect=(x,y,w,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x,y,w,h);};
+ const line=(x,y,x2,y2,color,w=3)=>{ctx.strokeStyle=color;ctx.lineWidth=w;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x2,y2);ctx.stroke();};
+ const poly=(p,color)=>{ctx.fillStyle=color;ctx.beginPath();p.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fill();};
+ const label=(text,x,y,size,color="#fff")=>{ctx.font="bold "+size+"px sans-serif";ctx.textAlign="center";ctx.fillStyle=color;ctx.fillText(text,x,y);};
+ function draw(seconds){
+ const t=Math.min(12,seconds),g=ctx.createLinearGradient(0,0,360,640);g.addColorStop(0,r.colors[0]);g.addColorStop(1,r.colors[1]);ctx.fillStyle=g;ctx.fillRect(0,0,360,640);
+ if(r.kind==="car"){
+ circle(273,145,48,"#f2c780");for(let i=0;i<7;i++){let x=((i*72-t*12)%504+504)%504-72,h=70+(i%3)*24;rect(x,350-h,55,h,"#274d61");for(let j=0;j<3;j++)rect(x+8+j*15,360-h,7,12,"#e9ba77");}
+ rect(0,350,360,170,"#26333f");for(let i=0;i<5;i++){let x=((i*96-t*90)%480+480)%480-80;rect(x,475,50,5,"#f5d999");}
+ const x=65+45*Math.sin(t*.6),y=397+2*Math.sin(t*7);
+ ctx.save();ctx.translate(x,y);rect(0,0,220,42,"#c88943");poly([[34,0],[64,-49],[157,-49],[195,0]],"#e6af65");poly([[70,-40],[111,-40],[111,-5],[49,-5]],"#91bdc8");poly([[122,-40],[153,-40],[177,-5],[122,-5]],"#91bdc8");rect(208,8,14,17,"#f9e5a0");for(const w of [45,178]){circle(w,43,24,"#131d26");circle(w,43,13,"#d8aa72");for(let j=0;j<5;j++){const a=j*Math.PI*2/5+t*5;line(w,43,w+Math.cos(a)*11,43+Math.sin(a)*11,"#553b32",2);}}
+ line(131,-49,131,-86,"#f7e8bf",2);for(let j=0;j<3;j++){const a=(t*18+j*18)%54;ctx.strokeStyle="rgba(255,238,190,"+(1-a/54)+")";ctx.lineWidth=2;ctx.beginPath();ctx.arc(131,-86,a,Math.PI*1.12,Math.PI*1.88);ctx.stroke();}ctx.restore();label("1925",180,90,44);label("Recreación artística",180,570,19);
+ }else if(r.kind==="art"){
+ rect(43,109,274,405,"#8e6249");rect(52,118,256,387,"#fff1d7");rect(64,130,232,363,"#f5e7cb");const steps=Math.floor(t*18);for(let i=0;i<Math.min(steps,200);i++){const a=i*.31,rad=14+i*.57;const x=180+Math.cos(a)*rad,y=310+Math.sin(a)*rad;circle(x,y,7+i%4,["#cb6c76","#e6b55a","#5d9c9a","#8070ad"][Math.floor(i/25)%4]);}const i=Math.min(steps,199),a=i*.31,rad=14+i*.57;ctx.save();ctx.translate(180+Math.cos(a)*rad,310+Math.sin(a)*rad);ctx.rotate(-.5);rect(-6,-100,12,90,"#a05f3f");poly([[-8,-10],[8,-10],[0,9]],"#34354b");ctx.restore();label("Crea tu mundo",180,570,24);
+ }else{
+ circle(277,133,44,"#f1d494");poly([[0,405],[90,320],[180,410],[260,310],[360,403],[360,640],[0,640]],"#537c65");rect(0,435,360,205,"#345b46");
+ const person=(x,y,color,ear)=>{circle(x-21,y-35,17,ear);circle(x+21,y-35,17,ear);circle(x,y,34,color);circle(x-12,y-3,4,"#243341");circle(x+12,y-3,4,"#243341");circle(x,y+11,5,"#8e594d");ctx.strokeStyle="#6f4c44";ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y+14,8,0,Math.PI);ctx.stroke();circle(x,y+74,40,color);circle(x-26,y+116,14,ear);circle(x+26,y+116,14,ear);};
+ const ax=70+Math.min(1,t/4)*43,bx=290-Math.min(1,t/4)*43,y=347+Math.sin(t*2)*2;person(ax,y,"#e9c6a7","#bf9278");person(bx,y,"#d6a474","#a57553");line(ax+23,y+70,180,y+52,"#e9c6a7",15);line(bx-23,y+70,180,y+52,"#d6a474",15);line(180,y+55,180,y-13,"#6f9d57",5);const grow=Math.min(1,t/5);for(let i=0;i<6;i++){const a=i*Math.PI/3;circle(180+Math.cos(a)*16*grow,y-13+Math.sin(a)*16*grow,10*grow,"#f5c875");}circle(180,y-13,7*grow,"#b7774d");label("Compartir nos acerca",180,570,23);
+ }
+ label("GYSTE · ANIMACIÓN ORIGINAL",180,35,15);progress.value=t;
+ }
+ function stop(){running=false;cancelAnimationFrame(frame);play.textContent=elapsed>=12?"↻ Repetir":"▶ Continuar";}
+ function tick(now){if(!running||!canvas.isConnected||tab!=="reels"){stop();return;}elapsed=Math.min(12,(now-start)/1000);draw(elapsed);if(elapsed>=12){stop();status.textContent="Animación terminada";return;}frame=requestAnimationFrame(tick);}
+ draw(0);status.textContent=(reelIndex+1)+" de "+originalReels.length+" · Pulsa Reproducir";
+ play.onclick=()=>{if(running){stop();return;}if(elapsed>=12)elapsed=0;running=true;start=performance.now()-elapsed*1000;play.textContent="⏸ Pausar";frame=requestAnimationFrame(tick);};
+ const select=i=>{stop();reelIndex=(i+originalReels.length)%originalReels.length;reelsView();};
+ document.getElementById("reelprev").onclick=()=>select(reelIndex-1);document.getElementById("reelnext").onclick=()=>select(reelIndex+1);app.querySelectorAll("[data-reel-pick]").forEach(b=>b.onclick=()=>select(Number(b.dataset.reelPick)));
+ document.getElementById("reelfull").onclick=async()=>{try{if(canvas.parentElement.requestFullscreen)await canvas.parentElement.requestFullscreen();else say("Pantalla completa no disponible en este navegador.",true);}catch{say("No se pudo abrir pantalla completa.",true);}};
+ document.getElementById("reelpublish").onclick=goCompose;
 }
 function historyView(){
  const cards=historicalImages.map(x=>{
