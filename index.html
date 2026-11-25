@@ -461,6 +461,19 @@ const GYSTE_PROJECTS=[
 function projectCatalog(filter="all"){
  return GYSTE_PROJECTS.filter(p=>filter==="all"||(filter==="beta"&&p.status==="beta")||(filter==="planned"&&p.status==="planned")||(filter==="app"&&p.category==="app"));
 }
+function projectShareUrl(id,origin=location.origin){
+ if(!GYSTE_PROJECTS.some(p=>p.id===id))return null;
+ return origin+"/proyectos.html#"+encodeURIComponent(id);
+}
+async function shareProject(id,button,status){
+ const p=GYSTE_PROJECTS.find(x=>x.id===id),url=projectShareUrl(id);if(!p||!url||button.disabled)return;
+ button.disabled=true;
+ try{
+  if(typeof navigator.share==="function"){try{await navigator.share({title:p.title+" · Gyste / JORSTEKA",text:"Conoce este proyecto y su disponibilidad.",url});if(status.isConnected)status.textContent="Enlace compartido.";return;}catch(e){if(e?.name==="AbortError")return;}}
+  if(navigator.clipboard?.writeText){try{await navigator.clipboard.writeText(url);if(status.isConnected)status.textContent="Enlace copiado. Puedes pegarlo en WhatsApp u otra aplicación.";return;}catch{}}
+  if(status.isConnected){const input=document.createElement("input");input.className="field";input.readOnly=true;input.value=url;input.setAttribute("aria-label","Enlace del proyecto");status.replaceChildren(document.createTextNode("Copia este enlace:"),input);input.focus();input.select();}
+ }finally{button.disabled=false;}
+}
 function projectAppsPreview(){
  return '<section class="panel"><p class="muted">Promoción propia · Gyste / JORSTEKA</p><h2>📱 Descubre nuestras aplicaciones</h2><p>Conoce el lector de documentos, JORDAYKAT AI, el estudio creativo y otros proyectos. Explora las herramientas disponibles y los próximos lanzamientos.</p><button class="secondary full" data-tab="apps">Ver aplicaciones y proyectos</button></section>';
 }
@@ -472,7 +485,8 @@ function projectAppsView(){
  if(tab!=="apps"||me?.id!==uid||!list.isConnected)return;
  const projects=projectCatalog(filter.value);
  document.getElementById("project-count").textContent=projects.length+" proyecto(s)";
- list.innerHTML=projects.map(p=>`<article class="panel"><p class="muted">Promoción propia · ${p.status==="beta"?"Disponible en Gyste · beta":"En preparación"}</p><h3>${esc(p.icon+" "+p.title)}</h3><p>${esc(p.description)}</p>${p.id==="jordaykat"?'<p><b>Servicio independiente de Gyste.</b> Modelo previsto: acceso básico limitado y suscripción premium opcional. Precio orientativo en estudio: 9,99 €/mes. Aún no contratable; límites y precio final pendientes.</p>':p.id==="reader"?'<p>Aplicación independiente de Gyste. Modelo comercial y precio pendientes de definir.</p>':""}${p.status==="beta"?`<button type="button" class="primary full" data-project-open="${esc(p.id)}">${esc(p.action)}</button><p class="muted">Versión web en pruebas; no implica disponibilidad en Google Play.</p>`:`<button type="button" class="secondary full" data-project-interest="${esc(p.id)}">Me interesa · sin compromiso</button><p class="muted">Todavía no hay enlace de descarga, fecha ni compras disponibles.</p>`}</article>`).join("");
+ list.innerHTML=projects.map(p=>`<article class="panel"><p class="muted">Promoción propia · ${p.status==="beta"?"Disponible en Gyste · beta":"En preparación"}</p><h3>${esc(p.icon+" "+p.title)}</h3><p>${esc(p.description)}</p>${p.id==="jordaykat"?'<p><b>Servicio independiente de Gyste.</b> Modelo previsto: acceso básico limitado y suscripción premium opcional. Precio orientativo en estudio: 9,99 €/mes. Aún no contratable; límites y precio final pendientes.</p>':p.id==="reader"?'<p>Aplicación independiente de Gyste. Modelo comercial y precio pendientes de definir.</p>':""}${p.status==="beta"?`<button type="button" class="primary full" data-project-open="${esc(p.id)}">${esc(p.action)}</button><p class="muted">Versión web en pruebas; no implica disponibilidad en Google Play.</p>`:`<button type="button" class="secondary full" data-project-interest="${esc(p.id)}">Me interesa · sin compromiso</button><p class="muted">Todavía no hay enlace de descarga, fecha ni compras disponibles.</p>`}<button type="button" class="secondary full" data-project-share="${esc(p.id)}">↗ Compartir proyecto</button><p class="muted" role="status" data-project-share-status></p></article>`).join("");
+ list.querySelectorAll("[data-project-share]").forEach(b=>b.onclick=()=>{if(tab==="apps"&&me?.id===uid)shareProject(b.dataset.projectShare,b,b.parentElement.querySelector("[data-project-share-status]"));});
  list.querySelectorAll("[data-project-open]").forEach(b=>b.onclick=()=>{if(tab!=="apps"||me?.id!==uid)return;const p=GYSTE_PROJECTS.find(x=>x.id===b.dataset.projectOpen&&x.status==="beta");if(p?.tab)goTab(p.tab);});
  list.querySelectorAll("[data-project-interest]").forEach(b=>b.onclick=()=>{if(tab!=="apps"||me?.id!==uid)return;const p=GYSTE_PROJECTS.find(x=>x.id===b.dataset.projectInterest&&x.status==="planned");if(!p)return;commercialInterest={uid,text:"Me interesa conocer el proyecto "+p.title+" cuando esté listo. Solicitud de información sin compra ni compromiso."};goTab("feedback");});
  };
@@ -513,7 +527,7 @@ stopChatRefresh();stopVoiceCapture();stopStoryTimer();chatMediaCache.clear();med
 app.innerHTML=`
 <section class="auth">
 <h1>Gyste</h1>
-<p class="muted">Tu universo social: comparte, descubre y conecta.</p>
+<p class="muted">Tu universo social: comparte, descubre y conecta.</p><p><a href="/proyectos.html" target="_blank" rel="noopener noreferrer">Conoce nuestras aplicaciones y proyectos ↗</a></p>
 <div id="notice" class="notice ${noticeError?"error":""}">${esc(notice)}</div>
 <input id="email" class="field" type="email" autocomplete="email" placeholder="Correo electrónico">
 <input id="password" class="field" type="password" minlength="6" autocomplete="current-password" placeholder="Contraseña"><label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input id="show-login-password" type="checkbox"> Mostrar contraseña</label>
