@@ -944,7 +944,7 @@ function editorialFeed(mode,pageId=null,limit=Infinity){
 }
 let editorialReactionState=null;
 function editorialReactionsFor(uid){
- if(!editorialReactionState||editorialReactionState.uid!==uid)editorialReactionState={uid,mine:new Map(),ready:false,loading:null,busy:new Set()};
+ if(!editorialReactionState||editorialReactionState.uid!==uid)editorialReactionState={uid,mine:new Map(),ready:false,loading:null,busy:new Set(),totals:new Map(),totalsReady:false,totalSerial:0};
  return editorialReactionState;
 }
 function editorialReactionActive(state){return editorialReactionState===state&&me?.id===state.uid&&session?.user?.id===state.uid;}
@@ -953,7 +953,24 @@ function editorialReactionHTML(noteId){
  return '<div class="reaction-bar" role="group" aria-label="Tu reacción al artículo">'+REACTION_TYPES.map(([type,emoji,label])=>{
  const chosen=state?.mine.get(noteId)===type;
  return `<button type="button" data-editorial-react="${esc(noteId)}" data-reaction-type="${esc(type)}" class="${chosen?"chosen":""}" aria-pressed="${chosen}" aria-label="${esc(label)}" title="${esc(label)}" ${state?.busy.has(noteId)?"disabled":""}>${emoji}</button>`;
- }).join("")+'</div>';
+ }).join("")+'</div>'+`<p class="muted" data-editorial-total="${esc(noteId)}" role="status">${esc(editorialTotalLabel(state,noteId))}</p>`;
+}
+function editorialTotalLabel(state,id){
+ if(!state?.totalsReady)return "Reacciones de la comunidad: sin datos actualizados";
+ const total=state.totals.get(id);
+ return Number.isSafeInteger(total)&&total>=5?total+" reacciones de la comunidad":"El total se muestra a partir de 5 reacciones";
+}
+async function loadEditorialTotals(state){
+ if(!editorialReactionActive(state))return false;
+ const serial=++state.totalSerial,active=()=>editorialReactionActive(state)&&serial===state.totalSerial;
+ try{
+ const known=GYSTE_EDITORIAL.map(n=>n.noteId);
+ const {data,error}=await db.from("gyste_editorial_reaction_totals").select("note_id,total").in("note_id",known);
+ if(!active())return false;if(error)throw error;
+ state.totals=new Map((data||[]).filter(x=>known.includes(x.note_id)&&Number.isSafeInteger(Number(x.total))&&Number(x.total)>=5).map(x=>[x.note_id,Number(x.total)]));state.totalsReady=true;
+ }catch{if(!active())return false;state.totalsReady=false;}
+ if(active())app.querySelectorAll("[data-editorial-total]").forEach(el=>{el.textContent=editorialTotalLabel(state,el.dataset.editorialTotal);});
+ return state.totalsReady;
 }
 function refreshEditorialReactionButtons(state){
  if(!editorialReactionActive(state))return;
@@ -980,7 +997,7 @@ async function toggleEditorialReaction(state,id,type){
  const remove=state.mine.get(id)===type,q=db.from("gyste_editorial_reactions");
  const {error}=remove?await q.delete().eq("user_id",state.uid).eq("note_id",id):await q.upsert({user_id:state.uid,note_id:id,reaction_type:type},{onConflict:"user_id,note_id"});
  if(error)throw error;if(!editorialReactionActive(state))return false;
- if(remove)state.mine.delete(id);else state.mine.set(id,type);return true;
+ if(remove)state.mine.delete(id);else state.mine.set(id,type);void loadEditorialTotals(state);return true;
  }catch{state.ready=false;if(editorialReactionActive(state))say("No se pudo confirmar tu reacción. Vuelve a intentarlo.",true);return false;}
  finally{state.busy.delete(id);refreshEditorialReactionButtons(state);}
 }
@@ -989,7 +1006,7 @@ function bindEditorialReactions(){
  const buttons=app.querySelectorAll("[data-editorial-react]");if(!buttons.length)return;
  const state=editorialReactionsFor(me.id);
  buttons.forEach(b=>b.onclick=()=>toggleEditorialReaction(state,b.dataset.editorialReact,b.dataset.reactionType));
- refreshEditorialReactionButtons(state);void loadEditorialReactions(state);
+ refreshEditorialReactionButtons(state);void loadEditorialReactions(state);void loadEditorialTotals(state);
 }
 const editorialSavedKey=uid=>"gyste-editorial-saved-v1:"+uid;
 let editorialCloud=null;
