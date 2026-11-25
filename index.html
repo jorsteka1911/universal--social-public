@@ -1923,14 +1923,49 @@ async function saveProfile(){
  }
 }
 
+let notificationEpoch=0,notificationFilter="all";
+const notificationLocks=new Set();
+function visibleNotifications(rows,filter){return filter==="unread"?rows.filter(n=>!n.is_read):rows;}
+async function markNotificationRows(uid,ids){
+ if(!uid||me?.id!==uid||!ids.length||ids.length>60||notificationLocks.has(uid))return false;
+ notificationLocks.add(uid);
+ try{
+ const {data,error}=await db.from("gyste_notifications").update({is_read:true}).eq("user_id",uid).in("id",ids).select("id");
+ if(error)throw error;
+ return Array.isArray(data)&&ids.every(id=>data.some(n=>n.id===id));
+ }finally{notificationLocks.delete(uid);}
+}
 async function notificationView(){
-const uid=me?.id;if(!uid)return;
-const {data,error}=await db.from("gyste_notifications").select("*").eq("user_id",uid).order("created_at",{ascending:false}).limit(60);
-if(tab!=="notifications"||me?.id!==uid)return;
-if(error){shell(`<p class="error">No se pudieron cargar avisos: ${esc(error.message)}</p>`);return;}
-shell(`<section class="panel"><h3>Notificaciones</h3>${(data||[]).map(n=>`<div class="userrow"><div class="userinfo">${esc(n.message)}<small class="muted">${time(n.created_at)}</small></div>${n.is_read?"":"<span class='author'>Nuevo</span>"}</div>`).join("")||'<p class="muted">Todavía no tienes notificaciones.</p>'}</section>`);
-const unread=(data||[]).filter(n=>!n.is_read).map(n=>n.id);
-if(unread.length){const {error:updateError}=await db.from("gyste_notifications").update({is_read:true}).in("id",unread);if(updateError)console.warn("No se pudieron marcar avisos como leídos:",updateError.message);}
+ const uid=me?.id,epoch=++notificationEpoch;if(!uid)return;
+ const valid=()=>tab==="notifications"&&me?.id===uid&&epoch===notificationEpoch;
+ shell('<section class="panel"><h2>Notificaciones</h2><p role="status">Cargando avisos…</p></section>');
+ try{
+ const {data,error}=await db.from("gyste_notifications").select("id,message,is_read,created_at").eq("user_id",uid).order("created_at",{ascending:false}).order("id",{ascending:false}).limit(60);
+ if(!valid())return;if(error)throw error;
+ const rows=data||[];
+ shell('<section class="panel"><h2>Notificaciones</h2><p class="muted">Últimos 60 avisos. Tú decides cuándo marcarlos como leídos.</p><div class="actions"><button class="secondary" data-notice-filter="all">Todos</button><button class="secondary" data-notice-filter="unread">Sin leer</button><button class="secondary" id="refresh-notices">Actualizar</button></div><p id="notice-count" role="status"></p><button class="primary full" id="read-notices">Marcar avisos mostrados como leídos</button><p class="muted" id="notice-result" role="status"></p><div id="notice-list"></div></section>');
+ const box=document.getElementById("notice-list"),bulk=document.getElementById("read-notices"),status=document.getElementById("notice-result");
+ let busy=false;
+ const draw=()=>{
+ if(!valid())return;
+ const displayed=visibleNotifications(rows,notificationFilter),unread=rows.filter(n=>!n.is_read).length;
+ document.getElementById("notice-count").textContent=unread+" sin leer entre los últimos "+rows.length+" avisos.";
+ app.querySelectorAll("[data-notice-filter]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.noticeFilter===notificationFilter)));
+ bulk.disabled=busy||!displayed.some(n=>!n.is_read);
+ box.innerHTML=displayed.map((n,i)=>`<div class="userrow"><div class="userinfo">${esc(n.message)}<small class="muted">${time(n.created_at)}</small></div>${n.is_read?'<span class="muted">Leído</span>':`<button class="secondary" data-read-index="${i}" ${busy?"disabled":""}>Marcar leído</button>`}</div>`).join("")||'<p class="muted">No hay avisos en esta selección.</p>';
+ box.querySelectorAll("[data-read-index]").forEach(b=>b.onclick=()=>mark([displayed[Number(b.dataset.readIndex)].id]));
+ };
+ const mark=async(ids)=>{
+ if(busy||!valid()||!ids.length)return;busy=true;status.textContent="Guardando…";draw();
+ try{const confirmed=await markNotificationRows(uid,ids);if(!valid())return;if(!confirmed)throw Error("No confirmado");rows.forEach(n=>{if(ids.includes(n.id))n.is_read=true;});status.textContent="Avisos actualizados.";}
+ catch{if(valid())status.textContent="No se pudo confirmar el cambio. Actualiza los avisos y vuelve a intentarlo.";}
+ finally{busy=false;if(valid())draw();}
+ };
+ bulk.onclick=()=>mark(visibleNotifications(rows,notificationFilter).filter(n=>!n.is_read).map(n=>n.id));
+ document.getElementById("refresh-notices").onclick=()=>{if(!busy&&valid())notificationView();};
+ app.querySelectorAll("[data-notice-filter]").forEach(b=>b.onclick=()=>{if(!busy&&valid()){notificationFilter=b.dataset.noticeFilter;draw();}});
+ draw();
+ }catch{if(valid()){shell('<section class="panel"><h2>Notificaciones</h2><p class="error">No se pudieron cargar los avisos.</p><button class="secondary" data-tab="notifications">Reintentar</button></section>');}}
 }
 
 // Gyste Chat: consulta periódica limitada a la conversación abierta.
