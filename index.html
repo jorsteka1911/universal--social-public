@@ -1897,7 +1897,7 @@ const page=sharedPostId?0:Number.isSafeInteger(requestedPage)&&requestedPage>=0?
 feedPageState={key:viewKey,page};
 const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
 if(news&&valid()){
- shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 02</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
+ shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 03</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
 }
 const showError=()=>{
  if(!valid())return;
@@ -1933,7 +1933,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 02</p></div>
+<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 03</p></div>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading" id="community-feed-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones en esta página</span></div>
@@ -2081,15 +2081,42 @@ async function deletePost(id,button){
   if(me?.id===uid&&tab===startTab)say(deleted?"Publicación eliminada; actualiza la sección.":"No se pudo confirmar la eliminación. Actualiza la sección antes de intentarlo otra vez.",true);
  }finally{postDeleteLocks.delete(key);if(button){button.disabled=false;button.textContent=oldLabel;}}
 }
+const reactingPostIds=new Set();
+function reactionButtons(id){return Array.from(app.querySelectorAll("[data-react]")).filter(n=>n.dataset.target===id);}
+function paintPostReaction(id,kind,total){
+ if(kind)reactionMine.set(id,kind);else reactionMine.delete(id);
+ reactionButtons(id).forEach(n=>{const selected=n.dataset.react===kind;n.classList.toggle("chosen",selected);n.setAttribute("aria-pressed",String(selected));});
+ const p=posts.find(x=>x.id===id);if(p&&total!==null)p.likes=total;
+ Array.from(app.querySelectorAll("[data-reactors]")).filter(n=>n.dataset.reactors===id).forEach(n=>{n.textContent=total===null?"Ver reacciones":"Ver reacciones · "+total;});
+ const box=document.getElementById("reactors-"+id);if(box){box.classList.add("hidden");box.textContent="";}
+}
 async function reactPost(id,type,b){
- if(b.disabled)return;const bar=b.closest(".reaction-bar");bar.querySelectorAll("button").forEach(x=>x.disabled=true);
- try{const old=reactionMine.get(id);let q;
- if(old===type)q=db.from("reactions").delete().eq("post_id",id).eq("user_id",me.id);
- else if(old)q=db.from("reactions").update({reaction_type:type}).eq("post_id",id).eq("user_id",me.id);
- else q=db.from("reactions").insert({post_id:id,user_id:me.id,reaction_type:type});
- const {error}=await q;if(error)throw error;
- await renderTab();
- }catch(e){say("No se pudo reaccionar: "+e.message,true);bar.querySelectorAll("button").forEach(x=>x.disabled=false);}
+ const uid=me?.id,epoch=cardsEpoch,key=uid+":"+id;
+ if(!uid||session?.user?.id!==uid||b.disabled||reactingPostIds.has(key)||!REACTION_TYPES.some(r=>r[0]===type)||!posts.some(p=>p.id===id))return;
+ const active=()=>me?.id===uid&&session?.user?.id===uid&&cardsEpoch===epoch;
+ reactingPostIds.add(key);reactionButtons(id).forEach(n=>n.disabled=true);
+ try{
+  const old=reactionMine.get(id),wanted=old===type?null:type;
+  try{
+   let q;if(wanted===null)q=db.from("reactions").delete().eq("post_id",id).eq("user_id",uid);
+   else if(old)q=db.from("reactions").update({reaction_type:type}).eq("post_id",id).eq("user_id",uid);
+   else q=db.from("reactions").insert({post_id:id,user_id:uid,reaction_type:type});
+   await q;
+  }catch{} // A lost response does not prove that the write failed; verify below.
+  if(!active())return;
+  const [own,total]=await Promise.allSettled([
+   db.from("reactions").select("reaction_type").eq("post_id",id).eq("user_id",uid).maybeSingle(),
+   db.from("posts").select("likes").eq("id",id).maybeSingle()
+  ]);
+  if(!active())return;
+  if(own.status!=="fulfilled"||own.value.error||!own.value.data&&own.value.data!==null)throw Error("verification");
+  const kind=own.value.data?.reaction_type||null;
+  if(kind&&!REACTION_TYPES.some(r=>r[0]===kind))throw Error("unknown reaction");
+  const count=total.status==="fulfilled"&&!total.value.error&&total.value.data?Number(total.value.data.likes):NaN;
+  paintPostReaction(id,kind,Number.isSafeInteger(count)&&count>=0?count:null);
+  if(kind!==wanted)say("No se confirmó el cambio de reacción. Se muestra el estado recibido del servidor.",true);
+ }catch{if(active())say("No se pudo verificar tu reacción. Actualiza la sección antes de reintentar.",true);}
+ finally{reactingPostIds.delete(key);if(me?.id===uid&&session?.user?.id===uid)reactionButtons(id).forEach(n=>n.disabled=false);}
 }
 async function showReactors(id,b){
  const box=document.getElementById("reactors-"+id);if(!box)return;
