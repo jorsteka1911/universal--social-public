@@ -456,6 +456,20 @@ function appearanceView(){
  };
  draw();
 }
+let gysteOfflineState="pending";
+function gysteOfflineStatus(){
+ return {pending:"Preparando el modo sin conexión…",unsupported:"Este navegador no admite el componente sin conexión.",registered:"Componente sin conexión registrado. Su funcionamiento debe comprobarse en este dispositivo.",failed:"No se pudo registrar el componente sin conexión. Puedes seguir usando Gyste con Internet."}[gysteOfflineState];
+}
+async function registerGysteOffline(){
+ if(!window.isSecureContext||!("serviceWorker" in navigator)){gysteOfflineState="unsupported";return false;}
+ try{
+  await navigator.serviceWorker.register("/sw.js",{scope:"/",updateViaCache:"none"});
+  gysteOfflineState="registered";return true;
+ }catch{gysteOfflineState="failed";return false;}
+ finally{
+  const status=document.getElementById("gyste-offline-status");if(status)status.textContent=gysteOfflineStatus();
+ }
+}
 let gysteInstallPrompt=null;
 function isGysteInstalled(){return matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;}
 function refreshGuestInstall(){
@@ -475,7 +489,7 @@ async function requestGuestInstall(button){
 }
 function installView(){
  const standalone=isGysteInstalled();
- shell(`<section class="panel"><h2>📲 Instalar Gyste</h2><p>${standalone?"Gyste se está ejecutando como aplicación instalada.":"Añade Gyste a la pantalla principal de tu teléfono."}</p><img src="/gyste-icon-192.svg" width="96" height="96" alt="Icono Gyste"><p>En Chrome para Android, abre el menú de tres puntos del navegador y busca Instalar aplicación o Añadir a pantalla de inicio. No confundas ese menú con el de Gyste.</p>${!standalone&&gysteInstallPrompt?'<button class="primary full" id="install-gyste">Instalar aplicación</button>':""}<p class="muted">Necesitas conexión a Internet para consultar publicaciones y mensajes. Esta versión web no está todavía en Google Play.</p></section>`);
+ shell(`<section class="panel"><h2>📲 Instalar Gyste</h2><p>${standalone?"Gyste se está ejecutando como aplicación instalada.":"Añade Gyste a la pantalla principal de tu teléfono."}</p><img src="/gyste-icon-192.svg" width="96" height="96" alt="Icono Gyste"><p>En Chrome para Android, abre el menú de tres puntos del navegador y busca Instalar aplicación o Añadir a pantalla de inicio. No confundas ese menú con el de Gyste.</p>${!standalone&&gysteInstallPrompt?'<button class="primary full" id="install-gyste">Instalar aplicación</button>':""}<p id="gyste-offline-status" class="muted" role="status">${esc(gysteOfflineStatus())}</p><p class="muted">Si pierdes la conexión al abrir Inicio, el componente puede mostrar un aviso. No guarda publicaciones ni mensajes privados. Necesitas Internet para usar la red social. Esta versión web no está todavía en Google Play.</p></section>`);
  const b=document.getElementById("install-gyste");if(b)b.onclick=async()=>{const prompt=gysteInstallPrompt;if(!prompt)return;gysteInstallPrompt=null;b.disabled=true;try{await prompt.prompt();await prompt.userChoice;}catch{}if(tab==="install")installView();};
 }
 const GYSTE_CHALLENGES=[
@@ -1858,7 +1872,7 @@ const epoch=++feedViewEpoch,filter=selectedSpaceId?"space":homeFilter,viewKey=JS
 const valid=()=>epoch===feedViewEpoch&&tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
 const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
 if(news&&valid()){
- shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
+ shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
 }
 const showError=()=>{
  if(!valid())return;
@@ -1890,7 +1904,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05</p></div>
+<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01</p></div>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
@@ -2672,6 +2686,8 @@ for(const event of ["play","playing","waiting","stalled","pause","ended","error"
 document.addEventListener("visibilitychange",()=>{if(document.hidden)gysteMediaTimings=new WeakMap();});
 window.addEventListener("pagehide",stopVoiceCapture);
 start();
+// Register independently of authentication; no reload and no cached application data.
+if(document.readyState==="complete")void registerGysteOffline();else window.addEventListener("load",()=>{void registerGysteOffline();},{once:true});
 </script>
 </body>
 </html>
