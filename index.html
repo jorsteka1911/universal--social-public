@@ -779,17 +779,26 @@ async function goReelCompose(){
  if(tab!=="feed")return;
  const input=document.getElementById("media"),button=document.getElementById("publish"),audience=document.getElementById("audience"),status=document.getElementById("media-selection");
  if(!input||!button||!audience||!status)return;
- input.accept="video/mp4,video/webm";input.multiple=false;audience.value="only_me";audience.onchange?.();
- const hint=document.createElement("p");hint.className="muted";hint.textContent="Nuevo Reel · Elige un vídeo MP4 o WebM de hasta 50 MB. Empieza en Solo yo; puedes elegir otra privacidad antes de publicar.";input.parentElement.insertBefore(hint,input);
- const preview=document.createElement("video");preview.controls=true;preview.playsInline=true;preview.preload="metadata";preview.hidden=true;preview.style.cssText="width:100%;max-height:32dvh;object-fit:contain;background:#05090e";input.parentElement.append(preview);
- let objectUrl="";const cleanup=()=>{if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl="";}};
- const observer=new MutationObserver(()=>{if(!input.isConnected){cleanup();observer.disconnect();}});observer.observe(app,{childList:true,subtree:true});
+ input.accept="video/mp4,video/webm";input.multiple=true;audience.value="only_me";audience.onchange?.();
+ const label=input.closest("label");if(label?.firstChild?.nodeType===3)label.firstChild.textContent="Vídeos para Reels (hasta 10, 50 MB por vídeo)";
+ const hint=document.createElement("p");hint.className="muted";hint.textContent="Selecciona varios vídeos juntos o añade uno tras otro. Cada vídeo se guarda como un Reel independiente. Revisa la privacidad: empieza en Solo yo.";input.parentElement.insertBefore(hint,input);
+ const list=document.createElement("div");input.parentElement.append(list);
  const feedback=document.createElement("p");feedback.id="reel-upload-status";feedback.setAttribute("role","status");feedback.setAttribute("aria-live","polite");button.insertAdjacentElement("afterend",feedback);
- button.textContent="Compartir Reel";button.disabled=true;
+ const preview=document.createElement("video");preview.controls=true;preview.playsInline=true;preview.preload="metadata";preview.hidden=true;preview.style.cssText="width:100%;max-height:32dvh;object-fit:contain;background:#05090e";input.parentElement.append(preview);
+ let objectUrl="",queue=[],busy=false,previewFile=null;
+ const cleanup=()=>{if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl="";}};
+ const observer=new MutationObserver(()=>{if(!input.isConnected){cleanup();observer.disconnect();}});observer.observe(app,{childList:true,subtree:true});
  const isVideo=f=>!!f&&["video/mp4","video/webm"].includes(f.type)&&f.size>0&&f.size<=MAX_POST_BYTES;
- input.onchange=()=>{cleanup();preview.removeAttribute("src");preview.hidden=true;const f=input.files?.[0];button.disabled=!isVideo(f);if(button.disabled){status.textContent=f?"Elige un vídeo MP4 o WebM de hasta 50 MB.":"Selecciona un vídeo.";return;}status.textContent=f.name+" · "+(f.size/1048576).toFixed(1)+" MB";objectUrl=URL.createObjectURL(f);preview.src=objectUrl;preview.hidden=false;};
- button.onclick=async()=>{if(!isVideo(input.files?.[0]))return say("Selecciona un vídeo compatible de hasta 50 MB.",true);feedback.textContent="Subiendo vídeo. Mantén esta página abierta.";await publish();};
- input.scrollIntoView({block:"center"});
+ const redraw=()=>{list.replaceChildren();status.textContent=queue.length+" vídeo(s) seleccionados. Puedes añadir más.";button.disabled=busy||!queue.length;button.textContent=busy?"Publicando…":queue.length>1?"Compartir "+queue.length+" Reels":"Compartir Reel";input.disabled=busy;
+ if(previewFile!==queue[0]){cleanup();previewFile=queue[0];preview.removeAttribute("src");preview.hidden=!previewFile;if(previewFile){objectUrl=URL.createObjectURL(previewFile);preview.src=objectUrl;}}
+ queue.forEach((f,i)=>{const row=document.createElement("div");row.className="row";const name=document.createElement("span");name.textContent=(i+1)+". "+f.name+" · "+(f.size/1048576).toFixed(1)+" MB";const remove=document.createElement("button");remove.type="button";remove.className="secondary";remove.textContent="Quitar";remove.disabled=busy;remove.onclick=()=>{queue.splice(i,1);redraw();};row.append(name,remove);list.append(row);});};
+ input.onchange=()=>{let rejected=0;for(const f of Array.from(input.files||[])){if(!isVideo(f)||queue.length>=MAX_POST_FILES){rejected++;continue;}if(!queue.some(x=>x.name===f.name&&x.size===f.size&&x.lastModified===f.lastModified))queue.push(f);}input.value="";redraw();feedback.textContent=rejected?"Algunos archivos no se añadieron: máximo 10 vídeos MP4/WebM de 50 MB cada uno.":"";};
+ button.onclick=async()=>{if(busy||!queue.length)return;busy=true;redraw();const total=queue.length,uid=me.id;let saved=0,warnings=0;
+ try{while(queue.length&&input.isConnected&&me?.id===uid){feedback.textContent="Guardando Reel "+(saved+1)+" de "+total+"…";const result=await publish({reelFile:queue[0],batch:true});if(!result?.ok)break;if(result.warning)warnings++;queue.shift();saved++;if(input.isConnected)redraw();}
+ if(input.isConnected&&saved===total){reelVideoKey="";tab="reels";say(saved+" Reel(s) guardado(s)."+(warnings?" Algunos quedaron solo para ti por un error de audiencia.":""));await renderTab();window.scrollTo({top:0});}
+ else if(input.isConnected&&saved){feedback.textContent=saved+" Reel(s) guardado(s). Los restantes siguen seleccionados; vuelve a intentar.";}}
+ finally{busy=false;if(input.isConnected)redraw();}};
+ redraw();input.scrollIntoView({block:"center"});
 }
 function reelSwipeDirection(dx,dy){return Math.abs(dy)>=65&&Math.abs(dy)>Math.abs(dx)*1.5?(dy<0?1:-1):0;}
 let reelViewEpoch=0,reelVideoKey="";
@@ -802,11 +811,11 @@ async function reelsView(){
  const items=(data||[]).filter(p=>postMediaItems(p).some(m=>m.type?.startsWith("video/")));
  await prepareCards(items);if(!valid())return;
  const entries=items.flatMap(p=>postMediaItems(p).map((m,i)=>({p,m,key:p.id+":"+i})).filter(x=>x.m.type?.startsWith("video/")));
- shell(`<section class="panel"><h2>▶ Reels</h2><div class="actions"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reelstage"></div><button class="primary full" id="reelpublish">+ Publicar vídeo</button><button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></section>`);
+ shell(`<section class="panel"><h2>▶ Reels</h2><div class="actions"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reelstage"></div><button class="primary full" id="reelpublish">+ Publicar Reels</button><button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></section>`);
  const stage=document.getElementById("reelstage"),count=document.getElementById("reelcount"),prev=document.getElementById("reelprev"),next=document.getElementById("reelnext");let index=Math.max(0,entries.findIndex(x=>x.key===reelVideoKey)),serial=0;
  async function draw(){
  const n=++serial,active=()=>valid()&&n===serial&&stage.isConnected;
- stage.querySelectorAll("video").forEach(v=>v.pause());prev.disabled=index<=0;next.disabled=index>=entries.length-1;count.textContent=entries.length?(index+1)+" de "+entries.length:"0 vídeos";
+ stage.querySelectorAll("video").forEach(v=>v.pause());prev.disabled=index<=0;next.disabled=index>=entries.length-1;count.textContent=entries.length?"Reel "+(index+1)+" de "+entries.length:"0 Reels";
  const x=entries[index];if(!x){stage.innerHTML='<p>No hay vídeos disponibles entre las publicaciones recientes. Publica un vídeo propio para empezar.</p>';return;}
  reelVideoKey=x.key;stage.innerHTML='<p role="status">Preparando vídeo…</p>';
  let url=mediaItemUrl(x.m,x.p);if(!url&&x.m.path){try{const bucket=bucketFor(x.p),ttl=bucket===PRIVATE_BUCKET?300:MEDIA_SIGNED_URL_TTL;const {data,error}=await db.storage.from(bucket).createSignedUrl(x.m.path,ttl);if(!active())return;if(!error&&data?.signedUrl){mediaUrlCache.set(bucket+":"+x.m.path,{url:data.signedUrl,expiresAt:Date.now()+ttl*1000});url=mediaItemUrl(x.m,x.p);}}catch{}}
@@ -1264,13 +1273,14 @@ function bindAudiencePicker(){
  mode.onchange=()=>{picker.hidden=!["selected","except"].includes(mode.value);};
  search.oninput=async()=>{const n=++serial,q=search.value.trim().replace(/[%_,]/g,""),out=document.getElementById("audience-results");out.replaceChildren();if(q.length<2)return;const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username").ilike("display_name","%"+q+"%").neq("user_id",me.id).limit(20);if(n!==serial||!out.isConnected)return;if(error){out.textContent="No se pudo buscar.";return;}for(const p of data||[]){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=(p.display_name||"Miembro")+" @"+(p.username||"");b.onclick=()=>{if(audienceChosen.size>=100)return;audienceChosen.set(p.user_id,b.textContent);draw();};out.append(b);}};
 }
-async function publish(){
+async function publish(options={}){
+ const batch=options.batch===true;
  const text=document.getElementById("posttext").value.trim();
- const files=Array.from(document.getElementById("media").files||[]);
+ const files=batch?[options.reelFile]:Array.from(document.getElementById("media").files||[]);
  if(!text&&!files.length)return say("Escribe algo o elige fotos o vídeos.",true);
  if(files.length>MAX_POST_FILES||files.some(f=>!MEDIA_TYPES.includes(f.type)||f.size>MAX_POST_BYTES)||files.reduce((n,f)=>n+f.size,0)>MAX_POST_BYTES)
  return say("Selecciona hasta 10 archivos compatibles, con un máximo de 50 MB en total.",true);
- const b=document.getElementById("publish");if(b.disabled)return;
+ const b=document.getElementById("publish");if(b.disabled&&!batch)return;
  const uid=me.id,space=document.getElementById("postspace")?.value||null;
  const audience=document.getElementById("audience")?.value||"only_me",members=[...audienceChosen.keys()],postId=crypto.randomUUID(),bucket=audience==="public"?BUCKET:PRIVATE_BUCKET;
  if(["selected","except"].includes(audience)&&!members.length)return say("Elige al menos una persona.",true);
@@ -1291,14 +1301,16 @@ async function publish(){
   const {error}=await db.from("posts").insert(newPost);if(error)throw error;
   postCommitted=true;
  if(readPostDraft(uid).trim()===text)writePostDraft(uid,"");
- if(["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
+ if(["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);if(batch)return {ok:true,warning:true};b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
  sharedPostId=null;
-  say("Publicación compartida.");
+  if(batch)return {ok:true};
+   say("Publicación compartida.");
   try{await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
   if(uploaded.length&&!postCommitted){const {error}=await db.storage.from(bucket).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}
   say("No se pudo publicar: "+(e?.message||"Error desconocido"),true);
-  if(b.isConnected){b.disabled=false;b.textContent="Compartir publicación";}
+  if(batch)return {ok:postCommitted,warning:postCommitted};
+   if(b.isConnected){b.disabled=false;b.textContent="Compartir publicación";}
  }
 }
 
