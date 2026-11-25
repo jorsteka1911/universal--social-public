@@ -346,13 +346,13 @@ bindEditorialComments();
 bindCaribbeanBulletins();
 bindCubaBrief();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
-sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
+resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
 }
 
 function bindSpaceButtons(){
 app.querySelectorAll("[data-space]").forEach(b=>b.onclick=()=>{
-sharedPostId=null;selectedSpaceId=b.dataset.space;homeFilter="all";tab="feed";notice="";renderTab();window.scrollTo({top:0,behavior:"smooth"});
+resetFeedPage();sharedPostId=null;selectedSpaceId=b.dataset.space;homeFilter="all";tab="feed";notice="";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
 }
 
@@ -394,7 +394,7 @@ if(next==="pages"){activeEditorialPage=pageId;pageSearch="";}
 const timingStart=performance.now(),timingSerial=++gysteTimingSerial;
 if(next!=="stories")stopStoryTimer();
 if(next!=="messages"){stopChatRefresh();stopVoiceCapture();}
-if(next==="feed"){sharedPostId=null;selectedSpaceId=null;homeFilter="all";const u=new URL(location.href);if(u.searchParams.has("post")){u.searchParams.delete("post");history.replaceState(null,"",u.href);}}
+if(next==="feed"){resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter="all";const u=new URL(location.href);if(u.searchParams.has("post")){u.searchParams.delete("post");history.replaceState(null,"",u.href);}}
 if(next!=="messages")chatUser=null;
 tab=next;notice="";noticeError=false;const requested=next,uid=me?.id;if(session&&me)shell('<section class="panel"><p role="status">Cargando sección…</p></section>');Promise.resolve(renderTab()).then(()=>{if(tab===requested&&me?.id===uid&&session&&timingSerial===gysteTimingSerial)recordGysteTiming(requested,timingStart);}).catch(()=>{if(tab===requested&&me?.id===uid&&session)shell('<section class="panel"><p class="error">No se pudo cargar esta sección. Comprueba tu conexión.</p><button class="secondary" data-tab="'+esc(requested)+'">Reintentar</button></section>');});window.scrollTo({top:0,behavior:"auto"});
 }
@@ -618,6 +618,7 @@ return `<div class="home-tabs" role="group" aria-label="Elegir publicaciones">
 }
 
 function authView(){
+resetFeedPage();
 cubaNewsFilter={uid:null,query:"",topic:""};
 editorialCloud=null;
 editorialReactionState=null;
@@ -1652,13 +1653,17 @@ async function sharePost(id){
 }
 
 const POST_COLUMNS="id,content,user_id,likes,created_at,media_url,media_type,media_path,repost_of,audience";
-async function readPosts(queryMode){
+const FEED_PAGE_SIZE=12;
+async function readPosts(queryMode,page=0){
 let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":""));
 if(sharedPostId)q=q.eq("id",sharedPostId);
  else if(queryMode==="mine")q=q.eq("user_id",me.id);
 else if(queryMode==="following")q=q.in("user_id",[...new Set([me.id,...following])]);
 else if(selectedSpaceId&&spacesReady)q=q.eq("space_id",selectedSpaceId);
-return q.order("created_at",{ascending:false}).limit(60);
+q=q.order("created_at",{ascending:false}).order("id",{ascending:false});
+if(sharedPostId)return q.limit(1);
+const offset=page*FEED_PAGE_SIZE;
+return q.range(offset,offset+FEED_PAGE_SIZE);
 }
 
 let cardsEpoch=0;
@@ -1880,24 +1885,34 @@ function bindPostDraft(){
  restore.onclick=()=>{if(me?.id!==uid)return;const old=readPostDraft(uid);if(!old)return;if(input.value.trim()&&input.value!==old&&!confirm("¿Sustituir el texto actual por el borrador guardado?"))return;input.value=old;const audience=document.getElementById("audience");audience.value="only_me";audience.dispatchEvent(new Event("change"));active=true;restore.hidden=true;status.textContent="Borrador recuperado. Audiencia ajustada a Solo yo; revisa a quién quieres mostrarlo. Vuelve a seleccionar los archivos si los necesitas.";input.focus();};
  discard.onclick=()=>{if(!confirm("¿Borrar el borrador guardado en este dispositivo? El texto abierto no se borrará."))return;active=false;if(writePostDraft(uid,"")){restore.hidden=true;discard.hidden=true;status.textContent="Borrador guardado eliminado.";}else status.textContent="No se pudo eliminar el borrador.";};
 }
-let feedViewEpoch=0;
-async function feedView(){
+let feedViewEpoch=0,feedPageState={key:null,page:0};
+function resetFeedPage(){feedPageState={key:null,page:0};}
+function feedPageHTML(page,hasNext){
+ return `<div class="panel" aria-label="Páginas de publicaciones"><p class="muted" role="status">Página ${page+1} · Orden de más recientes a más antiguas</p><div class="actions">${page>0?'<button type="button" class="secondary" data-feed-page="prev">← Anteriores</button>':""}${hasNext?'<button type="button" class="primary" data-feed-page="next">Más publicaciones →</button>':""}</div></div>`;
+}
+async function feedView(requestedPage=null){
 const epoch=++feedViewEpoch,filter=selectedSpaceId?"space":homeFilter,viewKey=JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId]);
 const valid=()=>epoch===feedViewEpoch&&tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
+const page=sharedPostId?0:Number.isSafeInteger(requestedPage)&&requestedPage>=0?requestedPage:feedPageState.key===viewKey?feedPageState.page:0;
+feedPageState={key:viewKey,page};
 const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
 if(news&&valid()){
- shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 01</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
+ shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 02</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
 }
 const showError=()=>{
  if(!valid())return;
  shell(`<section class="panel"><h2>Inicio</h2><p class="error">No se pudieron cargar las publicaciones de la comunidad. Comprueba tu conexión.</p><button type="button" class="secondary full" id="retry-feed">Reintentar publicaciones</button><button class="secondary" data-tab="pages">Páginas y noticias</button></section>${general?filtersHTML():""}${news?cubaBriefHTML():""}${general?editorialFeed(homeFilter,null,2):""}`);
  document.getElementById("retry-feed").onclick=()=>{if(valid())feedView();};
 };
-let data,cards;
+let data,cards,hasNext=false;
 try{
- const result=await readPosts(filter);if(!valid())return;
+ const result=await readPosts(filter,page);if(!valid())return;
  if(result.error){showError();return;}
- data=result.data;cards=await prepareCards(data||[]);
+ const rows=result.data||[];
+ hasNext=!sharedPostId&&rows.length>FEED_PAGE_SIZE;
+ data=rows.slice(0,FEED_PAGE_SIZE);
+ if(!sharedPostId&&page>0&&!data.length){return feedView(page-1);}
+ cards=await prepareCards(data);
 }catch{showError();return;}
 if(!valid())return;
 if(sharedPostId&&!(data||[]).length){shell(`<section class="panel"><h2>Publicación no disponible</h2><p>Puede haber sido eliminada o no tienes permiso para verla.</p><button class="primary" data-tab="feed">Volver al inicio</button></section>`);return;}
@@ -1918,11 +1933,11 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 01</p></div>
+<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 02</p></div>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
-<div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
-<div id="feed">${contentFirst&&(homeFilter==="all"||pageFollows().has("cuba"))?cubaBriefHTML():""}${contentFirst?editorialFeed(homeFilter,null,2):""}${contentFirst&&(homeFilter==="all"||pageFollows().has("cuba")||pageFollows().has("caribe-tiempo"))?caribbeanBulletinsHTML():""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}${contentFirst?pageShelf(homeFilter):""}</div>
+<div class="section-heading" id="community-feed-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones en esta página</span></div>
+<div id="feed">${contentFirst&&(homeFilter==="all"||pageFollows().has("cuba"))?cubaBriefHTML():""}${contentFirst?editorialFeed(homeFilter,null,2):""}${contentFirst&&(homeFilter==="all"||pageFollows().has("cuba")||pageFollows().has("caribe-tiempo"))?caribbeanBulletinsHTML():""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}${!sharedPostId&&(page>0||hasNext)?feedPageHTML(page,hasNext):""}${contentFirst?pageShelf(homeFilter):""}</div>
 ${contentFirst?composerHTML:""}
 ${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${extraHTML}`);
 document.getElementById("publish").onclick=publish;
@@ -1935,6 +1950,16 @@ const quickCompose=document.getElementById("quick-compose");if(quickCompose)quic
  document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":""):"Puedes seleccionar varias fotos de una vez.";
  };
 bindPostActions();
+app.querySelectorAll("[data-feed-page]").forEach(b=>b.onclick=async()=>{
+ if(!valid()||b.disabled||publishLocks.has(me?.id))return;
+ const next=page+(b.dataset.feedPage==="next"?1:-1);
+ if(next<0||(next>page&&!hasNext))return;
+ const draft=document.getElementById("posttext"),media=document.getElementById("media");
+ const commentDraft=Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim());
+ if((draft?.value.trim()||media?.files?.length||commentDraft)&&!confirm("Cambiar de página cerrará los borradores sin guardar. ¿Continuar?"))return;
+ b.disabled=true;await feedView(next);
+ if(tab==="feed"&&feedPageState.key===viewKey&&feedPageState.page===next)document.getElementById("community-feed-heading")?.scrollIntoView({block:"start"});
+});
 }
 
 function postCard(p,author,mediaOverride=null){
@@ -2019,7 +2044,7 @@ async function publish(options={}){
   if(!active())return {ok:true};
   sharedPostId=null;
    say("Publicación compartida.");
-  try{await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
+  try{resetFeedPage();await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
   if(uploaded.length&&!insertAttempted&&me?.id===uid){try{const {error}=await db.storage.from(bucket).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}catch{}}
   if(active())say(postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo publicar. Conservamos tu selección mientras sigas en esta pantalla.",true);
