@@ -1811,16 +1811,26 @@ async function changeProfileImage(kind,file){
  finally{profileImageBusy=false;app.querySelectorAll("[data-photo-pick],[data-photo-remove]").forEach(b=>b.disabled=false);}
 }
 
+const profileSaveLocks=new Set();
 async function saveProfile(){
-const display_name=document.getElementById("display").value.trim();
-const username=document.getElementById("username").value.trim().toLowerCase();
-const bio=document.getElementById("bio").value.trim();
-if(!display_name||! /^[a-z0-9_]{3,30}$/.test(username))return say("El nombre es obligatorio y el usuario debe tener 3–30 letras, números o guion bajo.",true);
-const b=document.getElementById("saveprofile");b.disabled=true;
-const {data,error}=await db.from("gyste_profiles").update({display_name,username,bio,updated_at:new Date().toISOString()}).eq("user_id",me.id).select().single();
-b.disabled=false;
-if(error)return say("No se pudo guardar: "+error.message,true);
-me={...me,...data};await profileView();say("Perfil actualizado.");
+ const uid=me?.id,button=document.getElementById("saveprofile"),fields=["display","username","bio"].map(id=>document.getElementById(id));
+ if(!uid||tab!=="profile"||!button||fields.some(f=>!f)||button.disabled||profileSaveLocks.has(uid))return;
+ const [display_name,username,bio]=[fields[0].value.trim(),fields[1].value.trim().toLowerCase(),fields[2].value.trim()];
+ if(!display_name||display_name.length>60||!/^[a-z0-9_]{3,30}$/.test(username)||bio.length>300)return say("Comprueba el nombre (hasta 60 caracteres), el usuario (3–30 letras, números o guion bajo) y la biografía (hasta 300 caracteres).",true);
+ const active=()=>me?.id===uid&&tab==="profile"&&button.isConnected;
+ profileSaveLocks.add(uid);button.disabled=true;button.textContent="Guardando…";fields.forEach(f=>f.disabled=true);
+ try{
+  const {data,error}=await db.from("gyste_profiles").update({display_name,username,bio,updated_at:new Date().toISOString()}).eq("user_id",uid).select().single();
+  if(error)throw error;if(!data||data.user_id!==uid)throw Error("No se confirmó el cambio.");
+  if(me?.id!==uid)return;
+  // Update only the fields saved here, not a concurrently edited photo.
+  me={...me,display_name:data.display_name,username:data.username,bio:data.bio};
+  if(active()){say("Perfil actualizado.");await profileView();}
+ }catch(e){
+  if(active())say(e?.code==="23505"?"Ese nombre de usuario ya está en uso. Elige otro.":"No se pudo confirmar el guardado. Revisa tu conexión e inténtalo de nuevo.",true);
+ }finally{
+  profileSaveLocks.delete(uid);button.disabled=false;button.textContent="Guardar cambios";fields.forEach(f=>f.disabled=false);
+ }
 }
 
 async function notificationView(){
