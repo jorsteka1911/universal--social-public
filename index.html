@@ -344,6 +344,7 @@ bindEditorialSaves();
 bindEditorialReactions();
 bindEditorialComments();
 bindCaribbeanBulletins();
+bindCubaBrief();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
 sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
@@ -603,6 +604,7 @@ return `<div class="home-tabs" role="group" aria-label="Elegir publicaciones">
 }
 
 function authView(){
+cubaNewsFilter={uid:null,query:"",topic:""};
 editorialCloud=null;
 editorialReactionState=null;
 applyWallpaper({kind:"default"});
@@ -1137,8 +1139,33 @@ const GYSTE_CUBA_BRIEF=[
  {date:"2026-11-24",source:"Naciones Unidas en Cuba",topic:"Salud",title:"La OMS anuncia apoyo en vacunas y material sanitario durante su visita a Cuba",url:"https://cuba.un.org/es/326582-el-director-general-de-la-oms-anuncia-apoyo-vacunas-y-equipos-m%C3%A9dicos-durante-una-visita"},
  {date:"2026-11-24",source:"CIDH / Relatoría para la Libertad de Expresión",topic:"Derechos y sociedad",title:"La Relatoría expresa preocupación por la situación de la libertad de expresión en Cuba",url:"https://www.oas.org/es/CIDH/jsForm/?File=%2Fes%2Fcidh%2Fexpresion%2Fprensa%2Fcomunicados%2F2026%2F255.asp"}
 ];
+let cubaNewsFilter={uid:null,query:"",topic:""};
+function currentCubaNewsFilter(){
+ const uid=me?.id||null;
+ if(cubaNewsFilter.uid!==uid)cubaNewsFilter={uid,query:"",topic:""};
+ return cubaNewsFilter;
+}
+function matchCubaBrief(n,query,topic){
+ const normalize=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+ const words=normalize(query).split(/\s+/).filter(Boolean);
+ const text=normalize([n.title,n.source,n.topic,n.date].join(" "));
+ return (!topic||n.topic===topic)&&words.every(w=>text.includes(w));
+}
+function cubaBriefItemsHTML(query="",topic=""){
+ const items=GYSTE_CUBA_BRIEF.filter(n=>matchCubaBrief(n,query,topic));
+ return `<p class="muted" role="status">${items.length} de ${GYSTE_CUBA_BRIEF.length} noticias</p>`+(items.map(n=>`<article class="comment"><small class="muted">${esc(n.topic)} · ${esc(n.date.split("-").reverse().join("/"))}</small><h3>${esc(n.title)}</h3><p class="muted">Fuente: ${esc(n.source)}</p><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">Leer en la fuente original ↗</a></article>`).join("")||'<p>No hay coincidencias. Prueba otra búsqueda o elige Todas las temáticas.</p>');
+}
 function cubaBriefHTML(){
- return '<section class="panel" aria-label="Selección informativa de Cuba"><div class="section-heading"><h2>📰 Actualidad de Cuba</h2><button type="button" class="text-link" data-open-page="cuba">Ver página</button></div><p class="muted">Selección editorial de Gyste · Actualizada el 25/11/2026. No es un servicio en directo. Las noticias se atribuyen a sus fuentes.</p>'+GYSTE_CUBA_BRIEF.map(n=>`<article class="comment"><small class="muted">${esc(n.topic)} · ${esc(n.date.split("-").reverse().join("/"))}</small><h3>${esc(n.title)}</h3><p class="muted">Fuente: ${esc(n.source)}</p><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">Leer en la fuente original ↗</a></article>`).join("")+'</section>';
+ const {query,topic}=currentCubaNewsFilter(),topics=[...new Set(GYSTE_CUBA_BRIEF.map(n=>n.topic))];
+ return `<section class="panel" data-cuba-brief aria-label="Selección informativa de Cuba"><div class="section-heading"><h2>📰 Actualidad de Cuba</h2><button type="button" class="text-link" data-open-page="cuba">Ver página</button></div><p class="muted">Selección editorial de Gyste · Actualizada el 25/11/2026. No es un servicio en directo. Las noticias se atribuyen a sus fuentes.</p><label>Buscar noticias<input class="field" type="search" maxlength="100" data-cuba-query value="${esc(query)}" placeholder="Salud, sociedad, fuentes…"></label><label>Temática<select class="field" data-cuba-topic><option value="">Todas las temáticas</option>${topics.map(t=>`<option value="${esc(t)}" ${topic===t?"selected":""}>${esc(t)}</option>`).join("")}</select></label><button class="secondary" type="button" data-cuba-clear>Limpiar filtros</button><div data-cuba-results>${cubaBriefItemsHTML(query,topic)}</div></section>`;
+}
+function bindCubaBrief(){
+ app.querySelectorAll("[data-cuba-brief]").forEach(panel=>{
+ const input=panel.querySelector("[data-cuba-query]"),select=panel.querySelector("[data-cuba-topic]"),results=panel.querySelector("[data-cuba-results]");
+ const update=()=>{const filter=currentCubaNewsFilter();filter.query=input.value.slice(0,100);filter.topic=select.value;results.innerHTML=cubaBriefItemsHTML(filter.query,filter.topic);};
+ input.oninput=update;select.onchange=update;
+ panel.querySelector("[data-cuba-clear]").onclick=()=>{input.value="";select.value="";update();};
+ });
 }
 const CARIBBEAN_SOURCE="https://www.nhc.noaa.gov/";
 function caribbeanBulletinsHTML(){
@@ -1831,7 +1858,7 @@ const epoch=++feedViewEpoch,filter=selectedSpaceId?"space":homeFilter,viewKey=JS
 const valid=()=>epoch===feedViewEpoch&&tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
 const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
 if(news&&valid()){
- shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 04</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
+ shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
 }
 const showError=()=>{
  if(!valid())return;
@@ -1863,7 +1890,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 04</p></div>
+<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05</p></div>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
