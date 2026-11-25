@@ -317,7 +317,7 @@ app.innerHTML=`
 </div>
 </header>
 <main class="wrap">
-<nav class="desktop-nav" aria-label="Navegación">${navButton("feed","Inicio","⌂")}${navButton("spaces","Espacios","✧")}${navButton("videos","Vídeos","▶")}${navButton("learn","Aprender","📚")}${navButton("history","Historia","📷")}${navButton("series","Frutinovelas","🎬")}${navButton("explore","Personas","⌕")}${navButton("messages","Mensajes","✉")}${navButton("notifications","Avisos","♧")}${navButton("profile","Mi perfil","○")}</nav>
+<nav class="desktop-nav" aria-label="Navegación">${navButton("feed","Inicio","⌂")}${navButton("spaces","Espacios","✧")}${navButton("reels","Reels","▶")}${navButton("videos","Vídeos","▶")}${navButton("learn","Aprender","📚")}${navButton("history","Historia","📷")}${navButton("series","Frutinovelas","🎬")}${navButton("explore","Personas","⌕")}${navButton("messages","Mensajes","✉")}${navButton("notifications","Avisos","♧")}${navButton("profile","Mi perfil","○")}</nav>
 <div id="notice" role="status" class="notice ${noticeError?"error":""}">${esc(notice)}</div>
 ${content}
 </main>
@@ -773,47 +773,33 @@ function pageCard(p){const [id,icon,name,desc,url,view]=p,has=pageFollows().has(
 function pagesView(){const f=pageFollows();shell(`<section class="panel"><h2>Páginas y noticias</h2><p>Selecciona las fuentes que te interesan. Tu seguimiento se guarda en este navegador; las fuentes externas no publican automáticamente en Gyste.</p><h3>Mis páginas (${f.size})</h3>${GYSTE_PAGES.filter(p=>f.has(p[0])).map(pageCard).join("")||"<p>Aún no sigues páginas.</p>"}<h3>Descubrir páginas</h3>${GYSTE_PAGES.filter(p=>!f.has(p[0])).map(pageCard).join("")}</section>`);}
 function pageShelf(mode){const f=pageFollows(),pages=mode==="following"?GYSTE_PAGES.filter(p=>f.has(p[0])):GYSTE_PAGES.slice(0,5);return `<section class="panel"><div class="section-heading"><h2>${mode==="following"?"Tus páginas":"Páginas recomendadas"}</h2><button class="text-link" data-tab="pages">Ver todas</button></div><div style="display:flex;gap:10px;overflow-x:auto">${pages.map(p=>`<div style="flex:0 0 min(85%,280px)">${pageCard(p)}</div>`).join("")||"<p>Elige páginas que te interesen.</p>"}</div><p class="muted">Fuentes de consulta, no noticias en directo.</p></section>`;}
 function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{b.textContent=f.has(id)?"Siguiendo":"Seguir";b.setAttribute("aria-pressed",String(f.has(id)));if(homeFilter==="following"&&!f.has(id))b.closest("article")?.remove();}});}
-const originalReels=[
-{title:"El automóvil del futuro",caption:"Recreación artística de un automóvil radiocontrolado de 1925.",kind:"car",colors:["#183b58","#0c6671"]},
-{title:"El arte cobra vida",caption:"Una pequeña pintura animada, creada para Gyste.",kind:"art",colors:["#342155","#c36d6b"]},
-{title:"Una amistad que crece",caption:"Dos personajes originales comparten una flor.",kind:"friends",colors:["#294759","#526f47"]}
-];
-let reelIndex=0;
-function reelsView(){
- const r=originalReels[reelIndex]||originalReels[0];
- shell(`<section class="panel"><h2>▶ Reels Gyste</h2><p>Animaciones originales · 3 cortos de 12 segundos.</p><div style="display:flex;gap:8px;overflow-x:auto">${originalReels.map((x,i)=>`<button class="secondary" data-reel-pick="${i}" aria-pressed="${i===reelIndex}">${i+1}. ${esc(x.title)}</button>`).join("")}</div><div style="position:relative;width:min(100%,300px);aspect-ratio:9/16;margin:12px auto;border-radius:16px;overflow:hidden;background:#101e2f"><canvas id="reelcanvas" width="360" height="640" role="img" aria-label="${esc(r.caption)}" style="display:block;width:100%;height:100%"></canvas></div><h3>${esc(r.title)}</h3><p class="muted">${esc(r.caption)} Sin música ni material audiovisual ajeno.</p><div class="actions"><button class="secondary" id="reelprev">Anterior</button><button class="primary" id="reelplay">▶ Reproducir</button><button class="secondary" id="reelnext">Siguiente</button></div><progress id="reelprogress" value="0" max="12" style="width:100%"></progress><p id="reelstatus" role="status">1 de 3 · Pulsa Reproducir</p><button class="secondary full" id="reelfull">Pantalla completa</button><button class="primary full" data-tab="videos">Ver vídeos reales de la comunidad</button><button class="secondary full" id="reelpublish">Publicar mi vídeo</button></section>`);
- const canvas=document.getElementById("reelcanvas"),ctx=canvas.getContext("2d"),play=document.getElementById("reelplay"),status=document.getElementById("reelstatus"),progress=document.getElementById("reelprogress");if(!ctx){status.textContent="Este navegador no permite dibujar la animación.";play.disabled=true;return;}
- let frame=0,running=false,elapsed=0,start=0;
- const circle=(x,y,rad,color)=>{ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();};
- const rect=(x,y,w,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x,y,w,h);};
- const line=(x,y,x2,y2,color,w=3)=>{ctx.strokeStyle=color;ctx.lineWidth=w;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x2,y2);ctx.stroke();};
- const poly=(p,color)=>{ctx.fillStyle=color;ctx.beginPath();p.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fill();};
- const label=(text,x,y,size,color="#fff")=>{ctx.font="bold "+size+"px sans-serif";ctx.textAlign="center";ctx.fillStyle=color;ctx.fillText(text,x,y);};
- function draw(seconds){
- const t=Math.min(12,seconds),g=ctx.createLinearGradient(0,0,360,640);g.addColorStop(0,r.colors[0]);g.addColorStop(1,r.colors[1]);ctx.fillStyle=g;ctx.fillRect(0,0,360,640);
- if(r.kind==="car"){
- circle(273,145,48,"#f2c780");for(let i=0;i<7;i++){let x=((i*72-t*12)%504+504)%504-72,h=70+(i%3)*24;rect(x,350-h,55,h,"#274d61");for(let j=0;j<3;j++)rect(x+8+j*15,360-h,7,12,"#e9ba77");}
- rect(0,350,360,170,"#26333f");for(let i=0;i<5;i++){let x=((i*96-t*90)%480+480)%480-80;rect(x,475,50,5,"#f5d999");}
- const x=65+45*Math.sin(t*.6),y=397+2*Math.sin(t*7);
- ctx.save();ctx.translate(x,y);rect(0,0,220,42,"#c88943");poly([[34,0],[64,-49],[157,-49],[195,0]],"#e6af65");poly([[70,-40],[111,-40],[111,-5],[49,-5]],"#91bdc8");poly([[122,-40],[153,-40],[177,-5],[122,-5]],"#91bdc8");rect(208,8,14,17,"#f9e5a0");for(const w of [45,178]){circle(w,43,24,"#131d26");circle(w,43,13,"#d8aa72");for(let j=0;j<5;j++){const a=j*Math.PI*2/5+t*5;line(w,43,w+Math.cos(a)*11,43+Math.sin(a)*11,"#553b32",2);}}
- line(131,-49,131,-86,"#f7e8bf",2);for(let j=0;j<3;j++){const a=(t*18+j*18)%54;ctx.strokeStyle="rgba(255,238,190,"+(1-a/54)+")";ctx.lineWidth=2;ctx.beginPath();ctx.arc(131,-86,a,Math.PI*1.12,Math.PI*1.88);ctx.stroke();}ctx.restore();label("1925",180,90,44);label("Recreación artística",180,570,19);
- }else if(r.kind==="art"){
- rect(43,109,274,405,"#8e6249");rect(52,118,256,387,"#fff1d7");rect(64,130,232,363,"#f5e7cb");const steps=Math.floor(t*18);for(let i=0;i<Math.min(steps,200);i++){const a=i*.31,rad=14+i*.57;const x=180+Math.cos(a)*rad,y=310+Math.sin(a)*rad;circle(x,y,7+i%4,["#cb6c76","#e6b55a","#5d9c9a","#8070ad"][Math.floor(i/25)%4]);}const i=Math.min(steps,199),a=i*.31,rad=14+i*.57;ctx.save();ctx.translate(180+Math.cos(a)*rad,310+Math.sin(a)*rad);ctx.rotate(-.5);rect(-6,-100,12,90,"#a05f3f");poly([[-8,-10],[8,-10],[0,9]],"#34354b");ctx.restore();label("Crea tu mundo",180,570,24);
- }else{
- circle(277,133,44,"#f1d494");poly([[0,405],[90,320],[180,410],[260,310],[360,403],[360,640],[0,640]],"#537c65");rect(0,435,360,205,"#345b46");
- const person=(x,y,color,ear)=>{circle(x-21,y-35,17,ear);circle(x+21,y-35,17,ear);circle(x,y,34,color);circle(x-12,y-3,4,"#243341");circle(x+12,y-3,4,"#243341");circle(x,y+11,5,"#8e594d");ctx.strokeStyle="#6f4c44";ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y+14,8,0,Math.PI);ctx.stroke();circle(x,y+74,40,color);circle(x-26,y+116,14,ear);circle(x+26,y+116,14,ear);};
- const ax=70+Math.min(1,t/4)*43,bx=290-Math.min(1,t/4)*43,y=347+Math.sin(t*2)*2;person(ax,y,"#e9c6a7","#bf9278");person(bx,y,"#d6a474","#a57553");line(ax+23,y+70,180,y+52,"#e9c6a7",15);line(bx-23,y+70,180,y+52,"#d6a474",15);line(180,y+55,180,y-13,"#6f9d57",5);const grow=Math.min(1,t/5);for(let i=0;i<6;i++){const a=i*Math.PI/3;circle(180+Math.cos(a)*16*grow,y-13+Math.sin(a)*16*grow,10*grow,"#f5c875");}circle(180,y-13,7*grow,"#b7774d");label("Compartir nos acerca",180,570,23);
+let reelViewEpoch=0,reelVideoKey="";
+async function reelsView(){
+ const epoch=++reelViewEpoch,uid=me?.id,valid=()=>tab==="reels"&&me?.id===uid&&epoch===reelViewEpoch;
+ shell('<section class="panel"><h2>▶ Reels</h2><p role="status">Buscando vídeos…</p></section>');
+ try{
+ const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).order("created_at",{ascending:false}).limit(150);
+ if(!valid())return;if(error)throw error;
+ const items=(data||[]).filter(p=>postMediaItems(p).some(m=>m.type?.startsWith("video/")));
+ await prepareCards(items);if(!valid())return;
+ const entries=items.flatMap(p=>postMediaItems(p).map((m,i)=>({p,m,key:p.id+":"+i})).filter(x=>x.m.type?.startsWith("video/")));
+ shell(`<section class="panel"><h2>▶ Reels</h2><div class="actions"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reelstage"></div><button class="primary full" id="reelpublish">+ Publicar vídeo</button><button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></section>`);
+ const stage=document.getElementById("reelstage"),count=document.getElementById("reelcount"),prev=document.getElementById("reelprev"),next=document.getElementById("reelnext");let index=Math.max(0,entries.findIndex(x=>x.key===reelVideoKey)),serial=0;
+ async function draw(){
+ const n=++serial,active=()=>valid()&&n===serial&&stage.isConnected;
+ stage.querySelectorAll("video").forEach(v=>v.pause());prev.disabled=index<=0;next.disabled=index>=entries.length-1;count.textContent=entries.length?(index+1)+" de "+entries.length:"0 vídeos";
+ const x=entries[index];if(!x){stage.innerHTML='<p>No hay vídeos disponibles entre las publicaciones recientes. Publica un vídeo propio para empezar.</p>';return;}
+ reelVideoKey=x.key;stage.innerHTML='<p role="status">Preparando vídeo…</p>';
+ let url=mediaItemUrl(x.m,x.p);if(!url&&x.m.path){try{const bucket=bucketFor(x.p),ttl=bucket===PRIVATE_BUCKET?300:MEDIA_SIGNED_URL_TTL;const {data,error}=await db.storage.from(bucket).createSignedUrl(x.m.path,ttl);if(!active())return;if(!error&&data?.signedUrl){mediaUrlCache.set(bucket+":"+x.m.path,{url:data.signedUrl,expiresAt:Date.now()+ttl*1000});url=mediaItemUrl(x.m,x.p);}}catch{}}
+ if(!active())return;
+ stage.innerHTML=`<div class="actions"><button class="primary" id="reelplay" ${url?"":"disabled"}>▶ Reproducir</button><button class="secondary" id="reelretry">Recargar vídeo</button></div><p id="reelstatus" role="status">${url?"Cargando vídeo…":"No se pudo obtener el vídeo. Revisa tu acceso o vuelve a intentarlo."}</p>${url?`<video id="reelvideo" controls playsinline preload="metadata" style="display:block;width:100%;height:clamp(130px,34dvh,360px);object-fit:contain;background:#05090e;border-radius:12px" src="${esc(url)}"></video>`:""}${postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===uid?me:null),"")}`;
+ const v=document.getElementById("reelvideo"),play=document.getElementById("reelplay"),status=document.getElementById("reelstatus");
+ document.getElementById("reelretry").onclick=()=>{if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);return draw();};
+ if(v){const ready=()=>{if(active()){play.disabled=false;status.textContent=Number.isFinite(v.duration)?"Duración: "+Math.ceil(v.duration)+" s · Pulsa Reproducir":"Pulsa Reproducir";}};v.addEventListener("loadedmetadata",ready);if(v.readyState>=1)ready();v.addEventListener("play",()=>{if(active()){play.textContent="⏸ Pausar";status.textContent="Reproduciendo";}});v.addEventListener("pause",()=>{if(active()){play.textContent="▶ Reproducir";status.textContent="Vídeo pausado";}});v.addEventListener("ended",()=>{if(active()){play.textContent="↻ Repetir";status.textContent="Vídeo terminado";}});v.addEventListener("error",()=>{if(active()){play.disabled=true;status.textContent="No se pudo reproducir el archivo. Pulsa Recargar vídeo.";}});play.onclick=async()=>{if(!v.paused){v.pause();return;}try{if(v.ended)v.currentTime=0;await v.play();}catch{if(active())status.textContent="No se pudo iniciar. Prueba los controles del vídeo o Recargar vídeo.";}};}
+ bindPostActions();
  }
- label("GYSTE · ANIMACIÓN ORIGINAL",180,35,15);progress.value=t;
- }
- function stop(){running=false;cancelAnimationFrame(frame);play.textContent=elapsed>=12?"↻ Repetir":"▶ Continuar";}
- function tick(now){if(!running||!canvas.isConnected||tab!=="reels"){stop();return;}elapsed=Math.min(12,(now-start)/1000);draw(elapsed);if(elapsed>=12){stop();status.textContent="Animación terminada";return;}frame=requestAnimationFrame(tick);}
- draw(0);status.textContent=(reelIndex+1)+" de "+originalReels.length+" · Pulsa Reproducir";
- play.onclick=()=>{if(running){stop();return;}if(elapsed>=12)elapsed=0;running=true;start=performance.now()-elapsed*1000;play.textContent="⏸ Pausar";frame=requestAnimationFrame(tick);};
- const select=i=>{stop();reelIndex=(i+originalReels.length)%originalReels.length;reelsView();};
- document.getElementById("reelprev").onclick=()=>select(reelIndex-1);document.getElementById("reelnext").onclick=()=>select(reelIndex+1);app.querySelectorAll("[data-reel-pick]").forEach(b=>b.onclick=()=>select(Number(b.dataset.reelPick)));
- document.getElementById("reelfull").onclick=async()=>{try{if(canvas.parentElement.requestFullscreen)await canvas.parentElement.requestFullscreen();else say("Pantalla completa no disponible en este navegador.",true);}catch{say("No se pudo abrir pantalla completa.",true);}};
- document.getElementById("reelpublish").onclick=goCompose;
+ prev.onclick=()=>{if(index>0){index--;return draw();}};next.onclick=()=>{if(index<entries.length-1){index++;return draw();}};document.getElementById("reelpublish").onclick=goCompose;await draw();
+ }catch(e){if(valid())shell(`<section class="panel"><h2>▶ Reels</h2><p class="error">No se pudieron cargar los vídeos: ${esc(e.message||"Error de conexión")}</p><button class="secondary" data-tab="reels">Reintentar</button></section>`);}
 }
 function historyView(){
  const cards=historicalImages.map(x=>{
@@ -1213,7 +1199,7 @@ ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">←
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
 </section>
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
-<div id="feed">${!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine"?pageShelf(homeFilter):""}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver animaciones originales</button></section>`:""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
+<div id="feed">${!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine"?pageShelf(homeFilter):""}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
 document.getElementById("publish").onclick=publish;
  bindAudiencePicker();
  bindPostDraft();
