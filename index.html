@@ -1225,7 +1225,13 @@ async function sendPostDialog(id){
  row.append(name,send);results.append(row);}
  };
 }
+async function isPublicPostNow(id,uid){
+ if(!id||!uid||me?.id!==uid)return false;
+ try{const {data,error}=await db.from("posts").select("id,audience").eq("id",id).maybeSingle();return me?.id===uid&&!error&&data?.id===id&&data.audience==="public";}catch{return false;}
+}
 async function sharePost(id){
+ const uid=me?.id;
+ if(!await isPublicPostNow(id,uid)){if(me?.id===uid)say("No se pudo confirmar que esta publicación sea pública.",true);return;}
  const url=new URL(location.origin+location.pathname);url.searchParams.set("post",id);
  if(navigator.share){try{await navigator.share({title:"Publicación de Gyste",url:url.href});return;}catch(e){if(e.name==="AbortError")return;}}
  try{await navigator.clipboard.writeText(url.href);say("Enlace de la publicación copiado.");}
@@ -1529,10 +1535,11 @@ function postCard(p,author,mediaOverride=null){
 }
 let audienceChosen=new Map();
 function bindAudiencePicker(){
- audienceChosen=new Map();const mode=document.getElementById("audience"),picker=document.getElementById("audience-picker"),search=document.getElementById("audience-search");let serial=0;
- const draw=()=>{const node=document.getElementById("audience-chosen");node.replaceChildren();for(const [id,name] of audienceChosen){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=name+" ×";b.onclick=()=>{audienceChosen.delete(id);draw();};node.append(b);}};
+ audienceChosen=new Map();const uid=me?.id,mode=document.getElementById("audience"),picker=document.getElementById("audience-picker"),search=document.getElementById("audience-search");let serial=0;
+ const editable=()=>me?.id===uid&&mode.isConnected&&!mode.disabled&&!publishLocks.has(uid);
+ const draw=()=>{const node=document.getElementById("audience-chosen");node.replaceChildren();for(const [id,name] of audienceChosen){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=name+" ×";b.onclick=()=>{if(!editable())return;audienceChosen.delete(id);draw();};node.append(b);}};
  mode.onchange=()=>{picker.hidden=!["selected","except"].includes(mode.value);};
- search.oninput=async()=>{const n=++serial,q=search.value.trim().replace(/[%_,]/g,""),out=document.getElementById("audience-results");out.replaceChildren();if(q.length<2)return;const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username").ilike("display_name","%"+q+"%").neq("user_id",me.id).limit(20);if(n!==serial||!out.isConnected)return;if(error){out.textContent="No se pudo buscar.";return;}for(const p of data||[]){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=(p.display_name||"Miembro")+" @"+(p.username||"");b.onclick=()=>{if(audienceChosen.size>=100)return;audienceChosen.set(p.user_id,b.textContent);draw();};out.append(b);}};
+ search.oninput=async()=>{if(!editable())return;const n=++serial,q=search.value.trim().replace(/[%_,]/g,""),out=document.getElementById("audience-results");out.replaceChildren();if(q.length<2)return;const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username").ilike("display_name","%"+q+"%").neq("user_id",me.id).limit(20);if(n!==serial||!out.isConnected||!editable())return;if(error){out.textContent="No se pudo buscar.";return;}for(const p of data||[]){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=(p.display_name||"Miembro")+" @"+(p.username||"");b.onclick=()=>{if(!editable()||audienceChosen.size>=100)return;audienceChosen.set(p.user_id,b.textContent);draw();};out.append(b);}};
 }
 const publishLocks=new Set();
 async function confirmPublishedPost(uid,id){
@@ -1549,10 +1556,11 @@ async function publish(options={}){
  const b=document.getElementById("publish");if(!b||publishLocks.has(me.id)||(b.disabled&&!batch))return {ok:false};
  const uid=me.id,space=document.getElementById("postspace")?.value||null;
  const audience=document.getElementById("audience")?.value||"only_me",members=[...audienceChosen.keys()],postId=crypto.randomUUID(),bucket=audience==="public"?BUCKET:PRIVATE_BUCKET;
+ if(!["public","friends","selected","except","only_me"].includes(audience))return say("Selecciona una audiencia válida.",true);
  if(["selected","except"].includes(audience)&&!members.length)return say("Elige al menos una persona.",true);
  const active=()=>me?.id===uid&&b.isConnected&&document.getElementById("publish")===b;
  publishLocks.add(uid);b.disabled=true;b.textContent="Publicando…";
- const controls=[textInput,mediaInput,document.getElementById("postspace"),document.getElementById("audience")].filter(Boolean),previous=controls.map(c=>c.disabled);
+ const controls=[textInput,mediaInput,document.getElementById("postspace"),document.getElementById("audience"),document.getElementById("audience-search"),...document.querySelectorAll("#audience-chosen button,#audience-results button")].filter(Boolean),previous=controls.map(c=>c.disabled);
  controls.forEach(c=>c.disabled=true);
  const uploaded=[];let postCommitted=false,insertAttempted=false;
  try{
@@ -1651,9 +1659,9 @@ async function savePost(id,b){
  finally{savingPostIds.delete(lock);if(me?.id===uid)buttons().forEach(n=>n.disabled=false);}
 }
 async function repost(id,b){
- if(b.disabled)return;if(!confirm("¿Republicar esta publicación en tu perfil, conservando el autor original?"))return;b.disabled=true;
- try{const {error}=await db.from("posts").insert({user_id:me.id,content:"",repost_of:id});if(error)throw error;say("Publicación republicada en tu perfil.");await renderTab();}
- catch(e){say(e.code==="23505"?"Ya has republicado esta publicación.":"No se pudo republicar: "+e.message,true);b.disabled=false;}
+ const uid=me?.id;if(!uid||b.disabled)return;if(!confirm("¿Republicar esta publicación en tu perfil, conservando el autor original?"))return;b.disabled=true;
+ try{if(!await isPublicPostNow(id,uid)){if(me?.id===uid)say("No se pudo confirmar que esta publicación sea pública.",true);return;}const {error}=await db.from("posts").insert({user_id:uid,content:"",repost_of:id});if(error)throw error;if(me?.id===uid){say("Publicación republicada en tu perfil.");await renderTab();}}
+ catch(e){if(me?.id===uid)say(e?.code==="23505"?"Ya has republicado esta publicación.":"No se pudo confirmar la republicación. Actualiza el inicio.",true);}finally{b.disabled=false;}
 }
 async function downloadPostVideo(id,b){
  const p=posts.find(x=>x.id===id)||originals.get(id);if(!p||p.user_id!==me.id)return;
