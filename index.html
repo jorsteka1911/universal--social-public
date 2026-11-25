@@ -12,6 +12,8 @@
 <title>Gyste — Tu universo social</title>
 <meta name="author" content="JORSTEKA — fundador del proyecto Gyste">
 <!-- Gyste: proyecto impulsado por JORSTEKA (jorsteka1911). Derechos reservados sobre las aportaciones originales protegibles; componentes de terceros sujetos a sus propias licencias. -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fmmsfyenevlordrupzdw.supabase.co" crossorigin>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--bg:#091827;--panel:#122d49;--line:#244866;--mint:#36c7b2;--txt:#f3f6f9;--muted:#aab8c5;--red:#ff7c88}
@@ -353,7 +355,7 @@ if(next!=="stories")stopStoryTimer();
 if(next!=="messages"){stopChatRefresh();stopVoiceCapture();}
 if(next==="feed"){sharedPostId=null;selectedSpaceId=null;homeFilter="all";const u=new URL(location.href);if(u.searchParams.has("post")){u.searchParams.delete("post");history.replaceState(null,"",u.href);}}
 if(next!=="messages")chatUser=null;
-tab=next;notice="";noticeError=false;renderTab();window.scrollTo({top:0,behavior:"smooth"});
+tab=next;notice="";noticeError=false;const requested=next,uid=me?.id;if(session&&me)shell('<section class="panel"><p role="status">Cargando sección…</p></section>');Promise.resolve(renderTab()).catch(()=>{if(tab===requested&&me?.id===uid&&session)shell('<section class="panel"><p class="error">No se pudo cargar esta sección. Comprueba tu conexión.</p><button class="secondary" data-tab="'+esc(requested)+'">Reintentar</button></section>');});window.scrollTo({top:0,behavior:"auto"});
 }
 async function goCompose(){
 sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
@@ -715,8 +717,7 @@ p=created;
 }
 me={...me,...p};
 applyWallpaper(readWallpaper(me.id));
-await loadFollowing();
-await loadSpaces();
+await Promise.all([loadFollowing(),loadSpaces()]);
 const requestedPost=new URLSearchParams(location.search).get("post");
 if(requestedPost&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedPost)){sharedPostId=requestedPost;tab="feed";selectedSpaceId=null;homeFilter="all";}
 await renderTab();
@@ -1141,14 +1142,17 @@ bindMediaActions();
 const PRIVATE_BUCKET="gyste-private-media";
 const bucketFor=p=>p.audience&&p.audience!=="public"?PRIVATE_BUCKET:BUCKET;
 async function prepareMediaUrls(list){
- for(const bucket of [BUCKET,PRIVATE_BUCKET]){
+ const uid=me?.id;
+ await Promise.all([BUCKET,PRIVATE_BUCKET].map(async bucket=>{
+ if(bucket===BUCKET&&!MEDIA_BUCKET_PRIVATE)return;
  const paths=[...new Set(list.filter(p=>bucketFor(p)===bucket).flatMap(p=>postMediaItems(p).map(m=>m.path)).filter(Boolean))];
- if(!paths.length)continue;
+ if(!paths.length)return;
  const ttl=bucket===PRIVATE_BUCKET?300:MEDIA_SIGNED_URL_TTL;
  const {data,error}=await db.storage.from(bucket).createSignedUrls(paths,ttl);
- if(error){console.warn("No se pudieron generar enlaces firmados",error.message);continue;}
+ if(me?.id!==uid)return;
+ if(error){console.warn("No se pudieron generar enlaces firmados",error.message);return;}
  (data||[]).forEach(item=>{if(item.path&&item.signedUrl)mediaUrlCache.set(bucket+":"+item.path,{url:item.signedUrl,expiresAt:Date.now()+ttl*1000});});
- }
+ }));
 }
 function safeMediaUrl(value){
  try{const u=new URL(value,location.href);return u.protocol==="https:"?u.href:"";}catch{return "";}
@@ -1238,22 +1242,26 @@ else if(selectedSpaceId&&spacesReady)q=q.eq("space_id",selectedSpaceId);
 return q.order("created_at",{ascending:false}).limit(60);
 }
 
+let cardsEpoch=0;
 async function prepareCards(list){
- posts=list||[];originals=new Map();
- const refs=[...new Set(posts.map(p=>p.repost_of).filter(Boolean))];
- if(refs.length){const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",refs);if(!error)(data||[]).forEach(p=>originals.set(p.id,p));}
- const all=[...posts,...originals.values()];
- mediaUrlCache.clear();await prepareMediaUrls(all);
- const ids=[...new Set(all.map(p=>p.id))];
- reactionMine=new Map();savedIds=new Set();
- if(ids.length){
- const [r,s]=await Promise.all([db.from("reactions").select("post_id,reaction_type").eq("user_id",me.id).in("post_id",ids),db.from("gyste_saved_posts").select("post_id").eq("user_id",me.id).in("post_id",ids)]);
+ const epoch=++cardsEpoch,uid=me?.id,localPosts=list||[],localOriginals=new Map();
+ const refs=[...new Set(localPosts.map(p=>p.repost_of).filter(Boolean))];
+ if(refs.length){const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",refs);if(!error)(data||[]).forEach(p=>localOriginals.set(p.id,p));}
+ if(me?.id!==uid||epoch!==cardsEpoch)return "";
+ mediaUrlCache.clear();
+ const all=[...localPosts,...localOriginals.values()],ids=[...new Set(all.map(p=>p.id))],authorIds=[...new Set(all.map(p=>p.user_id))];
+ const [r,s,u]=await Promise.all([
+ ids.length?db.from("reactions").select("post_id,reaction_type").eq("user_id",uid).in("post_id",ids):{data:[]},
+ ids.length?db.from("gyste_saved_posts").select("post_id").eq("user_id",uid).in("post_id",ids):{data:[]},
+ authorIds.length?db.from("gyste_profiles").select("user_id,display_name,username,avatar_url").in("user_id",authorIds):{data:[]},
+ prepareMediaUrls(all)
+ ]);
+ if(me?.id!==uid||epoch!==cardsEpoch)return "";
+ posts=localPosts;originals=localOriginals;reactionMine=new Map();savedIds=new Set();postAuthors={};
  if(!r.error)(r.data||[]).forEach(x=>reactionMine.set(x.post_id,x.reaction_type));
  if(!s.error)(s.data||[]).forEach(x=>savedIds.add(x.post_id));
- }
- const authorIds=[...new Set(all.map(p=>p.user_id))];postAuthors={};
- if(authorIds.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,username,avatar_url").in("user_id",authorIds);(u||[]).forEach(x=>postAuthors[x.user_id]=x);}
- return posts.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===me.id?me:null))).join("");
+ if(!u.error)(u.data||[]).forEach(x=>postAuthors[x.user_id]=x);
+ return posts.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===uid?me:null))).join("");
 }
 function bindPostActions(){
  bindMediaActions();
