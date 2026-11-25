@@ -1887,6 +1887,32 @@ function bindPostDraft(){
  restore.onclick=()=>{if(me?.id!==uid)return;const old=readPostDraft(uid);if(!old)return;if(input.value.trim()&&input.value!==old&&!confirm("¿Sustituir el texto actual por el borrador guardado?"))return;input.value=old;const audience=document.getElementById("audience");audience.value="only_me";audience.dispatchEvent(new Event("change"));active=true;restore.hidden=true;status.textContent="Borrador recuperado. Audiencia ajustada a Solo yo; revisa a quién quieres mostrarlo. Vuelve a seleccionar los archivos si los necesitas.";input.focus();};
  discard.onclick=()=>{if(!confirm("¿Borrar el borrador guardado en este dispositivo? El texto abierto no se borrará."))return;active=false;if(writePostDraft(uid,"")){restore.hidden=true;discard.hidden=true;status.textContent="Borrador guardado eliminado.";}else status.textContent="No se pudo eliminar el borrador.";};
 }
+function homeCircleHTML(){
+ return '<section class="panel" aria-label="Tu círculo"><div class="section-heading"><h2>Tu círculo</h2><button class="text-link" data-tab="explore">Buscar personas</button></div><div id="home-circle" style="display:flex;gap:12px;overflow-x:auto;padding:4px 2px 8px" aria-label="Personas que sigues"></div><p id="home-circle-status" class="muted" role="status" style="font-size:12px;margin:4px 0">Cargando tu círculo…</p></section>';
+}
+async function loadHomeCircle(valid){
+ const host=document.getElementById("home-circle"),status=document.getElementById("home-circle-status"),uid=me?.id;
+ if(!host||!status||!uid||!valid())return;
+ const active=()=>valid()&&me?.id===uid&&host.isConnected&&status.isConnected;
+ function item(person,label,action,description){
+  const button=document.createElement("button");button.type="button";button.className="shortcut";
+  button.style.cssText="flex:0 0 76px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px";
+  button.setAttribute("aria-label",description);button.title=description;
+  const face=document.createElement("span");face.className="face lg";face.innerHTML=avatarContent(person);
+  const name=document.createElement("span");name.className="shortcut-label";name.textContent=label;name.style.cssText="max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+  button.append(face,name);button.onclick=action;host.append(button);
+ }
+ item(me,"Mi perfil",()=>goTab("profile"),"Abrir mi perfil");
+ const ids=[...following].filter(id=>id!==uid).slice(0,24);
+ if(!ids.length){status.textContent="Sigue a otras personas para añadirlas a tu círculo.";return;}
+ try{
+  const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username,avatar_url").in("user_id",ids);
+  if(!active())return;if(error)throw error;
+  const profiles=new Map((data||[]).map(p=>[p.user_id,p]));
+  for(const id of ids){const person=profiles.get(id);if(!person||!following.has(id))continue;const label=person.display_name||person.username||"Miembro";item(person,label,()=>{if(!active())return;chatUser=id;goTab("messages");},"Enviar mensaje a "+label);}
+  status.textContent=host.children.length>1?"Toca una persona para conversar. Se muestran hasta 24 perfiles que sigues.":"No hay perfiles visibles en tu círculo.";
+ }catch{if(active())status.textContent="No se pudo cargar tu círculo. Puedes seguir usando Inicio.";}
+}
 let feedViewEpoch=0,feedPageState={key:null,page:0};
 function resetFeedPage(){feedPageState={key:null,page:0};}
 function feedPageHTML(page,hasNext){
@@ -1936,6 +1962,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
 <div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 04 · Negocios 01 · Autoría 01</p></div>
+${contentFirst?homeCircleHTML():""}
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading" id="community-feed-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones en esta página</span></div>
@@ -1952,6 +1979,7 @@ const quickCompose=document.getElementById("quick-compose");if(quickCompose)quic
  document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":""):"Puedes seleccionar varias fotos de una vez.";
  };
 bindPostActions();
+if(contentFirst)void loadHomeCircle(valid);
 app.querySelectorAll("[data-feed-page]").forEach(b=>b.onclick=async()=>{
  if(!valid()||b.disabled||publishLocks.has(me?.id))return;
  const next=page+(b.dataset.feedPage==="next"?1:-1);
