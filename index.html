@@ -1313,12 +1313,50 @@ async function moderationView(){
  app.querySelectorAll("[data-hide-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Ocultar esta publicación de Gyste? Es reversible y no borra el archivo original."))act(b,db.from("gyste_hidden_posts").insert({post_id:b.dataset.hidePost,hidden_by:uid}),"Publicación ocultada.");});
  app.querySelectorAll("[data-restore-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Restaurar la visibilidad según la privacidad original?"))act(b,db.from("gyste_hidden_posts").delete().eq("post_id",b.dataset.restorePost),"Publicación restaurada.");});
 }
+const blockLocks=new Set(),reportLocks=new Set();
 async function blockUser(id,b){
- if(!id||id===me.id||b.disabled||!confirm("¿Bloquear esta cuenta? No podrá enviarte nuevos mensajes ni seguirte."))return;b.disabled=true;
- const {error}=await db.from("gyste_blocks").insert({blocker_id:me.id,blocked_id:id});if(error&&error.code!=="23505"){say(error.message,true);b.disabled=false;return;}say("Cuenta bloqueada.");if(tab==="messages")chatUser=null;await renderTab();
+ const uid=me?.id,key=uid+":"+id;if(!uid||!id||id===uid||!b||b.disabled||blockLocks.has(key)||!confirm("¿Bloquear esta cuenta? No podrá enviarte nuevos mensajes ni seguirte."))return;
+ const startTab=tab;blockLocks.add(key);b.disabled=true;
+ try{
+  const {error}=await db.from("gyste_blocks").insert({blocker_id:uid,blocked_id:id});
+  if(error&&error.code!=="23505")throw error;
+  if(me?.id!==uid)return;
+  say("Cuenta bloqueada.");if(tab===startTab){if(tab==="messages")chatUser=null;await renderTab();}
+ }catch{if(me?.id===uid&&tab===startTab)say("No se pudo confirmar el bloqueo. Comprueba tu conexión y revisa Seguridad.",true);}
+ finally{blockLocks.delete(key);b.disabled=false;}
+}
+async function submitPostReport(uid,id,reason,details){
+ const key=uid+":"+id;
+ if(!uid||me?.id!==uid||!id||!["bullying","sexual","violence","spam","privacy","other"].includes(reason)||typeof details!=="string"||details.length>500)return "invalid";
+ if(reportLocks.has(key))return "busy";
+ reportLocks.add(key);
+ try{
+  const {error}=await db.from("gyste_reports").insert({reporter_id:uid,post_id:id,reason,details});
+  if(error?.code==="23505")return "duplicate";
+  if(error)throw error;
+  return "sent";
+ }catch{return "failed";}
+ finally{reportLocks.delete(key);}
 }
 async function reportPost(id,b){
- const d=document.createElement("dialog");d.style.cssText="width:min(90vw,420px);border-radius:12px;padding:18px;background:#14263b;color:white";d.innerHTML='<form method="dialog"><h3>Denunciar publicación</h3><label>Motivo<select class="field" id="report-reason"><option value="bullying">Acoso o bullying</option><option value="sexual">Contenido sexual inapropiado</option><option value="violence">Violencia o amenazas</option><option value="spam">Spam</option><option value="privacy">Privacidad</option><option value="other">Otro</option></select></label><label>Detalles opcionales<textarea class="field" maxlength="500" id="report-details"></textarea></label><p id="report-status"></p><button type="button" class="primary" id="report-send">Enviar</button> <button class="secondary" value="cancel">Cancelar</button></form>';document.body.append(d);d.addEventListener("close",()=>d.remove(),{once:true});d.showModal();const send=d.querySelector("#report-send");send.onclick=async()=>{send.disabled=true;const {error}=await db.from("gyste_reports").insert({reporter_id:me.id,post_id:id,reason:d.querySelector("#report-reason").value,details:d.querySelector("#report-details").value.trim()});if(error&&error.code!=="23505"){d.querySelector("#report-status").textContent="No se pudo enviar.";send.disabled=false;return;}d.close();say(error?"Ya has denunciado esta publicación.":"Denuncia recibida para revisión.");};
+ const uid=me?.id;if(!uid||!id||!b||b.disabled||reportLocks.has(uid+":"+id))return;
+ b.disabled=true;
+ const d=document.createElement("dialog");d.style.cssText="width:min(90vw,420px);max-height:85vh;overflow:auto;border-radius:12px;padding:18px;background:#14263b;color:white";d.innerHTML='<form method="dialog"><h3>Denunciar publicación</h3><p class="muted">La denuncia se envía para revisión. No incluyas contraseñas ni datos privados innecesarios. Si existe peligro inmediato, contacta con los servicios de emergencia.</p><label>Motivo<select class="field" id="report-reason"><option value="bullying">Acoso o bullying</option><option value="sexual">Contenido sexual inapropiado</option><option value="violence">Violencia o amenazas</option><option value="spam">Spam</option><option value="privacy">Privacidad</option><option value="other">Otro</option></select></label><label>Detalles opcionales<textarea class="field" maxlength="500" id="report-details"></textarea></label><p id="report-status" role="status"></p><button type="button" class="primary" id="report-send">Enviar denuncia</button> <button class="secondary" value="cancel">Cancelar</button></form>';
+ document.body.append(d);d.addEventListener("close",()=>{b.disabled=false;d.remove();},{once:true});
+ try{d.showModal();}catch{b.disabled=false;d.remove();return;}
+ const send=d.querySelector("#report-send"),reason=d.querySelector("#report-reason"),details=d.querySelector("#report-details"),status=d.querySelector("#report-status"),cancel=d.querySelector('[value="cancel"]');
+ d.addEventListener("cancel",e=>{if(send.disabled)e.preventDefault();});
+ send.onclick=async()=>{
+  if(send.disabled||me?.id!==uid||!d.open)return;
+  const selected=reason.value,description=details.value.trim();
+  send.disabled=reason.disabled=details.disabled=cancel.disabled=true;status.textContent="Enviando…";
+  try{
+   const result=await submitPostReport(uid,id,selected,description);
+   if(!d.open||!d.isConnected)return;if(me?.id!==uid){d.close();return;}
+   if(result==="sent"||result==="duplicate"){d.close();say(result==="duplicate"?"Ya has denunciado esta publicación.":"Denuncia recibida para revisión.");return;}
+   status.textContent=result==="busy"?"Ya se está enviando una denuncia.":result==="invalid"?"Revisa el motivo y los detalles.":"No se pudo confirmar el envío. Conservamos tu texto; inténtalo de nuevo.";
+  }finally{send.disabled=reason.disabled=details.disabled=cancel.disabled=false;}
+ };
 }
 let videoFilter="all",videoLimit=60;
 let videoLayout="list",verticalVideoKey="";
