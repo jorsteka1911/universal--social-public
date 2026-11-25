@@ -396,8 +396,15 @@ sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderT
 const input=document.getElementById("posttext");if(input){input.focus();input.scrollIntoView({behavior:"smooth",block:"center"});}
 }
 
+function readSpaces(){
+return db.from("gyste_spaces").select("id,name,slug,description,emoji,owner_id,created_at").order("created_at",{ascending:true}).limit(100);
+}
 async function loadSpaces(){
-const {data,error}=await db.from("gyste_spaces").select("id,name,slug,description,emoji,owner_id,created_at").order("created_at",{ascending:true}).limit(100);
+const uid=me?.id,result=await readSpaces();
+if(!uid||me?.id!==uid||session?.user?.id!==uid)return;
+applySpacesResult(result);
+}
+function applySpacesResult({data,error}){
 if(error){
 spacesReady=false;spaces=[];
 console.warn("Los espacios necesitan la actualización SQL:",error.message);
@@ -757,19 +764,29 @@ session=null;me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=
 async function boot(){
 const {data:{user},error}=await db.auth.getUser();
 if(error||!user){session=null;me=null;return authView();}
+if(session?.user?.id!==user.id)return;
 me={id:user.id,email:user.email};
-let {data:p,error:profileError}=await db.from("gyste_profiles").select("*").eq("user_id",user.id).maybeSingle();
+const active=()=>session?.user?.id===user.id&&me?.id===user.id;
+const [profileResult,followingResult,spacesResult]=await Promise.all([
+ db.from("gyste_profiles").select("*").eq("user_id",user.id).maybeSingle(),
+ readFollowing(user.id),
+ readSpaces()
+]);
+if(!active())return;
+let {data:p,error:profileError}=profileResult;
 if(profileError)return authViewWithError("No se pudo cargar tu perfil: "+profileError.message);
 if(!p){
 const name="Miembro de Gyste "+user.id.slice(0,6);
 const username="gyste_"+user.id.replace(/-/g,"").slice(0,16);
 const {data:created,error:createError}=await db.from("gyste_profiles").upsert({user_id:user.id,display_name:name,username}).select().single();
+if(!active())return;
 if(createError)return authViewWithError("No se pudo crear tu perfil: "+createError.message);
 p=created;
 }
 me={...me,...p};
 applyWallpaper(readWallpaper(me.id));
-await Promise.all([loadFollowing(),loadSpaces()]);
+applyFollowingResult(followingResult);
+applySpacesResult(spacesResult);
 const requestedPost=new URLSearchParams(location.search).get("post");
 if(requestedPost&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedPost)){sharedPostId=requestedPost;tab="feed";selectedSpaceId=null;homeFilter="all";}
 await renderTab();
@@ -777,8 +794,10 @@ await renderTab();
 
 function authViewWithError(message){notice=message;noticeError=true;authView();}
 
-async function loadFollowing(){
-const {data,error}=await db.from("gyste_follows").select("followed_id").eq("follower_id",me.id);
+function readFollowing(uid){
+return db.from("gyste_follows").select("followed_id").eq("follower_id",uid);
+}
+function applyFollowingResult({data,error}){
 if(!error)following=new Set((data||[]).map(x=>x.followed_id));
 else following=new Set();
 }
