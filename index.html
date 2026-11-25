@@ -313,7 +313,7 @@ app.innerHTML=`
 <button data-tab="searchposts">🔎 Buscar publicaciones</button><button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
-<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button><button data-tab="appearance">🎨 Personalizar fondo</button><button data-tab="feedback">💡 Sugerencias y mejoras</button><button data-tab="commercial">📈 Promocionar mi negocio</button><button data-tab="about">ℹ Acerca de Gyste</button><button data-tab="help">❔ Cómo usar Gyste</button><button data-tab="install">📲 Instalar Gyste</button>
+<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button><button data-tab="appearance">🎨 Personalizar fondo</button><button data-tab="feedback">💡 Sugerencias y mejoras</button><button data-tab="commercial">📈 Promocionar mi negocio</button><button data-tab="apps">📱 Aplicaciones y proyectos</button><button data-tab="about">ℹ Acerca de Gyste</button><button data-tab="help">❔ Cómo usar Gyste</button><button data-tab="install">📲 Instalar Gyste</button>
 </div></details>
 </div>
 </header>
@@ -450,6 +450,14 @@ function commercialView(){
  shell(`<section class="panel"><h2>Gyste para negocios</h2><p>Da a conocer tu actividad, productos o servicios.</p><h3>Ficha comercial gratuita</h3><p>Prepara una ficha de tu actividad y envíala a revisión desde Negocios.</p><button class="primary full" data-tab="business">Crear o editar ficha gratuita</button></section><section class="panel"><h2>Promociones comerciales · próxima apertura</h2><p>Precios orientativos para el piloto. Aún no son servicios contratables. Puedes manifestar tu interés gratis y sin compromiso.</p>${GYSTE_OFFERS.map(o=>`<article class="post"><h3>${esc(o.title)}</h3><p><b>${esc(o.price)}</b> · ${esc(o.period)} · pago único previsto</p><p>${esc(o.description)}</p><button type="button" class="secondary full" data-commercial-interest="${o.id}">Me interesa · sin pagar</button></article>`).join("")}<p class="muted">No se cobran importes ni se solicitan tarjetas. Los precios y condiciones finales se mostrarán antes de cualquier contratación. Solo para negocios adultos autorizados y fichas aprobadas. La publicidad se identificará como tal. No se garantiza alcance, ventas ni ingresos. No se ofrecerá segmentación por datos sensibles ni publicidad dirigida a menores.</p></section>`);
  app.querySelectorAll("[data-commercial-interest]").forEach(b=>b.onclick=()=>{if(me?.id!==uid||tab!=="commercial")return;const o=GYSTE_OFFERS.find(x=>x.id===b.dataset.commercialInterest);if(!o)return;commercialInterest={uid,text:"Me interesa la futura promoción "+o.title+" ("+o.price+" / "+o.period+"). Solicitud de información sin compra ni compromiso."};goTab("feedback");});
 }
+function projectAppsPreview(){
+ return '<section class="panel"><p class="muted">Promoción propia · Proyectos de Gyste / JORSTEKA</p><h2>📱 Descubre nuestras aplicaciones</h2><h3>Lectura de documentos</h3><p>Estamos preparando una aplicación pensada para facilitar la lectura de documentos desde el móvil.</p><p class="muted">Próximamente · presentación anticipada. Aún no disponible para descargar desde Gyste.</p><button class="secondary full" data-tab="apps">Conocer el proyecto</button></section>';
+}
+function projectAppsView(){
+ const uid=me?.id;
+ shell('<section class="panel"><h2>📱 Aplicaciones y proyectos</h2><p>Escaparate de los proyectos de Gyste / JORSTEKA. Aquí presentaremos nuestras aplicaciones conforme estén listas para probarse.</p></section><article class="panel"><p class="muted">Promoción propia · En preparación</p><h3>📄 Lectura de documentos</h3><p>Un proyecto pensado para facilitar la lectura de documentos desde el teléfono. Estamos preparando su lanzamiento.</p><p>Objetivo: publicación en Google Play cuando se completen las pruebas y los requisitos de la tienda.</p><button type="button" class="primary full" id="project-reader-interest">Me interesa conocer esta aplicación</button><p class="muted">Por ahora no hay descarga, fecha confirmada ni compras disponibles. La manifestación de interés es gratuita y no supone una suscripción ni un compromiso de compra.</p></article><button class="secondary full" data-tab="feed">Volver a Inicio</button>');
+ document.getElementById("project-reader-interest").onclick=()=>{if(!uid||me?.id!==uid||tab!=="apps")return;commercialInterest={uid,text:"Me interesa conocer el proyecto de lectura de documentos cuando esté listo. Solicitud de información sin compra ni compromiso."};goTab("feedback");};
+}
 async function feedbackView(){
  const uid=me?.id;if(!uid)return;
  const [mine,role]=await Promise.all([db.from("gyste_feedback").select("id,category,body,status,created_at").eq("user_id",uid).order("created_at",{ascending:false}).limit(30),db.from("gyste_moderators").select("user_id").eq("user_id",uid).maybeSingle()]);
@@ -467,7 +475,7 @@ return `<section class="shortcut-section" aria-label="Accesos rápidos">
 <button class="shortcut mine" data-tab="profile"><span class="shortcut-circle">${avatarContent(me)}</span><span class="shortcut-label">Mi perfil</span></button>
 <button class="shortcut ${!selectedSpaceId&&homeFilter==="mine"?"active":""}" data-filter="mine"><span class="shortcut-circle">✎</span><span class="shortcut-label">Mis estados</span></button>
 ${spaces.slice(0,24).map(s=>`<button class="shortcut ${selectedSpaceId===s.id?"active":""}" data-space="${esc(s.id)}"><span class="shortcut-circle">${esc(s.emoji||"✦")}</span><span class="shortcut-label">${esc(s.name)}</span></button>`).join("")}
-<button class="shortcut" data-tab="searchposts"><span class="shortcut-circle">⌕</span><span class="shortcut-label">Buscar contenido</span></button><button class="shortcut" data-tab="spaces"><span class="shortcut-circle">＋</span><span class="shortcut-label">Más espacios</span></button>
+<button class="shortcut" data-tab="apps"><span class="shortcut-circle">📱</span><span class="shortcut-label">Aplicaciones</span></button><button class="shortcut" data-tab="searchposts"><span class="shortcut-circle">⌕</span><span class="shortcut-label">Buscar contenido</span></button><button class="shortcut" data-tab="spaces"><span class="shortcut-circle">＋</span><span class="shortcut-label">Más espacios</span></button>
 </div></section>`;
 }
 
@@ -689,6 +697,7 @@ if(tab==="challenges")return challengesView();
 if(tab==="feedback")return feedbackView();
 if(tab==="about")return aboutGysteView();
 if(tab==="commercial")return commercialView();
+if(tab==="apps")return projectAppsView();
 if(tab==="help")return helpView();
 if(tab==="install")return installView();
 if(tab==="appearance")return appearanceView();
@@ -1343,7 +1352,7 @@ const intro=sharedPostId?"Abre Inicio para ver el resto de publicaciones.":activ
 const selectOptions=`<option value="">Mi estado personal</option>${spaces.map(s=>`<option value="${esc(s.id)}" ${selectedSpaceId===s.id?"selected":""}>${esc(s.emoji||"✦")} ${esc(s.name)}</option>`).join("")}`;
 shell(`
 <div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p></div>
-${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>
+${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 <section class="panel composer" id="composer">
 <div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
