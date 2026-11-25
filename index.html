@@ -1998,7 +1998,7 @@ async function notificationView(){
 
 // Gyste Chat: consulta periódica limitada a la conversación abierta.
 // No afirma ofrecer cifrado de extremo a extremo ni notificaciones push.
-let chatRefreshTimer=null;
+let chatRefreshTimer=null,chatViewEpoch=0;
 let chatRenderSignature="";
 function stopChatRefresh(){if(chatRefreshTimer){clearInterval(chatRefreshTimer);chatRefreshTimer=null;}}
 const CHAT_BUCKET="gyste-chat-media";
@@ -2008,11 +2008,11 @@ let voiceCapture=null,voiceDraft=null,voiceDraftUrl=null;
 function clearVoiceDraft(){voiceDraft=null;if(voiceDraftUrl)URL.revokeObjectURL(voiceDraftUrl);voiceDraftUrl=null;}
 function stopVoiceCapture(){if(voiceCapture){const v=voiceCapture;voiceCapture=null;v.cancelled=true;clearTimeout(v.timer);if(v.rec.state!=="inactive")v.rec.stop();v.stream.getTracks().forEach(t=>t.stop());}clearVoiceDraft();}
 const chatMediaCache=new Map();
-async function prepareChatMedia(items){
+async function prepareChatMedia(items,valid=()=>true){
  const paths=[...new Set((items||[]).map(m=>m.media_path).filter(Boolean))].filter(p=>!chatMediaCache.has(p)||chatMediaCache.get(p).expires<Date.now()+30000);
  if(!paths.length)return;
  const {data,error}=await db.storage.from(CHAT_BUCKET).createSignedUrls(paths,300);
- if(error)return;
+ if(error||!valid())return;
  for(const item of data||[])if(item.path&&item.signedUrl)chatMediaCache.set(item.path,{url:item.signedUrl,expires:Date.now()+300000});
 }
 function chatAttachment(m){
@@ -2028,34 +2028,40 @@ function chatBody(content){
  try{const u=new URL(match[1]);const id=u.searchParams.get("post");if(u.origin!==location.origin||!id||!/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id))return esc(s);return esc(s.slice(0,match.index).trim())+`<div><button type="button" class="secondary" data-chat-post="${esc(id)}">▶ Ver publicación compartida</button></div>`;}catch{return esc(s);}
 }
 function chatMarkup(items){return (items||[]).map(m=>`<div class="comment" style="text-align:${m.sender_id===me.id?"right":"left"}"><div class="comment-author" style="justify-content:${m.sender_id===me.id?"flex-end":"flex-start"}"><span class="face">${avatarContent(m.sender_id===me.id?me:chatPeerProfile)}</span></div><div class="bodytext">${chatBody(m.content)}</div>${chatAttachment(m)}<small>${time(m.created_at)}</small></div>`).join("")||'<p class="muted">Inicia la conversación.</p>';}
+const chatRefreshLocks=new WeakSet();
 async function refreshChatMessages(target,markRead=false){
- if(!me||tab!=="messages"||chatUser!==target)return;
+ const uid=me?.id,list=document.getElementById("chatlist"),status=document.getElementById("chat-refresh-status");
+ if(!uid||tab!=="messages"||chatUser!==target||!list||chatRefreshLocks.has(list))return;
+ const valid=()=>me?.id===uid&&tab==="messages"&&chatUser===target&&list.isConnected&&document.getElementById("chatlist")===list;
+ chatRefreshLocks.add(list);
+ try{
  const {data,error}=await db.from("gyste_messages").select("id,sender_id,recipient_id,content,created_at,read_at,media_path,media_type")
- .or(`and(sender_id.eq.${me.id},recipient_id.eq.${target}),and(sender_id.eq.${target},recipient_id.eq.${me.id})`)
+ .or(`and(sender_id.eq.${uid},recipient_id.eq.${target}),and(sender_id.eq.${target},recipient_id.eq.${uid})`)
  .order("created_at",{ascending:false}).limit(200);
- if(!me||tab!=="messages"||chatUser!==target)return;
- const status=document.getElementById("chatstatus");
- if(error){if(status)status.textContent="No se pudieron actualizar los mensajes: "+error.message;return;}
- if(status)status.textContent="";
+ if(!valid())return;if(error)throw error;
  const ordered=(data||[]).slice().reverse();
- await prepareChatMedia(ordered);
- if(!me||tab!=="messages"||chatUser!==target)return;
+ await prepareChatMedia(ordered,valid);
+ if(!valid())return;
  const signature=JSON.stringify(ordered.map(m=>[m.id,m.created_at,m.read_at,m.media_path,chatMediaCache.get(m.media_path)?.url]));
- if(document.fullscreenElement||document.querySelector("#chatlist .media-overlay")||Array.from(document.querySelectorAll("#chatlist video,#chatlist audio")).some(v=>!v.paused&&!v.ended))return;
+ if(status)status.textContent="";
+ if(document.fullscreenElement||list.querySelector(".media-overlay")||Array.from(list.querySelectorAll("video,audio")).some(v=>!v.paused&&!v.ended))return;
  if(signature!==chatRenderSignature){
-  const list=document.getElementById("chatlist");
-  if(list){const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});if(nearBottom)list.scrollTop=list.scrollHeight;}
-  chatRenderSignature=signature;
+ const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();
+ list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{if(!valid())return;sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});
+ if(nearBottom)list.scrollTop=list.scrollHeight;chatRenderSignature=signature;
  }
- if(markRead&&(data||[]).some(m=>m.recipient_id===me.id&&!m.read_at)){
-  const {error:readError}=await db.from("gyste_messages").update({read_at:new Date().toISOString()}).eq("recipient_id",me.id).eq("sender_id",target).is("read_at",null);
-  if(readError)console.warn("No se pudieron marcar mensajes como leídos:",readError.message);
+ const unread=ordered.filter(m=>m.recipient_id===uid&&m.sender_id===target&&!m.read_at).map(m=>m.id);
+ if(markRead&&unread.length&&valid()&&document.visibilityState!=="hidden"){
+ const {error:readError}=await db.from("gyste_messages").update({read_at:new Date().toISOString()}).eq("recipient_id",uid).eq("sender_id",target).in("id",unread).is("read_at",null);
+ if(readError&&valid()&&status)status.textContent="No se pudieron confirmar los avisos de lectura.";
  }
+ }catch{if(valid()&&status)status.textContent="No se pudieron actualizar los mensajes. Se volverá a intentar.";}
+ finally{chatRefreshLocks.delete(list);}
 }
 async function messagesView(){
  stopChatRefresh();stopVoiceCapture();chatRenderSignature="";chatMediaCache.clear();
- const uid=me?.id,requestedChat=chatUser;if(!uid)return;
- const valid=()=>tab==="messages"&&me?.id===uid&&chatUser===requestedChat;
+ const uid=me?.id,requestedChat=chatUser,epoch=++chatViewEpoch;if(!uid)return;
+ const valid=()=>tab==="messages"&&me?.id===uid&&chatUser===requestedChat&&epoch===chatViewEpoch;
  if(!requestedChat){
   const {data,error}=await db.from("gyste_messages").select("sender_id,recipient_id,content,created_at,read_at")
   .or(`sender_id.eq.${uid},recipient_id.eq.${uid}`).order("created_at",{ascending:false}).limit(200);
@@ -2100,14 +2106,15 @@ async function messagesView(){
  if(!valid())return;
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
- shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p><div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chatstatus" class="error" role="status"></p><form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form></section>`);
+ shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p><div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status"></p><form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form></section>`);
  document.getElementById("back").onclick=()=>{stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
  bindVoiceRecorder(target);
  document.getElementById("sendmsg").onsubmit=sendMessage;
  document.getElementById("chatfile").onchange=e=>{stopVoiceCapture();resetVoiceUI();const f=e.target.files[0];document.getElementById("chatfile-status").textContent=f?f.name+" · "+(f.size/1048576).toFixed(1)+" MB":"";};
  document.getElementById("block-chat").onclick=e=>blockUser(target,e.currentTarget);
+ const chatList=document.getElementById("chatlist");
  await refreshChatMessages(target,true);
- if(valid())chatRefreshTimer=setInterval(()=>{if(document.visibilityState!=="hidden")refreshChatMessages(target,true);},8000);
+ if(valid()&&chatList?.isConnected&&document.getElementById("chatlist")===chatList)chatRefreshTimer=setInterval(()=>{if(document.visibilityState!=="hidden")refreshChatMessages(target,true);},8000);
 }
 function resetVoiceUI(){
  const b=document.getElementById("voice-record"),cancel=document.getElementById("voice-cancel"),preview=document.getElementById("voice-preview");
