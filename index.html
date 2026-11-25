@@ -557,7 +557,8 @@ document.getElementById("forgot").onclick=sendPasswordReset;
 document.getElementById("signup").onclick=signup;
 document.getElementById("signup-rules").onclick=showCommunityRules;
 document.getElementById("show-login-password").onchange=e=>{document.getElementById("password").type=e.target.checked?"text":"password";};
-document.getElementById("password").onkeydown=e=>{if(e.key==="Enter"&&!document.getElementById("signup-details").open){e.preventDefault();if(!document.getElementById("login").disabled)login();}};
+document.getElementById("password").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();const registration=document.getElementById("signup-details").open;if(registration){if(document.getElementById("signup-accept").checked)signup();else say("Lee y acepta las normas antes de crear tu cuenta.",true);}else login();}};
+document.getElementById("signup-details").addEventListener("toggle",e=>{const field=document.getElementById("password");field.autocomplete=e.currentTarget.open?"new-password":"current-password";});
 }
 function showCommunityRules(){
  const d=document.createElement("dialog");
@@ -579,17 +580,23 @@ app.innerHTML=`
 document.getElementById("savepassword").onclick=saveNewPassword;
 }
 
+let authBusy=false;
+function beginAuthAction(button,label){
+ if(authBusy||!button||button.disabled)return null;
+ authBusy=true;const ids=["login","signup","forgot","email","password","signup-accept"],nodes=ids.map(id=>document.getElementById(id)).filter(Boolean),states=nodes.map(n=>n.disabled),oldLabel=button.textContent;
+ nodes.forEach(n=>n.disabled=true);button.textContent=label;
+ return ()=>{authBusy=false;nodes.forEach((n,i)=>n.disabled=states[i]);button.textContent=oldLabel;};
+}
 async function sendPasswordReset(){
 const email=document.getElementById("email").value.trim().toLowerCase();
 if(!validEmail(email))return say("Escribe primero el correo de tu cuenta.",true);
-const button=document.getElementById("forgot");
-button.disabled=true;button.textContent="Enviando…";
+const button=document.getElementById("forgot"),finish=beginAuthAction(button,"Enviando…");if(!finish)return;
 try{
 const {error}=await db.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
 if(error)throw error;
-say("Te enviamos un enlace. Ábrelo desde este mismo navegador para crear tu contraseña nueva.");
+say("Si existe una cuenta asociada a ese correo, recibirás un enlace de recuperación. Revisa también spam y ábrelo en este navegador.");
 }catch(e){say("No se pudo enviar el correo de recuperación. Comprueba la configuración de URL de Supabase e inténtalo de nuevo.",true);}
-finally{button.disabled=false;button.textContent="¿Olvidaste tu contraseña?";}
+finally{finish();}
 }
 
 async function saveNewPassword(){
@@ -623,7 +630,7 @@ function authMessage(error, mode){
   if(raw.includes("email not confirmed")||code==="email_not_confirmed")
     return "Tu correo todavía no está confirmado. Revisa tu bandeja de entrada y la carpeta de spam.";
   if(raw.includes("user already registered")||raw.includes("already registered")||raw.includes("user already exists")||code==="user_already_exists")
-    return "Este correo ya tiene una cuenta. Pulsa Entrar para iniciar sesión.";
+    return "Si ya tienes cuenta, pulsa Entrar o recupera la contraseña. Revisa también si recibiste un enlace de confirmación.";
   if(raw.includes("password should be at least")||raw.includes("password is too short"))
     return "La contraseña debe tener al menos 6 caracteres.";
   if(raw.includes("rate limit")||raw.includes("too many requests")||code.includes("rate_limit"))
@@ -643,7 +650,7 @@ async function login(){
   const button=document.getElementById("login");
   if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
   if(!password)return say("Escribe tu contraseña.",true);
-  button.disabled=true;button.textContent="Entrando…";
+  const finish=beginAuthAction(button,"Entrando…");if(!finish)return;
   try{
     const {data,error}=await db.auth.signInWithPassword({email,password});
     if(error)throw error;
@@ -653,8 +660,7 @@ async function login(){
   }catch(error){
     say(authMessage(error,"login"),true);
   }finally{
-    const current=document.getElementById("login");
-    if(current){current.disabled=false;current.textContent="Entrar";}
+    finish();
   }
 }
 
@@ -665,15 +671,14 @@ async function signup(){
   if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
   if(password.length<8)return say("Para crear una cuenta, elige una contraseña de al menos 8 caracteres.",true);
   if(!document.getElementById("signup-accept")?.checked)return say("Lee y acepta las normas de convivencia para registrarte.",true);
-  if(button.disabled)return;
-  button.disabled=true;button.textContent="Creando cuenta…";
+  const finish=beginAuthAction(button,"Creando cuenta…");if(!finish)return;
   try{
     const {data,error}=await db.auth.signUp({email,password});
     if(error)throw error;
     // Supabase puede devolver identidades vacías cuando el correo ya existe,
     // para evitar revelar información de cuentas a terceros.
     if(data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
-      say("Este correo ya tiene una cuenta. Pulsa Entrar para iniciar sesión.",true);
+      say("Si puedes acceder con ese correo, pulsa Entrar. Si necesitas recuperar la contraseña, utiliza la opción correspondiente. Si recibes un enlace de confirmación, ábrelo.");
       return;
     }
     if(data.session){
@@ -685,8 +690,7 @@ async function signup(){
   }catch(error){
     say(authMessage(error,"signup"),true);
   }finally{
-    const current=document.getElementById("signup");
-    if(current){current.disabled=false;current.textContent="Crear cuenta";}
+    finish();
   }
 }
 
