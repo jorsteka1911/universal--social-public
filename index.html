@@ -307,7 +307,7 @@ app.innerHTML=`
 <button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">☰</summary>
 <div class="menu-dropdown">
-<button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
+<button data-tab="studio">✨ Estudio creativo</button><button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
 <button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
 <button data-tab="pages">📰 Páginas y noticias</button><button data-tab="reels">▶ Reels</button><button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
 <button data-tab="searchposts">🔎 Buscar publicaciones</button><button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
@@ -668,6 +668,7 @@ if(tab==="learn")return learnView();
 if(tab==="series")return seriesView();
 if(tab==="pages")return pagesView();
 if(tab==="reels")return reelsView();
+if(tab==="studio")return creatorStudioView();
 if(tab==="videos")return videosView();
 if(tab==="history")return historyView();
 if(tab==="stories")return storiesView();
@@ -800,6 +801,27 @@ async function goReelCompose(){
  finally{busy=false;if(input.isConnected)redraw();}};
  redraw();input.scrollIntoView({block:"center"});
 }
+function creatorPlan(topic,style,seconds){
+ const t=String(topic||"").trim().replace(/\s+/g," ").slice(0,160);
+ if(!t)return null;
+ const plans={
+  curiosity:["¿Qué sabes realmente sobre "+t+"?","Muestra un detalle sorprendente y explica por qué importa. Usa información que hayas comprobado.","¿Qué más te gustaría descubrir sobre este tema?"],
+  inspire:["Una pequeña idea puede cambiar tu manera de ver "+t+".","Cuenta una experiencia propia o muestra un cambio real. Termina con una enseñanza concreta.","Comparte tu experiencia en Gyste."],
+  teach:["Aprende algo sobre "+t+" en pocos segundos.","Enseña un paso útil con un ejemplo propio; muestra el resultado y explica un error que conviene evitar.","Guarda este vídeo si te ha servido."],
+  humor:["Cuando intentas entender "+t+"…","Representa una situación cotidiana con un giro divertido, sin humillar a nadie.","¿A quién le ha pasado algo parecido?"],
+  community:["Hablemos de "+t+".","Muestra tu punto de vista o presenta tu creación. Invita a participar respetando otras opiniones.","Cuéntanos tu opinión en Gyste."]
+ };
+ const p=plans[style]||plans.curiosity,d=[15,30,60].includes(Number(seconds))?Number(seconds):15,h=d===15?3:5,c=d===60?8:4;
+ return {hook:p[0],body:p[1],end:p[2],script:"0–"+h+" s · INICIO\n"+p[0]+"\n\n"+h+"–"+(d-c)+" s · DESARROLLO\n"+p[1]+"\n\n"+(d-c)+"–"+d+" s · CIERRE\n"+p[2],caption:p[0]+"\n\n"+p[2]+"\n#Gyste #Creatividad"};
+}
+function creatorStudioView(){
+ shell(`<section class="panel"><h2>✨ Estudio creativo Gyste</h2><p>Prepara guiones y descripciones para tus publicaciones y Reels.</p><p class="muted">Modo gratuito: plantillas locales, sin IA generativa conectada ni envío de tu texto a servicios externos.</p><form id="creator-form"><label>Tema de tu vídeo<input id="creator-topic" class="field" maxlength="160" required placeholder="Ej. Un talento que quiero compartir"></label><label>Estilo<select id="creator-style" class="field"><option value="curiosity">Curiosidad</option><option value="inspire">Inspiración</option><option value="teach">Enseñanza</option><option value="humor">Humor</option><option value="community">Comunidad</option></select></label><label>Duración<select id="creator-length" class="field"><option value="15">15 segundos</option><option value="30">30 segundos</option><option value="60">60 segundos</option></select></label><button type="submit" class="primary full">Preparar guion</button></form><p id="creator-status" role="status"></p></section><section id="creator-result" class="panel" hidden><h2>Tu guion</h2><label>Guion editable<textarea id="creator-script" class="field" rows="9" maxlength="5000"></textarea></label><label>Descripción editable<textarea id="creator-caption" class="field" rows="5" maxlength="5000"></textarea></label><button class="secondary full" id="creator-copy">Copiar guion</button><button class="secondary full" id="creator-copy-caption">Copiar descripción</button><button class="primary full" id="creator-use">Preparar publicación con esta descripción</button><p class="muted">El vídeo lo grabas o creas tú. Usa material propio o autorizado. Revisa el texto y la audiencia antes de publicar.</p></section>`);
+ const $=id=>document.getElementById(id),status=$("creator-status"),uid=me?.id;
+ $("creator-form").onsubmit=e=>{e.preventDefault();const p=creatorPlan($("creator-topic").value,$("creator-style").value,$("creator-length").value);if(!p){status.textContent="Escribe un tema.";return;}$("creator-script").value=p.script;$("creator-caption").value=p.caption;$("creator-result").hidden=false;status.textContent="Guion preparado. Puedes editarlo.";$("creator-result").scrollIntoView({block:"start"});};
+ const copy=async id=>{const node=$(id);try{await navigator.clipboard.writeText(node.value);status.textContent="Texto copiado.";say("Texto copiado.");}catch{node.focus();node.select();say("Texto seleccionado. Usa Copiar en el menú de tu móvil.");}};
+ $("creator-copy").onclick=()=>copy("creator-script");$("creator-copy-caption").onclick=()=>copy("creator-caption");
+ $("creator-use").onclick=async()=>{const text=$("creator-caption").value.trim();if(!text)return say("Escribe una descripción.",true);await goReelCompose();if(tab!=="feed"||me?.id!==uid)return;const field=$("posttext");if(field){field.value=text;field.dispatchEvent(new Event("input"));say("Descripción preparada. Elige tus vídeos y revisa la privacidad antes de publicar.");}};
+}
 function reelSwipeDirection(dx,dy){return Math.abs(dy)>=65&&Math.abs(dy)>Math.abs(dx)*1.5?(dy<0?1:-1):0;}
 let reelViewEpoch=0,reelVideoKey="",reelFilter="all",reelLimit=150;
 async function reelsView(){
@@ -811,7 +833,7 @@ async function reelsView(){
  const items=(data||[]).filter(p=>postMediaItems(p).some(m=>m.type?.startsWith("video/")));
  await prepareCards(items);if(!valid())return;
  const entries=items.flatMap(p=>postMediaItems(p).map((m,i)=>({p,m,key:p.id+":"+i})).filter(x=>x.m.type?.startsWith("video/")));
- shell(`<section class="panel"><h2>▶ Reels</h2><div class="actions"><button class="secondary" data-reel-filter="all" aria-pressed="${filter==="all"}">Todos los disponibles</button><button class="secondary" data-reel-filter="mine" aria-pressed="${filter==="mine"}">Mis Reels</button></div><label>Ir a un Reel<select class="field" id="reel-picker" ${entries.length?"":"disabled"}>${entries.map((x,i)=>`<option value="${i}">Reel ${i+1} · ${esc(x.p.content?.trim().slice(0,40)||time(x.p.created_at))}${x.p.audience==="only_me"?" · Solo yo":""}</option>`).join("")}</select></label><div class="actions"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reelstage"></div><button class="primary full" id="reelpublish">+ Publicar Reels</button>${(data||[]).length===reelLimit?'<button class="secondary full" id="reel-more">Cargar más Reels</button>':""}<button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></section>`);
+ shell(`<section class="panel"><h2>▶ Reels</h2><div class="actions"><button class="secondary" data-reel-filter="all" aria-pressed="${filter==="all"}">Todos los disponibles</button><button class="secondary" data-reel-filter="mine" aria-pressed="${filter==="mine"}">Mis Reels</button></div><label>Ir a un Reel<select class="field" id="reel-picker" ${entries.length?"":"disabled"}>${entries.map((x,i)=>`<option value="${i}">Reel ${i+1} · ${esc(x.p.content?.trim().slice(0,40)||time(x.p.created_at))}${x.p.audience==="only_me"?" · Solo yo":""}</option>`).join("")}</select></label><div class="actions"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reelstage"></div><button class="primary full" id="reelpublish">+ Publicar Reels</button><button class="secondary full" data-tab="studio">✨ Preparar un guion para Reels</button>${(data||[]).length===reelLimit?'<button class="secondary full" id="reel-more">Cargar más Reels</button>':""}<button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></section>`);
  const stage=document.getElementById("reelstage"),count=document.getElementById("reelcount"),prev=document.getElementById("reelprev"),next=document.getElementById("reelnext");let index=Math.max(0,entries.findIndex(x=>x.key===reelVideoKey)),serial=0;const picker=document.getElementById("reel-picker");picker.onchange=()=>{const selected=Number(picker.value);if(Number.isInteger(selected)&&selected>=0&&selected<entries.length){index=selected;draw();}};app.querySelectorAll("[data-reel-filter]").forEach(button=>button.onclick=()=>{if(button.dataset.reelFilter!==reelFilter){reelFilter=button.dataset.reelFilter;reelLimit=150;reelVideoKey="";reelsView();}});const more=document.getElementById("reel-more");if(more)more.onclick=()=>{if(reelLimit>=900){more.disabled=true;more.textContent="Límite de esta vista alcanzado";return;}reelLimit+=150;reelsView();};
  async function draw(){
  const n=++serial,active=()=>valid()&&n===serial&&stage.isConnected;
@@ -1235,12 +1257,13 @@ ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">←
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
 <label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label>
 </div>
-<button id="publish" class="primary full">Compartir publicación</button>
+<button id="publish" class="primary full">Compartir publicación</button><button class="secondary full" id="open-creator-studio" type="button">✨ Estudio creativo</button>
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
 </section>
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
 <div id="feed">${!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine"?pageShelf(homeFilter):""}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
 document.getElementById("publish").onclick=publish;
+ document.getElementById("open-creator-studio").onclick=()=>{const t=document.getElementById("posttext"),f=document.getElementById("media");if((t.value.trim()||f.files.length)&&!confirm("Abrir el estudio dejará atrás este borrador y sus archivos. ¿Continuar?"))return;goTab("studio");};
  bindAudiencePicker();
  bindPostDraft();
  document.getElementById("media").onchange=e=>{
