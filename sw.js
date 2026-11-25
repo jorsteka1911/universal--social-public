@@ -1,0 +1,9 @@
+// Gyste: network-first navigation, no cached accounts, messages, posts or API responses.
+const OFFLINE_HTML='<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0a1929"><title>Gyste · Sin conexión</title><style>body{background:#091827;color:#f3f6f9;font:17px system-ui,sans-serif;margin:0;padding:32px}main{max-width:420px;margin:10vh auto}a{display:inline-block;padding:14px 22px;border-radius:12px;background:#36c7b2;color:#091827;font-weight:700;text-decoration:none}p{line-height:1.6}</style><main><h1>Gyste</h1><h2>No hay conexión disponible</h2><p>Comprueba tu conexión a Internet y vuelve a intentarlo. Tus publicaciones y mensajes privados no se muestran sin conexión.</p><a href="/">Volver a Gyste</a></main></html>';
+self.addEventListener("install",event=>{event.waitUntil(self.skipWaiting());});
+self.addEventListener("activate",event=>{event.waitUntil(self.clients.claim());});
+self.addEventListener("fetch",event=>{
+ const request=event.request,url=new URL(request.url);
+ if(request.method!=="GET"||request.mode!=="navigate"||url.origin!==self.location.origin||!["/","/index.html"].includes(url.pathname)||url.search)return;
+ event.respondWith(fetch(request).catch(()=>new Response(OFFLINE_HTML,{status:503,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"}})));
+});
