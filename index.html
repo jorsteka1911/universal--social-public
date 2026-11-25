@@ -343,6 +343,7 @@ bindPageNavigation();
 bindEditorialSaves();
 bindEditorialReactions();
 bindEditorialComments();
+bindCaribbeanBulletins();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
 sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
@@ -923,6 +924,7 @@ const GYSTE_PAGES=[
 ["14ymedio","📰","14ymedio","Medio cubano independiente; actualidad y sociedad.","https://www.14ymedio.com/"],
 ["eltoque","📰","elTOQUE","Medio cubano independiente; economía y servicios informativos.","https://eltoque.com/"],
 ["diariodecuba","📰","Diario de Cuba","Medio cubano independiente; noticias y cultura.","https://diariodecuba.com/"],
+["caribe-tiempo","🌦","Boletines del Caribe","Información oficial sobre ciclones tropicales del Atlántico en español.","https://www.nhc.noaa.gov/"],
 ["mundo","🌍","Noticias internacionales","Consulta la actualidad en español.","https://www.bbc.com/mundo"],
 ["empleo","📚","Formación y empleo","Información oficial del SEPE.","https://www.sepe.es/"],
 ["ciencia","🔬","Ciencia y tecnología","Divulgación científica.","https://www.agenciasinc.es/"],
@@ -1129,6 +1131,45 @@ function bindEditorialSaves(){
 const pageKey=uid=>"gyste-pages-v1:"+uid;
 function pageFollows(){try{const v=JSON.parse(localStorage.getItem(pageKey(me?.id))||"[]");return new Set(Array.isArray(v)?v.filter(x=>GYSTE_PAGES.some(p=>p[0]===x)):[]);}catch{return new Set();}}
 function pageCard(p){const [id,icon,name,desc,url,view]=p,has=pageFollows().has(id);return `<article class="panel"><div class="section-heading"><button type="button" class="text-link" data-open-page="${esc(id)}">${icon} ${esc(name)}</button><button class="secondary" data-page-follow="${id}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><p>${esc(desc)}</p>${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Consultar fuente externa ↗</a>`:view?`<button class="text-link" data-tab="${view}">Abrir contenido</button>`:'<p class="muted">Enlace pendiente de verificar.</p>'}</article>`;}
+const CARIBBEAN_SOURCE="https://www.nhc.noaa.gov/";
+function caribbeanBulletinsHTML(){
+ return '<section class="panel" data-caribbean-bulletins><h2>🌦 Boletines del Atlántico y el Caribe</h2><p class="muted">Centro Nacional de Huracanes (NOAA/NHC) · RSS oficial en español. No sustituye las alertas de las autoridades locales. No es una confirmación de que haya o no peligro.</p><div data-bulletin-list role="status">Consultando la fuente…</div><div class="actions"><button type="button" class="secondary" data-bulletin-refresh>Actualizar</button><a href="'+CARIBBEAN_SOURCE+'" target="_blank" rel="noopener noreferrer">Consultar avisos oficiales ↗</a></div></section>';
+}
+function parseCaribbeanBulletins(xml){
+ if(typeof xml!=="string"||xml.length>512000||/<!DOCTYPE|<!ENTITY/i.test(xml))throw Error("invalid XML");
+ const doc=new DOMParser().parseFromString(xml,"application/xml");
+ if(doc.querySelector("parsererror")||doc.documentElement.localName!=="rss")throw Error("invalid RSS");
+ const seen=new Set(),items=[];
+ for(const item of doc.querySelectorAll("channel > item")){
+  const read=name=>item.querySelector(name)?.textContent?.trim()||"";
+  const title=read("title").replace(/\s+/g," ").slice(0,300);
+  let url;try{url=new URL(read("link"),CARIBBEAN_SOURCE);}catch{continue;}
+  if(url.protocol==="http:"&&url.hostname==="www.nhc.noaa.gov")url.protocol="https:";
+  if(!title||url.protocol!=="https:"||!["www.nhc.noaa.gov","nhc.noaa.gov"].includes(url.hostname)||url.username||url.password||url.port)continue;
+  const date=Date.parse(read("pubDate"));const key=url.href+"|"+title;if(seen.has(key))continue;seen.add(key);
+  items.push({title,url:url.href,date:Number.isFinite(date)?date:null});
+ }
+ return items.sort((a,b)=>(b.date??0)-(a.date??0)).slice(0,5);
+}
+function bulletinItemsHTML(items){
+ if(!items.length)return '<p class="muted">La fuente no devuelve boletines en esta consulta. Comprueba los avisos oficiales; esto no significa ausencia de riesgo.</p>';
+ return items.map(x=>`<article class="comment"><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title)} ↗</a><p class="muted">${x.date===null?"Fecha de publicación no indicada":esc(new Date(x.date).toLocaleString("es-ES"))} · NOAA/NHC</p></article>`).join("");
+}
+const bulletinLoads=new WeakMap();
+async function loadCaribbeanBulletins(panel){
+ const list=panel.querySelector("[data-bulletin-list]"),button=panel.querySelector("[data-bulletin-refresh]"),mark={};bulletinLoads.set(panel,mark);
+ const active=()=>panel.isConnected&&bulletinLoads.get(panel)===mark;
+ button.disabled=true;list.textContent="Consultando la fuente…";
+ try{
+  const res=await fetch("/api/boletines-caribe",{credentials:"omit",signal:AbortSignal.timeout(11000)});
+  if(!res.ok)throw Error("source");const xml=await res.text(),items=parseCaribbeanBulletins(xml);if(!active())return;
+  list.innerHTML=bulletinItemsHTML(items)+'<p class="muted">Consulta realizada: '+esc(new Date().toLocaleString("es-ES"))+'. La fuente puede estar en caché.</p>';
+ }catch{if(active())list.textContent="No se pudo consultar la fuente. Usa el enlace oficial o vuelve a intentar.";}
+ finally{if(active())button.disabled=false;}
+}
+function bindCaribbeanBulletins(){
+ app.querySelectorAll("[data-caribbean-bulletins]").forEach(panel=>{panel.querySelector("[data-bulletin-refresh]").onclick=()=>loadCaribbeanBulletins(panel);if(!bulletinLoads.has(panel))void loadCaribbeanBulletins(panel);});
+}
 let activeEditorialPage=null,pageSearch="";
 function pageSearchMatch(p,query){
  const norm=v=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
@@ -1143,9 +1184,9 @@ function pagesView(){
  const page=GYSTE_PAGES.find(p=>p[0]===activeEditorialPage);
  if(page){
   const [id,icon,name,desc,url,view]=page,own=GYSTE_EDITORIAL.some(n=>n.id===id),has=pageFollows().has(id);
-  shell(`<section class="panel"><button class="secondary" data-tab="pages">← Todas las páginas</button><h2>${icon} ${esc(name)}</h2><p class="muted">${own?"Página editorial propia de Gyste":url?"Fuente externa · No es una cuenta oficial en Gyste":view?"Sección propia de Gyste":"Fuente sugerida · Pendiente de verificar"}</p><p>${esc(desc)}</p><button class="primary" data-page-follow="${esc(id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button>${url?`<p><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir fuente original ↗</a></p>`:view&&!own?`<button class="secondary" data-tab="${esc(view)}">Abrir sección</button>`:""}</section><section><h2>${own?"Publicaciones":"Contenido"}</h2>${own?editorialFeed("all",id):'<p class="muted">Esta ficha no reproduce publicaciones de terceros. Consulta la fuente original cuando esté disponible.</p>'}</section>`);return;
+  shell(`<section class="panel"><button class="secondary" data-tab="pages">← Todas las páginas</button><h2>${icon} ${esc(name)}</h2><p class="muted">${own?"Página editorial propia de Gyste":url?"Fuente externa · No es una cuenta oficial en Gyste":view?"Sección propia de Gyste":"Fuente sugerida · Pendiente de verificar"}</p><p>${esc(desc)}</p><button class="primary" data-page-follow="${esc(id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button>${url?`<p><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir fuente original ↗</a></p>`:view&&!own?`<button class="secondary" data-tab="${esc(view)}">Abrir sección</button>`:""}</section><section><h2>${own?"Publicaciones":"Contenido"}</h2>${own?editorialFeed("all",id):'<p class="muted">Consulta siempre la fuente original.</p>'}${["cuba","caribe-tiempo"].includes(id)?caribbeanBulletinsHTML():""}</section>`);return;
  }
- shell(`<section class="panel"><h2>Páginas y noticias</h2><p>Descubre y sigue páginas de tu interés. El seguimiento se guarda en este navegador. Las fuentes externas no son cuentas oficiales en Gyste ni publican aquí automáticamente.</p><label>Buscar páginas<input class="field" id="page-search" type="search" maxlength="100" placeholder="Cuba, empleo, ciencia…" value="${esc(pageSearch)}"></label></section><div id="page-directory">${pageDirectoryHTML(pageSearch)}</div><h2>Publicaciones de Gyste</h2>${editorialFeed("all")}`);
+ shell(`<section class="panel"><h2>Páginas y noticias</h2><p>Descubre y sigue páginas de tu interés. El seguimiento se guarda en este navegador. Las fuentes externas no son cuentas oficiales en Gyste ni publican aquí automáticamente.</p><label>Buscar páginas<input class="field" id="page-search" type="search" maxlength="100" placeholder="Cuba, empleo, ciencia…" value="${esc(pageSearch)}"></label></section><div id="page-directory">${pageDirectoryHTML(pageSearch)}</div><h2>Publicaciones de Gyste</h2>${editorialFeed("all")}${caribbeanBulletinsHTML()}`);
  const field=document.getElementById("page-search"),directory=document.getElementById("page-directory");
  field.oninput=()=>{pageSearch=field.value.slice(0,100);directory.innerHTML=pageDirectoryHTML(pageSearch);bindPageFollows();bindPageNavigation();};
 }
@@ -1806,7 +1847,7 @@ shell(`
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-tab="pages">📰 Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
-<div id="feed">${contentFirst?editorialFeed(homeFilter,null,2):""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}${contentFirst?pageShelf(homeFilter):""}</div>
+<div id="feed">${contentFirst?editorialFeed(homeFilter,null,2):""}${contentFirst&&(homeFilter==="all"||pageFollows().has("cuba")||pageFollows().has("caribe-tiempo"))?caribbeanBulletinsHTML():""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}${contentFirst?pageShelf(homeFilter):""}</div>
 ${contentFirst?composerHTML:""}
 ${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${extraHTML}`);
 document.getElementById("publish").onclick=publish;
