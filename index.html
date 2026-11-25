@@ -1558,24 +1558,33 @@ async function publish(options={}){
 
 // Primero borra la fila protegida por RLS; después intenta limpiar el objeto.
 // Esto evita dejar una publicación visible con un enlace multimedia roto.
+const postDeleteLocks=new Set();
 async function deletePost(id,button){
- const post=posts.find(p=>p.id===id);
+ const uid=me?.id,post=posts.find(p=>p.id===id),key=uid+":"+id,startTab=tab;
+ if(!uid||postDeleteLocks.has(key)||button?.disabled)return;
  if(!post)return say("No se encontró esta publicación. Actualiza el inicio.",true);
- if(post.user_id!==me.id)return say("Solo puedes eliminar tus propias publicaciones.",true);
+ if(post.user_id!==uid)return say("Solo puedes eliminar tus propias publicaciones.",true);
  if(!confirm("¿Eliminar esta publicación? Esta acción no se puede deshacer."))return;
- if(button){button.disabled=true;button.textContent="Eliminando…";}
+ postDeleteLocks.add(key);const oldLabel=button?.textContent;if(button){button.disabled=true;button.textContent="Eliminando…";}
+ const ownedPaths=[...new Set(postMediaItems(post).map(m=>m.path).filter(path=>typeof path==="string"&&path.startsWith(uid+"/")))],bucket=bucketFor(post);
+ let deleted=false,cleanupPending=false;
  try{
-  const {data,error}=await db.from("posts").delete().eq("id",id).eq("user_id",me.id).select("id").maybeSingle();
+  const {data,error}=await db.from("posts").delete().eq("id",id).eq("user_id",uid).select("id").maybeSingle();
   if(error)throw error;
-  if(!data)throw new Error("No se confirmó el borrado; revisa los permisos de Supabase.");
-  const ownedPaths=postMediaItems(post).map(m=>m.path).filter(path=>typeof path==="string"&&path.startsWith(me.id+"/"));
-   if(ownedPaths.length){const {error:storageError}=await db.storage.from(bucketFor(post)).remove(ownedPaths);if(storageError)console.warn("La publicación se borró, pero quedaron archivos pendientes de limpieza:",storageError.message);}
-  posts=posts.filter(p=>p.id!==id);
-  ownedPaths.forEach(path=>mediaUrlCache.delete(bucketFor(post)+":"+path));
-  say("Publicación eliminada.");await renderTab();
- }catch(e){say("No se pudo eliminar: "+(e?.message||"Error"),true);if(button){button.disabled=false;button.textContent="🗑 Eliminar";}}
+  if(data?.id!==id)throw Error("No se confirmó el borrado.");
+  deleted=true;
+  if(me?.id!==uid)return;
+  if(ownedPaths.length){try{const {error}=await db.storage.from(bucket).remove(ownedPaths);if(error)cleanupPending=true;}catch{cleanupPending=true;}}
+  if(me?.id!==uid)return;
+  posts=posts.filter(p=>p.id!==id);ownedPaths.forEach(path=>mediaUrlCache.delete(bucket+":"+path));
+  if(tab===startTab){
+   say(cleanupPending?"Publicación eliminada. Algunos archivos pueden seguir almacenados; informa al equipo si eran privados o sensibles.":"Publicación eliminada.",cleanupPending);
+   try{await renderTab();}catch{if(me?.id===uid&&tab===startTab)say("Publicación eliminada. Actualiza la sección para ver el cambio.",cleanupPending);}
+  }
+ }catch{
+  if(me?.id===uid&&tab===startTab)say(deleted?"Publicación eliminada; actualiza la sección.":"No se pudo confirmar la eliminación. Actualiza la sección antes de intentarlo otra vez.",true);
+ }finally{postDeleteLocks.delete(key);if(button){button.disabled=false;button.textContent=oldLabel;}}
 }
-
 async function reactPost(id,type,b){
  if(b.disabled)return;const bar=b.closest(".reaction-bar");bar.querySelectorAll("button").forEach(x=>x.disabled=true);
  try{const old=reactionMine.get(id);let q;

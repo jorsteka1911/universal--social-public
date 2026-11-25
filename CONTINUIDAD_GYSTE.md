@@ -9,7 +9,7 @@ Archivo principal: index.html. Despliegue mediante Vercel; datos mediante Supaba
 Red social que reúne comunidad, aprendizaje, creatividad, cultura, entretenimiento y comercio. Mantener acceso básico gratuito y estudiar monetización sostenible cuando haya usuarios activos. Evitar gastos adicionales hasta contar con ingresos.
 
 ## Estado técnico
-Última revisión del HTML: commit 93556b92e4e8aa1a6db560e15507cacf4b92f646, 1662 líneas. Validación sintáctica superada; despliegue y pruebas de esta revisión pendientes al redactar esta nota. La revisión anterior e013804f538134be5fd2782ba6c87c868922c1f6 tiene despliegue Vercel exitoso confirmado.
+Última revisión publicada confirmada: commit d68eeeea2df417dd08e1e25103fc7ac700af6bf7. La siguiente revisión añade controles de eliminación y tratamiento de fallos de limpieza de medios. Las comprobaciones aisladas no sustituyen una prueba real en Android.
 
 Implementado en código: registro, sesión persistente, recuperación de contraseña, feed, fotos y vídeos, reacciones, comentarios, seguimiento, guardados, republicaciones, envío de publicaciones públicas, privacidad de audiencia, bloqueo, denuncias, mensajes privados con archivos y voz, historias temporales, academia audiovisual con un solo reproductor activo, rutas de aprendizaje, espacios, historia documental, Frutinovelas, directorio comercial moderado, fondos locales personalizados y manifiesto web instalable.
 Implementación no equivale a prueba integral. No afirmar seguridad absoluta, cifrado de extremo a extremo, instalación Android comprobada ni aprobación de Google Play.
@@ -29,3 +29,9 @@ Abrir este repositorio con la misma cuenta de GitHub desde cualquier dispositivo
 
 ## Método
 Modificar de forma incremental, conservar funciones existentes, validar sintaxis, comprobar despliegue, probar en navegador y documentar limitaciones. No introducir gastos sin autorización.
+
+## Avances recientes y criterios de salida de beta
+- Incorporados: estudio creativo con edición local de vídeos, música y voz; catálogo público de proyectos; promociones comerciales orientativas sin cobros; ayuda para instalación antes de iniciar sesión; filtros de perfil y vídeos; notificaciones con lectura manual; defensas contra solicitudes duplicadas y respuestas tardías; optimizaciones de consultas en paralelo.
+- Despliegue confirmado para la revisión de notificaciones. Rendimiento real en Android todavía sin medir. El acceso firmado y las políticas de privacidad necesitan pruebas entre cuentas.
+- Antes de abrir el lanzamiento público: comprobar registro, recuperación y sesión; publicación privada de texto, foto y vídeo; reacciones, comentarios y guardados; envío de voz y archivos entre dos cuentas autorizadas; bloqueo y denuncias; eliminación de publicación y sus archivos; moderador autorizado; eliminación de cuenta; privacidad definitiva y revisión de licencias. Registrar resultado real y evidencia sin datos personales.
+- Sin cobros activos. Las aplicaciones independientes tendrán condiciones y costes propios; el lector de documentos original sigue pendiente de recuperación. JORDAYKAT CODE AI está en su propia rama de desarrollo. No presentar productos en preparación como disponibles en Google Play.
