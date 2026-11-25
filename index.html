@@ -341,6 +341,7 @@ bindSpaceButtons();
 bindPageFollows();
 bindPageNavigation();
 bindEditorialSaves();
+bindEditorialReactions();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
 sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
@@ -601,6 +602,7 @@ return `<div class="home-tabs" role="group" aria-label="Elegir publicaciones">
 
 function authView(){
 editorialCloud=null;
+editorialReactionState=null;
 applyWallpaper({kind:"default"});
 stopChatRefresh();stopVoiceCapture();stopStoryTimer();chatMediaCache.clear();mediaUrlCache.clear();
 app.innerHTML=`
@@ -937,8 +939,57 @@ function editorialFeed(mode,pageId=null,limit=Infinity){
  if(!notes.length)return "";
  return '<section aria-label="Publicaciones de páginas Gyste">'+notes.map(n=>{
  const page=GYSTE_PAGES.find(p=>p[0]===n.id),has=followed.has(n.id);
- return `<article class="post" data-editorial-page="${esc(n.id)}" data-editorial-note="${esc(n.noteId)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions"><button class="secondary" data-editorial-save="${esc(n.noteId)}" aria-pressed="${saved.has(n.noteId)}">${esc(editorialSaveLabel(n.noteId))}</button><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
+ return `<article class="post" data-editorial-page="${esc(n.id)}" data-editorial-note="${esc(n.noteId)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions">${editorialReactionHTML(n.noteId)}<button class="secondary" data-editorial-save="${esc(n.noteId)}" aria-pressed="${saved.has(n.noteId)}">${esc(editorialSaveLabel(n.noteId))}</button><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
  }).join("")+'</section>';
+}
+let editorialReactionState=null;
+function editorialReactionsFor(uid){
+ if(!editorialReactionState||editorialReactionState.uid!==uid)editorialReactionState={uid,mine:new Map(),ready:false,loading:null,busy:new Set()};
+ return editorialReactionState;
+}
+function editorialReactionActive(state){return editorialReactionState===state&&me?.id===state.uid&&session?.user?.id===state.uid;}
+function editorialReactionHTML(noteId){
+ const state=me?.id?editorialReactionsFor(me.id):null;
+ return '<div class="reaction-bar" role="group" aria-label="Tu reacción al artículo">'+REACTION_TYPES.map(([type,emoji,label])=>{
+ const chosen=state?.mine.get(noteId)===type;
+ return `<button type="button" data-editorial-react="${esc(noteId)}" data-reaction-type="${esc(type)}" class="${chosen?"chosen":""}" aria-pressed="${chosen}" aria-label="${esc(label)}" title="${esc(label)}" ${state?.busy.has(noteId)?"disabled":""}>${emoji}</button>`;
+ }).join("")+'</div>';
+}
+function refreshEditorialReactionButtons(state){
+ if(!editorialReactionActive(state))return;
+ app.querySelectorAll("[data-editorial-react]").forEach(b=>{const id=b.dataset.editorialReact,chosen=state.mine.get(id)===b.dataset.reactionType;b.classList.toggle("chosen",chosen);b.setAttribute("aria-pressed",String(chosen));b.disabled=state.busy.has(id);});
+}
+async function loadEditorialReactions(state){
+ if(!editorialReactionActive(state))return false;
+ if(state.loading)return state.loading;
+ if(state.ready)return true;
+ state.loading=(async()=>{try{
+ const known=GYSTE_EDITORIAL.map(n=>n.noteId);
+ const {data,error}=await db.from("gyste_editorial_reactions").select("note_id,reaction_type").eq("user_id",state.uid).in("note_id",known);
+ if(error||!editorialReactionActive(state))return false;
+ state.mine=new Map((data||[]).filter(x=>known.includes(x.note_id)&&REACTION_TYPES.some(r=>r[0]===x.reaction_type)).map(x=>[x.note_id,x.reaction_type]));
+ state.ready=true;refreshEditorialReactionButtons(state);return true;
+ }catch{return false;}})();
+ try{return await state.loading;}finally{state.loading=null;}
+}
+async function toggleEditorialReaction(state,id,type){
+ if(!editorialReactionActive(state)||state.busy.has(id)||!GYSTE_EDITORIAL.some(n=>n.noteId===id)||!REACTION_TYPES.some(r=>r[0]===type))return false;
+ state.busy.add(id);refreshEditorialReactionButtons(state);
+ try{
+ if(!await loadEditorialReactions(state)||!editorialReactionActive(state))throw Error("load");
+ const remove=state.mine.get(id)===type,q=db.from("gyste_editorial_reactions");
+ const {error}=remove?await q.delete().eq("user_id",state.uid).eq("note_id",id):await q.upsert({user_id:state.uid,note_id:id,reaction_type:type},{onConflict:"user_id,note_id"});
+ if(error)throw error;if(!editorialReactionActive(state))return false;
+ if(remove)state.mine.delete(id);else state.mine.set(id,type);return true;
+ }catch{state.ready=false;if(editorialReactionActive(state))say("No se pudo confirmar tu reacción. Vuelve a intentarlo.",true);return false;}
+ finally{state.busy.delete(id);refreshEditorialReactionButtons(state);}
+}
+function bindEditorialReactions(){
+ if(!me?.id)return;
+ const buttons=app.querySelectorAll("[data-editorial-react]");if(!buttons.length)return;
+ const state=editorialReactionsFor(me.id);
+ buttons.forEach(b=>b.onclick=()=>toggleEditorialReaction(state,b.dataset.editorialReact,b.dataset.reactionType));
+ refreshEditorialReactionButtons(state);void loadEditorialReactions(state);
 }
 const editorialSavedKey=uid=>"gyste-editorial-saved-v1:"+uid;
 let editorialCloud=null;
@@ -991,7 +1042,7 @@ function refreshEditorialButtons(){
 function refreshEditorialSavedList(){
  if(tab!=="saved")return;
  const list=document.getElementById("editorial-saved-list");
- if(list){list.innerHTML=editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>';bindEditorialSaves();bindPageNavigation();bindPageFollows();}
+ if(list){list.innerHTML=editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>';bindEditorialSaves();bindPageNavigation();bindPageFollows();bindEditorialReactions();}
 }
 function bindEditorialSaves(){
  app.querySelectorAll("[data-editorial-save]").forEach(b=>b.onclick=async()=>{
