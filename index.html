@@ -1363,7 +1363,7 @@ function postCard(p,author,mediaOverride=null){
  const hasVideo=original&&postMediaItems(original).some(m=>m.type?.startsWith("video/"));
  return `<article class="post">
  ${p.repost_of?`<div class="repost-label">🔁 ${esc(author?.display_name||"Miembro")} republicó esta publicación</div>`:""}
- <div class="posthead"><div class="posthead-left"><span class="face">${avatarContent(sourceAuthor)}</span><div><span class="author">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
+ <div class="posthead"><div class="posthead-left"><span class="face" data-author-id="${esc(original?.user_id||"")}">${avatarContent(sourceAuthor)}</span><div><span class="author">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
  <details class="post-menu"><summary aria-label="Más opciones">⋯</summary><div class="post-menu-items">
  <button data-savepost="${esc(target)}">${savedIds.has(target)?"Quitar de guardados":"🔖 Guardar publicación"}</button>
  ${isPublic?`<button data-repost="${esc(source)}">🔁 Republicar en mi perfil</button>`:""}
@@ -1653,25 +1653,26 @@ async function businessView(){
  const del=document.getElementById("business-delete");if(del)del.onclick=async()=>{if(!confirm("¿Eliminar tu ficha comercial?"))return;del.disabled=true;const {error}=await db.from("gyste_businesses").delete().eq("id",p.id).eq("owner_id",uid);if(error){del.disabled=false;return say("No se pudo eliminar.",true);}say("Ficha eliminada.");if(tab==="business")await businessView();};
  const review=document.getElementById("business-review");if(review)review.onclick=async()=>{const {data,error}=await db.from("gyste_businesses").select("id,name,category,city,description,status").eq("status","pending").limit(100);const box=document.getElementById("business-review-list");if(!box)return;if(error){box.textContent="No se pudo cargar.";return;}box.innerHTML=(data||[]).map(x=>`<article class="post"><h3>${esc(x.name)}</h3><p>${esc(x.category)} · ${esc(x.city)}</p><p>${esc(x.description)}</p><button class="secondary" data-business-review="${esc(x.id)}" data-decision="approved">Aprobar</button><button class="secondary" data-business-review="${esc(x.id)}" data-decision="rejected">Rechazar</button></article>`).join("")||'<p>No hay fichas pendientes.</p>';box.querySelectorAll("[data-business-review]").forEach(b=>b.onclick=async()=>{if(!confirm("¿Confirmar esta decisión de moderación?"))return;b.disabled=true;const {error}=await db.from("gyste_businesses").update({status:b.dataset.decision}).eq("id",b.dataset.businessReview).eq("status","pending");if(error){b.disabled=false;return say("No se pudo actualizar.",true);}say("Decisión guardada.");if(tab==="business")await businessView();});};
 }
+function profilePostMatches(p,kind){const items=postMediaItems(p);return kind==="all"||(kind==="photos"&&items.some(m=>m.type?.startsWith("image/")))||(kind==="videos"&&items.some(m=>m.type?.startsWith("video/")))||(kind==="text"&&!items.length&&!p.repost_of&&Boolean(p.content?.trim()));}
 async function profileView(){
 const uid=me?.id;if(!uid)return;const valid=()=>tab==="profile"&&me?.id===uid;
 const {data:p,error}=await db.from("gyste_profiles").select("*").eq("user_id",uid).single();
 if(!valid())return;
 if(error){shell(`<p class="error">No se pudo cargar el perfil: ${esc(error.message)}</p>`);return;}
-const [{count:followers},{count:followingCount}]=await Promise.all([
+const [{count:followers,error:followersError},{count:followingCount,error:followingError}]=await Promise.all([
 db.from("gyste_follows").select("*",{count:"exact",head:true}).eq("followed_id",me.id),
 db.from("gyste_follows").select("*",{count:"exact",head:true}).eq("follower_id",me.id)
 ]);
 if(!valid())return;
 let myCards="";
-const {data:myPosts,error:postError}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).eq("user_id",me.id).order("created_at",{ascending:false}).limit(60);
+const {data:myPosts,error:postError,count:totalPosts}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":""),{count:"exact"}).eq("user_id",uid).order("created_at",{ascending:false}).limit(60);
 if(!valid())return;
 if(!postError)myCards=await prepareCards(myPosts||[]);
 if(!valid())return;
 shell(`<section class="panel profile-section">
 <div class="profile-cover" id="profile-cover-preview">${profileImageHTML(p?.cover_url)}</div>
-<div class="face profile-face" id="profile-avatar-preview">${avatarContent(p)}</div>
-<div class="profile-heading"><h2>${esc(p?.display_name||"Mi perfil")}</h2><p class="muted">@${esc(p?.username||"usuario")}</p><p class="profile-stats">${followers||0} seguidores · ${followingCount||0} siguiendo · ${(myPosts||[]).length} estados recientes</p><p>${esc(p?.bio||"Tu historia empieza aquí.")}</p></div>
+<div class="face profile-face" id="profile-avatar-preview">${avatarContent(p)}</div><div class="actions"><button class="secondary" id="profile-open-avatar" ${p?.avatar_url?"":"disabled"}>Ampliar foto de perfil</button><button class="secondary" id="profile-open-cover" ${p?.cover_url?"":"disabled"}>Ampliar portada</button></div>
+<div class="profile-heading"><h2>${esc(p?.display_name||"Mi perfil")}</h2><p class="muted">@${esc(p?.username||"usuario")}</p><p class="profile-stats">${followersError?"—":followers??0} seguidores · ${followingError?"—":followingCount??0} siguiendo · ${postError?"—":totalPosts??(myPosts||[]).length} publicaciones</p><p>${esc(p?.bio||"Tu historia empieza aquí.")}</p></div>
 <div class="profile-form">
 <h3>Editar perfil</h3>
 <div class="profile-photo-controls">
@@ -1685,8 +1686,10 @@ ${[ ["avatar","Foto de perfil",p?.avatar_url], ["cover","Foto de portada",p?.cov
 <div class="profile-actions"><button class="secondary" data-tab="appearance">🎨 Personalizar fondo</button><button class="secondary" data-tab="business">🏪 Mi negocio</button><button class="secondary" data-tab="saved">🔖 Guardados</button><button id="saveprofile" class="primary">Guardar cambios</button><button class="secondary" id="logout">Salir de mi cuenta</button></div>
 </div></section>
 <div class="section-heading"><h2>Mis publicaciones</h2><button class="text-link" data-filter="mine">Ver mis estados ›</button></div>
-${postError?`<p class="error">No se pudieron cargar tus publicaciones: ${esc(postError.message)}</p>`:(myCards||'<div class="empty-state"><span class="symbol">✎</span>Todavía no has publicado nada.</div>')}`);
+<div class="panel"><div class="actions">${[["all","Todas"],["photos","Fotos"],["videos","Vídeos"],["text","Textos"]].map(([k,label])=>`<button type="button" class="secondary" data-profile-filter="${k}" aria-pressed="${k==="all"}" ${postError?"disabled":""}>${label}</button>`).join("")}</div><p class="muted" id="profile-filter-status" role="status">Mostrando hasta 60 publicaciones recientes. Los filtros se aplican a esta selección.</p></div><div id="profile-post-list">${postError?`<p class="error">No se pudieron cargar tus publicaciones: ${esc(postError.message)}</p>`:(myCards||'<div class="empty-state"><span class="symbol">✎</span>Todavía no has publicado nada.</div>')}</div>`);
 document.getElementById("saveprofile").onclick=saveProfile;
+ for(const [kind,previewId] of [["avatar","profile-avatar-preview"],["cover","profile-cover-preview"]])document.getElementById("profile-open-"+kind).onclick=()=>openPhotoViewer(document.getElementById(previewId)?.querySelector("img"));
+ app.querySelectorAll("[data-profile-filter]").forEach(b=>b.onclick=()=>{if(!valid()||postError)return;const kind=b.dataset.profileFilter,items=(myPosts||[]).filter(p=>profilePostMatches(p,kind));app.querySelectorAll("[data-profile-filter]").forEach(n=>n.setAttribute("aria-pressed",String(n===b)));document.getElementById("profile-post-list").innerHTML=items.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===uid?me:null))).join("")||'<p class="muted">No hay publicaciones de este tipo entre las últimas 60.</p>';document.getElementById("profile-filter-status").textContent=items.length+" publicación(es) de esta selección.";bindPostActions();});
 for(const kind of ["avatar","cover"]){
  const input=document.getElementById("photo-"+kind);
  app.querySelector(`[data-photo-pick="${kind}"]`).onclick=()=>{if(!profileImageBusy)input.click();};
@@ -1713,7 +1716,9 @@ function refreshProfilePhotoControls(){
   if(pick)pick.textContent=(has?"Cambiar ":"Añadir ")+(k==="avatar"?"foto de perfil":"foto de portada");
   if(remove)remove.hidden=!has;
  }
- if(a)app.querySelectorAll(".posthead-left .face").forEach(el=>{el.innerHTML=avatarContent(me);});
+ if(a)app.querySelectorAll(".posthead-left [data-author-id]").forEach(el=>{if(el.dataset.authorId===me.id)el.innerHTML=avatarContent(me);});
+ for(const k of ["avatar","cover"]){const b=document.getElementById("profile-open-"+k);if(b)b.disabled=!me[k+"_url"];}
+ if(postAuthors[me.id])postAuthors[me.id]={...postAuthors[me.id],...me};
 }
 async function changeProfileImage(kind,file){
  if(!me||profileImageBusy||!["avatar","cover"].includes(kind))return;
