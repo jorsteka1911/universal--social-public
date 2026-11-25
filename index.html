@@ -339,6 +339,7 @@ app.querySelectorAll("[data-tab]").forEach(b=>{b.onclick=()=>goTab(b.dataset.tab
 const create=document.getElementById("compose-btn");if(create)create.onclick=goCompose;
 bindSpaceButtons();
 bindPageFollows();
+bindPageNavigation();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
 sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
@@ -383,7 +384,8 @@ function timingSummary(){
  if(lines.length===1)lines.push("Todavía no hay mediciones. Abre Inicio, Vídeos o Reels y vuelve a Ayuda.");
  return lines.join("\n");
 }
-function goTab(next){
+function goTab(next,pageId=null){
+if(next==="pages"){activeEditorialPage=pageId;pageSearch="";}
 const timingStart=performance.now(),timingSerial=++gysteTimingSerial;
 if(next!=="stories")stopStoryTimer();
 if(next!=="messages"){stopChatRefresh();stopVoiceCapture();}
@@ -925,18 +927,43 @@ const GYSTE_EDITORIAL=[
  {id:"cuba",title:"Infórmate sobre Cuba desde varias fuentes",body:"Consulta distintos medios, revisa la fecha de cada noticia y distingue los hechos confirmados de las opiniones. En Páginas y noticias encontrarás fuentes cubanas que puedes seguir.",links:[["14ymedio","https://www.14ymedio.com/"],["elTOQUE","https://eltoque.com/"],["Diario de Cuba","https://diariodecuba.com/"],["NiO Reportando un Crimen · YouTube","https://www.youtube.com/channel/UCQmXhCF82bWfxNwCrSZa2QQ"]]},
  {id:"cuba-ciudadana",title:"Cómo compartir una queja o un reporte ciudadano",body:"Describe lo que ocurrió, cuándo y en qué zona general. Diferencia lo que viste de lo que te contaron. Protege los nombres, direcciones e imágenes de menores y otras personas sin su permiso. No publiques acusaciones sin comprobar. Si existe peligro inmediato, utiliza los canales de ayuda que sean seguros para ti. No tienes que publicar datos que puedan ponerte en riesgo.",links:[["Consultar elTOQUE","https://eltoque.com/"]]}
 ];
-function editorialFeed(mode){
- const followed=pageFollows(),notes=GYSTE_EDITORIAL.filter(n=>mode!=="following"||followed.has(n.id));
+function editorialFeed(mode,pageId=null){
+ const followed=pageFollows(),notes=GYSTE_EDITORIAL.filter(n=>(!pageId||n.id===pageId)&&(mode!=="following"||followed.has(n.id)));
  if(!notes.length)return "";
  return '<section aria-label="Publicaciones de páginas Gyste">'+notes.map(n=>{
  const page=GYSTE_PAGES.find(p=>p[0]===n.id),has=followed.has(n.id);
- return `<article class="post" data-editorial-page="${esc(n.id)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><b class="author">${esc(page[2])}</b><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions"><button class="secondary" data-tab="pages">Ver páginas y noticias</button></div></article>`;
+ return `<article class="post" data-editorial-page="${esc(n.id)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions"><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
  }).join("")+'</section>';
 }
 const pageKey=uid=>"gyste-pages-v1:"+uid;
 function pageFollows(){try{const v=JSON.parse(localStorage.getItem(pageKey(me?.id))||"[]");return new Set(Array.isArray(v)?v.filter(x=>GYSTE_PAGES.some(p=>p[0]===x)):[]);}catch{return new Set();}}
-function pageCard(p){const [id,icon,name,desc,url,view]=p,has=pageFollows().has(id);return `<article class="panel"><div class="section-heading"><b>${icon} ${esc(name)}</b><button class="secondary" data-page-follow="${id}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><p>${esc(desc)}</p>${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Consultar fuente externa ↗</a>`:view?`<button class="text-link" data-tab="${view}">Abrir contenido</button>`:'<p class="muted">Enlace pendiente de verificar.</p>'}</article>`;}
-function pagesView(){const f=pageFollows();shell(`<section class="panel"><h2>Páginas y noticias</h2><p>Selecciona las fuentes que te interesan. Tu seguimiento se guarda en este navegador. Las páginas temáticas de Gyste contienen publicaciones propias; los medios externos son enlaces de consulta, no cuentas oficiales ni noticias importadas automáticamente.</p>${editorialFeed("all")}<h3>Mis páginas (${f.size})</h3>${GYSTE_PAGES.filter(p=>f.has(p[0])).map(pageCard).join("")||"<p>Aún no sigues páginas.</p>"}<h3>Descubrir páginas</h3>${GYSTE_PAGES.filter(p=>!f.has(p[0])).map(pageCard).join("")}</section>`);}
+function pageCard(p){const [id,icon,name,desc,url,view]=p,has=pageFollows().has(id);return `<article class="panel"><div class="section-heading"><button type="button" class="text-link" data-open-page="${esc(id)}">${icon} ${esc(name)}</button><button class="secondary" data-page-follow="${id}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><p>${esc(desc)}</p>${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Consultar fuente externa ↗</a>`:view?`<button class="text-link" data-tab="${view}">Abrir contenido</button>`:'<p class="muted">Enlace pendiente de verificar.</p>'}</article>`;}
+let activeEditorialPage=null,pageSearch="";
+function pageSearchMatch(p,query){
+ const norm=v=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+ const terms=norm(query).split(/\s+/).filter(Boolean),haystack=norm(p[2]+" "+p[3]);
+ return terms.every(t=>haystack.includes(t));
+}
+function pageDirectoryHTML(query=""){
+ const f=pageFollows(),matches=GYSTE_PAGES.filter(p=>pageSearchMatch(p,query)),mine=matches.filter(p=>f.has(p[0])),others=matches.filter(p=>!f.has(p[0]));
+ return `<p class="muted" role="status">${matches.length} páginas y fuentes encontradas</p><h3>Mis páginas (${mine.length})</h3>${mine.map(pageCard).join("")||"<p>No hay páginas seguidas en esta selección.</p>"}<h3>Descubrir páginas</h3>${others.map(pageCard).join("")||"<p>No hay otras coincidencias.</p>"}`;
+}
+function pagesView(){
+ const page=GYSTE_PAGES.find(p=>p[0]===activeEditorialPage);
+ if(page){
+  const [id,icon,name,desc,url,view]=page,own=GYSTE_EDITORIAL.some(n=>n.id===id),has=pageFollows().has(id);
+  shell(`<section class="panel"><button class="secondary" data-tab="pages">← Todas las páginas</button><h2>${icon} ${esc(name)}</h2><p class="muted">${own?"Página editorial propia de Gyste":url?"Fuente externa · No es una cuenta oficial en Gyste":view?"Sección propia de Gyste":"Fuente sugerida · Pendiente de verificar"}</p><p>${esc(desc)}</p><button class="primary" data-page-follow="${esc(id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button>${url?`<p><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir fuente original ↗</a></p>`:view&&!own?`<button class="secondary" data-tab="${esc(view)}">Abrir sección</button>`:""}</section><section><h2>${own?"Publicaciones":"Contenido"}</h2>${own?editorialFeed("all",id):'<p class="muted">Esta ficha no reproduce publicaciones de terceros. Consulta la fuente original cuando esté disponible.</p>'}</section>`);return;
+ }
+ shell(`<section class="panel"><h2>Páginas y noticias</h2><p>Descubre y sigue páginas de tu interés. El seguimiento se guarda en este navegador. Las fuentes externas no son cuentas oficiales en Gyste ni publican aquí automáticamente.</p><label>Buscar páginas<input class="field" id="page-search" type="search" maxlength="100" placeholder="Cuba, empleo, ciencia…" value="${esc(pageSearch)}"></label></section><div id="page-directory">${pageDirectoryHTML(pageSearch)}</div><h2>Publicaciones de Gyste</h2>${editorialFeed("all")}`);
+ const field=document.getElementById("page-search"),directory=document.getElementById("page-directory");
+ field.oninput=()=>{pageSearch=field.value.slice(0,100);directory.innerHTML=pageDirectoryHTML(pageSearch);bindPageFollows();bindPageNavigation();};
+}
+function bindPageNavigation(){
+ app.querySelectorAll("[data-open-page]").forEach(b=>b.onclick=()=>{
+  const id=b.dataset.openPage;if(!me?.id||!GYSTE_PAGES.some(p=>p[0]===id))return;
+  goTab("pages",id);
+ });
+}
 function pageShelf(mode){const f=pageFollows(),pages=mode==="following"?GYSTE_PAGES.filter(p=>f.has(p[0])):[...GYSTE_PAGES.filter(p=>["cuba","cuba-ciudadana","nio","14ymedio","eltoque"].includes(p[0])),...GYSTE_PAGES.filter(p=>!["cuba","cuba-ciudadana","nio","14ymedio","eltoque"].includes(p[0]))].slice(0,5);return `<section class="panel"><div class="section-heading"><h2>${mode==="following"?"Tus páginas":"Páginas recomendadas"}</h2><button class="text-link" data-tab="pages">Ver todas</button></div><div style="display:flex;gap:10px;overflow-x:auto">${pages.map(p=>`<div style="flex:0 0 min(85%,280px)">${pageCard(p)}</div>`).join("")||"<p>Elige páginas que te interesen.</p>"}</div><p class="muted">Fuentes de consulta, no noticias en directo.</p></section>`;}
 function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{app.querySelectorAll("[data-page-follow]").forEach(btn=>{if(btn.dataset.pageFollow!==id)return;btn.textContent=f.has(id)?"Siguiendo":"Seguir";btn.setAttribute("aria-pressed",String(f.has(id)));if(homeFilter==="following"&&!f.has(id))btn.closest("article")?.remove();});}});}
 async function goReelCompose(initialFile=null,initialCaption=""){
