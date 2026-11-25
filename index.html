@@ -801,22 +801,22 @@ async function goReelCompose(){
  redraw();input.scrollIntoView({block:"center"});
 }
 function reelSwipeDirection(dx,dy){return Math.abs(dy)>=65&&Math.abs(dy)>Math.abs(dx)*1.5?(dy<0?1:-1):0;}
-let reelViewEpoch=0,reelVideoKey="";
+let reelViewEpoch=0,reelVideoKey="",reelFilter="all",reelLimit=150;
 async function reelsView(){
- const epoch=++reelViewEpoch,uid=me?.id,valid=()=>tab==="reels"&&me?.id===uid&&epoch===reelViewEpoch;
+ const epoch=++reelViewEpoch,uid=me?.id,filter=reelFilter,valid=()=>tab==="reels"&&me?.id===uid&&epoch===reelViewEpoch&&reelFilter===filter;
  shell('<section class="panel"><h2>▶ Reels</h2><p role="status">Buscando vídeos…</p></section>');
  try{
- const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).order("created_at",{ascending:false}).limit(150);
+ let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).or("media_type.like.video/%,media_url.like.gyste-gallery-v1:%");if(filter==="mine")q=q.eq("user_id",uid);const {data,error}=await q.order("created_at",{ascending:false}).order("id",{ascending:false}).limit(reelLimit);
  if(!valid())return;if(error)throw error;
  const items=(data||[]).filter(p=>postMediaItems(p).some(m=>m.type?.startsWith("video/")));
  await prepareCards(items);if(!valid())return;
  const entries=items.flatMap(p=>postMediaItems(p).map((m,i)=>({p,m,key:p.id+":"+i})).filter(x=>x.m.type?.startsWith("video/")));
- shell(`<section class="panel"><h2>▶ Reels</h2><div class="actions"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reelstage"></div><button class="primary full" id="reelpublish">+ Publicar Reels</button><button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></section>`);
- const stage=document.getElementById("reelstage"),count=document.getElementById("reelcount"),prev=document.getElementById("reelprev"),next=document.getElementById("reelnext");let index=Math.max(0,entries.findIndex(x=>x.key===reelVideoKey)),serial=0;
+ shell(`<section class="panel"><h2>▶ Reels</h2><div class="actions"><button class="secondary" data-reel-filter="all" aria-pressed="${filter==="all"}">Todos los disponibles</button><button class="secondary" data-reel-filter="mine" aria-pressed="${filter==="mine"}">Mis Reels</button></div><label>Ir a un Reel<select class="field" id="reel-picker" ${entries.length?"":"disabled"}>${entries.map((x,i)=>`<option value="${i}">Reel ${i+1} · ${esc(x.p.content?.trim().slice(0,40)||time(x.p.created_at))}${x.p.audience==="only_me"?" · Solo yo":""}</option>`).join("")}</select></label><div class="actions"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reelstage"></div><button class="primary full" id="reelpublish">+ Publicar Reels</button>${(data||[]).length===reelLimit?'<button class="secondary full" id="reel-more">Cargar más Reels</button>':""}<button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></section>`);
+ const stage=document.getElementById("reelstage"),count=document.getElementById("reelcount"),prev=document.getElementById("reelprev"),next=document.getElementById("reelnext");let index=Math.max(0,entries.findIndex(x=>x.key===reelVideoKey)),serial=0;const picker=document.getElementById("reel-picker");picker.onchange=()=>{const selected=Number(picker.value);if(Number.isInteger(selected)&&selected>=0&&selected<entries.length){index=selected;draw();}};app.querySelectorAll("[data-reel-filter]").forEach(button=>button.onclick=()=>{if(button.dataset.reelFilter!==reelFilter){reelFilter=button.dataset.reelFilter;reelLimit=150;reelVideoKey="";reelsView();}});const more=document.getElementById("reel-more");if(more)more.onclick=()=>{if(reelLimit>=900){more.disabled=true;more.textContent="Límite de esta vista alcanzado";return;}reelLimit+=150;reelsView();};
  async function draw(){
  const n=++serial,active=()=>valid()&&n===serial&&stage.isConnected;
  stage.querySelectorAll("video").forEach(v=>v.pause());prev.disabled=index<=0;next.disabled=index>=entries.length-1;count.textContent=entries.length?"Reel "+(index+1)+" de "+entries.length:"0 Reels";
- const x=entries[index];if(!x){stage.innerHTML='<p>No hay vídeos disponibles entre las publicaciones recientes. Publica un vídeo propio para empezar.</p>';return;}
+ picker.value=String(index);const x=entries[index];if(!x){stage.innerHTML='<p>No hay Reels disponibles en esta selección. Publica un vídeo propio para empezar.</p>';return;}
  reelVideoKey=x.key;stage.innerHTML='<p role="status">Preparando vídeo…</p>';
  let url=mediaItemUrl(x.m,x.p);if(!url&&x.m.path){try{const bucket=bucketFor(x.p),ttl=bucket===PRIVATE_BUCKET?300:MEDIA_SIGNED_URL_TTL;const {data,error}=await db.storage.from(bucket).createSignedUrl(x.m.path,ttl);if(!active())return;if(!error&&data?.signedUrl){mediaUrlCache.set(bucket+":"+x.m.path,{url:data.signedUrl,expiresAt:Date.now()+ttl*1000});url=mediaItemUrl(x.m,x.p);}}catch{}}
  if(!active())return;
