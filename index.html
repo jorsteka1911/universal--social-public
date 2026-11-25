@@ -1829,9 +1829,12 @@ let feedViewEpoch=0;
 async function feedView(){
 const epoch=++feedViewEpoch,filter=selectedSpaceId?"space":homeFilter,viewKey=JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId]);
 const valid=()=>epoch===feedViewEpoch&&tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
+const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
+if(news&&valid()){
+ shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 04</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
+}
 const showError=()=>{
  if(!valid())return;
- const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
  shell(`<section class="panel"><h2>Inicio</h2><p class="error">No se pudieron cargar las publicaciones de la comunidad. Comprueba tu conexión.</p><button type="button" class="secondary full" id="retry-feed">Reintentar publicaciones</button><button class="secondary" data-tab="pages">Páginas y noticias</button></section>${general?filtersHTML():""}${news?cubaBriefHTML():""}${general?editorialFeed(homeFilter,null,2):""}`);
  document.getElementById("retry-feed").onclick=()=>{if(valid())feedView();};
 };
@@ -1860,7 +1863,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 03</p></div>
+<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 04</p></div>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
