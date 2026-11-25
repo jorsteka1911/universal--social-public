@@ -600,6 +600,7 @@ return `<div class="home-tabs" role="group" aria-label="Elegir publicaciones">
 }
 
 function authView(){
+editorialCloud=null;
 applyWallpaper({kind:"default"});
 stopChatRefresh();stopVoiceCapture();stopStoryTimer();chatMediaCache.clear();mediaUrlCache.clear();
 app.innerHTML=`
@@ -773,7 +774,8 @@ const active=()=>session?.user?.id===user.id&&me?.id===user.id;
 const [profileResult,followingResult,spacesResult]=await Promise.all([
  db.from("gyste_profiles").select("*").eq("user_id",user.id).maybeSingle(),
  readFollowing(user.id),
- readSpaces()
+ readSpaces(),
+ syncEditorial(user.id)
 ]);
 if(!active())return;
 let {data:p,error:profileError}=profileResult;
@@ -935,21 +937,77 @@ function editorialFeed(mode,pageId=null,limit=Infinity){
  if(!notes.length)return "";
  return '<section aria-label="Publicaciones de páginas Gyste">'+notes.map(n=>{
  const page=GYSTE_PAGES.find(p=>p[0]===n.id),has=followed.has(n.id);
- return `<article class="post" data-editorial-page="${esc(n.id)}" data-editorial-note="${esc(n.noteId)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions"><button class="secondary" data-editorial-save="${esc(n.noteId)}" aria-pressed="${saved.has(n.noteId)}">${saved.has(n.noteId)?"✓ Guardado en este dispositivo":"🔖 Guardar artículo"}</button><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
+ return `<article class="post" data-editorial-page="${esc(n.id)}" data-editorial-note="${esc(n.noteId)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions"><button class="secondary" data-editorial-save="${esc(n.noteId)}" aria-pressed="${saved.has(n.noteId)}">${esc(editorialSaveLabel(n.noteId))}</button><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
  }).join("")+'</section>';
 }
 const editorialSavedKey=uid=>"gyste-editorial-saved-v1:"+uid;
+let editorialCloud=null;
+function editorialState(uid){
+ if(!editorialCloud||editorialCloud.uid!==uid)editorialCloud={uid,ids:new Set(),ready:false,busy:false,loading:null};
+ return editorialCloud;
+}
+function editorialActive(state){return editorialCloud===state&&me?.id===state.uid&&session?.user?.id===state.uid;}
+function editorialLocal(uid){
+ try{const values=JSON.parse(localStorage.getItem(editorialSavedKey(uid))||"[]");return new Set(Array.isArray(values)?values.filter(id=>GYSTE_EDITORIAL.some(n=>n.noteId===id)):[]);}catch{return new Set();}
+}
 function editorialSaved(){
  if(!me?.id)return new Set();
- try{const values=JSON.parse(localStorage.getItem(editorialSavedKey(me.id))||"[]");return new Set(Array.isArray(values)?values.filter(id=>GYSTE_EDITORIAL.some(n=>n.noteId===id)):[]);}catch{return new Set();}
+ const state=editorialState(me.id);
+ return state.ready?state.ids:new Set([...state.ids,...editorialLocal(me.id)]);
+}
+function editorialSaveLabel(id){
+ if(!editorialSaved().has(id))return "🔖 Guardar artículo";
+ return editorialState(me.id).ready?"✓ Guardado en tu cuenta":"✓ Guardado anterior · Sincronizar";
+}
+async function syncEditorial(uid){
+ const state=editorialState(uid);
+ if(!editorialActive(state))return false;
+ if(state.loading)return state.loading;
+ if(state.busy)return state.ready;
+ state.loading=(async()=>{
+ try{
+  const known=GYSTE_EDITORIAL.map(n=>n.noteId);
+  const {data,error}=await db.from("gyste_editorial_bookmarks").select("note_id").eq("user_id",uid).in("note_id",known);
+  if(error||!editorialActive(state))throw Error("sync");
+  const ids=new Set((data||[]).map(x=>x.note_id).filter(id=>known.includes(id)));
+  const legacy=editorialLocal(uid),missing=[...legacy].filter(id=>!ids.has(id));
+  if(missing.length){
+   const {error:importError}=await db.from("gyste_editorial_bookmarks").upsert(missing.map(note_id=>({user_id:uid,note_id})),{onConflict:"user_id,note_id",ignoreDuplicates:true});
+   if(importError||!editorialActive(state))throw Error("import");
+   missing.forEach(id=>ids.add(id));
+  }
+  if(!editorialActive(state))return false;
+  if(legacy.size){try{localStorage.removeItem(editorialSavedKey(uid));}catch{}}
+  state.ids=ids;state.ready=true;return true;
+ }catch{state.ready=false;return false;}
+ })();
+ try{return await state.loading;}finally{state.loading=null;}
+}
+function refreshEditorialButtons(){
+ if(!me?.id)return;
+ const state=editorialState(me.id),saved=editorialSaved();
+ app.querySelectorAll("[data-editorial-save]").forEach(btn=>{const id=btn.dataset.editorialSave;btn.textContent=editorialSaveLabel(id);btn.setAttribute("aria-pressed",String(saved.has(id)));btn.disabled=state.busy;});
+}
+function refreshEditorialSavedList(){
+ if(tab!=="saved")return;
+ const list=document.getElementById("editorial-saved-list");
+ if(list){list.innerHTML=editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>';bindEditorialSaves();bindPageNavigation();bindPageFollows();}
 }
 function bindEditorialSaves(){
- app.querySelectorAll("[data-editorial-save]").forEach(b=>b.onclick=()=>{
+ app.querySelectorAll("[data-editorial-save]").forEach(b=>b.onclick=async()=>{
   const uid=me?.id,id=b.dataset.editorialSave;if(!uid||!GYSTE_EDITORIAL.some(n=>n.noteId===id))return;
-  const saved=editorialSaved();saved.has(id)?saved.delete(id):saved.add(id);
-  try{localStorage.setItem(editorialSavedKey(uid),JSON.stringify([...saved]));}catch{return say("No se pudo guardar el artículo en este dispositivo.",true);}
-  if(tab==="saved"){const list=document.getElementById("editorial-saved-list");if(list){list.innerHTML=editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>';bindEditorialSaves();bindPageNavigation();bindPageFollows();}return;}
-  app.querySelectorAll("[data-editorial-save]").forEach(btn=>{if(btn.dataset.editorialSave!==id)return;btn.textContent=saved.has(id)?"✓ Guardado en este dispositivo":"🔖 Guardar artículo";btn.setAttribute("aria-pressed",String(saved.has(id)));});
+  const state=editorialState(uid);if(state.busy||!editorialActive(state))return;
+  // If synchronization is unavailable, retry before changing the server.
+  if(!state.ready||state.loading){if(!await syncEditorial(uid)){if(editorialActive(state))say("No se pudo sincronizar. Tus guardados anteriores se conservan; inténtalo de nuevo.",true);return;}if(!editorialActive(state)||state.busy)return;refreshEditorialSavedList();refreshEditorialButtons();if(!b.isConnected)return;}
+  state.busy=true;refreshEditorialButtons();const was=state.ids.has(id);
+  try{
+   const q=db.from("gyste_editorial_bookmarks");
+   const {error}=was?await q.delete().eq("user_id",uid).eq("note_id",id):await q.upsert({user_id:uid,note_id:id},{onConflict:"user_id,note_id",ignoreDuplicates:true});
+   if(error)throw error;if(!editorialActive(state))return;
+   if(was)state.ids.delete(id);else state.ids.add(id);
+   refreshEditorialSavedList();
+  }catch{if(editorialActive(state))say("No se pudo confirmar el cambio. Vuelve a Guardados para actualizar.",true);state.ready=false;}
+  finally{state.busy=false;if(editorialActive(state))refreshEditorialButtons();}
  });
 }
 const pageKey=uid=>"gyste-pages-v1:"+uid;
@@ -1573,12 +1631,12 @@ function bindVerticalVideos(items){
 }
 async function savedView(){
  const uid=me?.id;if(!uid)return;const valid=()=>tab==="saved"&&me?.id===uid;
- const {data,error}=await db.from("gyste_saved_posts").select("post_id").eq("user_id",uid).order("created_at",{ascending:false}).limit(100);
+ const [{data,error},editorialReady]=await Promise.all([db.from("gyste_saved_posts").select("post_id").eq("user_id",uid).order("created_at",{ascending:false}).limit(100),syncEditorial(uid)]);
  if(!valid())return;
- if(error){shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="error">No se pudieron cargar las publicaciones de la comunidad.</p><button class="secondary" data-tab="saved">Reintentar</button></section><h3>Artículos guardados en este dispositivo</h3><div id="editorial-saved-list">${editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>'}</div>`);return;}
+ if(error){shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="error">No se pudieron cargar las publicaciones de la comunidad.</p><button class="secondary" data-tab="saved">Reintentar</button></section><h3>Artículos guardados</h3><p class="muted">${editorialReady?"Sincronizados con tu cuenta.":"Sin conexión a tus artículos de cuenta. Mostramos los guardados anteriores disponibles."}</p><div id="editorial-saved-list">${editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>'}</div>`);return;}
  const ids=(data||[]).map(x=>x.post_id);let items=[];
  if(ids.length){const result=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",ids);if(!valid())return;if(result.error){shell(`<p class="error">${esc(result.error.message)}</p>`);return;}const map=new Map((result.data||[]).map(p=>[p.id,p]));items=ids.map(id=>map.get(id)).filter(Boolean);}
- const cards=await prepareCards(items);if(!valid())return;shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="muted">Solo tú puedes ver esta lista.</p></section><h3>Artículos de páginas Gyste</h3><p class="muted">Estos artículos se guardan en este navegador, no se sincronizan entre dispositivos.</p><div id="editorial-saved-list">${editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>'}</div><h3>Publicaciones de la comunidad</h3>${cards||'<p class="muted">Todavía no has guardado publicaciones de la comunidad.</p>'}`);bindPostActions();
+ const cards=await prepareCards(items);if(!valid())return;shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="muted">Solo tú puedes ver esta lista.</p></section><h3>Artículos de páginas Gyste</h3><p class="muted">${editorialReady?"Guardados en tu cuenta. Abre esta sección para actualizarlos desde otros dispositivos.":"No se pudo sincronizar. Mostramos los guardados anteriores disponibles; vuelve a abrir Guardados para actualizar."}</p><div id="editorial-saved-list">${editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>'}</div><h3>Publicaciones de la comunidad</h3>${cards||'<p class="muted">Todavía no has guardado publicaciones de la comunidad.</p>'}`);bindPostActions();
 }
 const draftKey=uid=>"gyste-post-draft-v1:"+uid;
 function readPostDraft(uid){try{return (localStorage.getItem(draftKey(uid))||"").slice(0,5000);}catch{return "";}}
