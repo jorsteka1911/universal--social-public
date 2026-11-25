@@ -308,7 +308,7 @@ app.innerHTML=`
 <div class="menu-dropdown">
 <button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
 <button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
-<button data-tab="reels">▶ Reels</button><button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
+<button data-tab="pages">📰 Páginas y noticias</button><button data-tab="reels">▶ Reels</button><button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
 <button data-tab="searchposts">🔎 Buscar publicaciones</button><button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
@@ -335,6 +335,7 @@ function bindNavigation(){
 app.querySelectorAll("[data-tab]").forEach(b=>{b.onclick=()=>goTab(b.dataset.tab);});
 const create=document.getElementById("compose-btn");if(create)create.onclick=goCompose;
 bindSpaceButtons();
+bindPageFollows();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
 sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
@@ -664,6 +665,7 @@ if(tab==="explore")return exploreView();
 if(tab==="searchposts")return searchPostsView();
 if(tab==="learn")return learnView();
 if(tab==="series")return seriesView();
+if(tab==="pages")return pagesView();
 if(tab==="reels")return reelsView();
 if(tab==="videos")return videosView();
 if(tab==="history")return historyView();
@@ -755,6 +757,22 @@ async function storiesView(){
  }catch(e){if(path&&!committed)await db.storage.from(STORY_BUCKET).remove([path]);status.textContent="No se pudo publicar la historia.";}finally{b.disabled=false;}
  };
 }
+const GYSTE_PAGES=[
+["inventos","🔎","Tecnologías olvidadas","Inventos y documentos históricos.",null,"history"],
+["canal1","🎥","Tecnología Olvidada","Canal externo; contrasta sus afirmaciones.","https://www.youtube.com/channel/UCZDGFY74Zb16TEivl5xIjpA"],
+["canal2","📜","Olvidada","Curiosidades históricas de un canal externo.","https://www.youtube.com/channel/UCq6mA2UolG8cGSPDczflbkQ"],
+["cuba","📰","Noticias de Cuba","Información y actualidad de Cuba.","https://www.bbc.com/mundo"],
+["mundo","🌍","Noticias internacionales","Consulta la actualidad en español.","https://www.bbc.com/mundo"],
+["empleo","📚","Formación y empleo","Información oficial del SEPE.","https://www.sepe.es/"],
+["ciencia","🔬","Ciencia y tecnología","Divulgación científica.","https://www.agenciasinc.es/"],
+["academia","🎨","Academia Gyste","Recursos de aprendizaje.",null,"learn"]
+];
+const pageKey=uid=>"gyste-pages-v1:"+uid;
+function pageFollows(){try{const v=JSON.parse(localStorage.getItem(pageKey(me?.id))||"[]");return new Set(Array.isArray(v)?v.filter(x=>GYSTE_PAGES.some(p=>p[0]===x)):[]);}catch{return new Set();}}
+function pageCard(p){const [id,icon,name,desc,url,view]=p,has=pageFollows().has(id);return `<article class="panel"><div class="section-heading"><b>${icon} ${esc(name)}</b><button class="secondary" data-page-follow="${id}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><p>${esc(desc)}</p>${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Consultar fuente externa ↗</a>`:`<button class="text-link" data-tab="${view}">Abrir contenido</button>`}</article>`;}
+function pagesView(){const f=pageFollows();shell(`<section class="panel"><h2>Páginas y noticias</h2><p>Selecciona las fuentes que te interesan. Tu seguimiento se guarda en este navegador; las fuentes externas no publican automáticamente en Gyste.</p><h3>Mis páginas (${f.size})</h3>${GYSTE_PAGES.filter(p=>f.has(p[0])).map(pageCard).join("")||"<p>Aún no sigues páginas.</p>"}<h3>Descubrir páginas</h3>${GYSTE_PAGES.filter(p=>!f.has(p[0])).map(pageCard).join("")}</section>`);}
+function pageShelf(mode){const f=pageFollows(),pages=mode==="following"?GYSTE_PAGES.filter(p=>f.has(p[0])):GYSTE_PAGES.slice(0,5);return `<section class="panel"><div class="section-heading"><h2>${mode==="following"?"Tus páginas":"Páginas recomendadas"}</h2><button class="text-link" data-tab="pages">Ver todas</button></div><div style="display:flex;gap:10px;overflow-x:auto">${pages.map(p=>`<div style="flex:0 0 min(85%,280px)">${pageCard(p)}</div>`).join("")||"<p>Elige páginas que te interesen.</p>"}</div><p class="muted">Fuentes de consulta, no noticias en directo.</p></section>`;}
+function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{b.textContent=f.has(id)?"Siguiendo":"Seguir";b.setAttribute("aria-pressed",String(f.has(id)));if(homeFilter==="following"&&!f.has(id))b.closest("article")?.remove();}});}
 const originalReels=[
 ["🚘","El futuro ya se imaginaba",["1925: un automóvil controlado por radio","Los inventores exploraban el futuro","La tecnología sigue evolucionando"]],
 ["🎨","Crea algo hoy",["Todo empieza con una idea","No necesitas hacerlo perfecto","Comparte tu talento en Gyste"]],
@@ -1164,7 +1182,7 @@ ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">←
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
 </section>
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
-<div id="feed">${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver animaciones originales</button></section>`:""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
+<div id="feed">${!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine"?pageShelf(homeFilter):""}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver animaciones originales</button></section>`:""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
 document.getElementById("publish").onclick=publish;
  bindAudiencePicker();
  bindPostDraft();
