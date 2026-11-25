@@ -791,11 +791,12 @@ if(error||!user){session=null;me=null;return authView();}
 if(session?.user?.id!==user.id)return;
 me={id:user.id,email:user.email};
 const active=()=>session?.user?.id===user.id&&me?.id===user.id;
+// Optional editorial bookmarks must not delay or block authentication and the initial feed.
+const editorialSync=syncEditorial(user.id).catch(()=>false);
 const [profileResult,followingResult,spacesResult]=await Promise.all([
  db.from("gyste_profiles").select("*").eq("user_id",user.id).maybeSingle(),
  readFollowing(user.id),
- readSpaces(),
- syncEditorial(user.id)
+ readSpaces()
 ]);
 if(!active())return;
 let {data:p,error:profileError}=profileResult;
@@ -815,6 +816,7 @@ applySpacesResult(spacesResult);
 const requestedPost=new URLSearchParams(location.search).get("post");
 if(requestedPost&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedPost)){sharedPostId=requestedPost;tab="feed";selectedSpaceId=null;homeFilter="all";}
 await renderTab();
+void editorialSync.then(ok=>{if(ok&&active())refreshEditorialButtons();}).catch(()=>{});
 }
 
 function authViewWithError(message){notice=message;noticeError=true;authView();}
@@ -1884,7 +1886,7 @@ const epoch=++feedViewEpoch,filter=selectedSpaceId?"space":homeFilter,viewKey=JS
 const valid=()=>epoch===feedViewEpoch&&tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
 const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
 if(news&&valid()){
- shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
+ shell(`<section class="panel"><h2>Inicio</h2><p class="muted">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 01</p><p role="status">Cargando publicaciones de la comunidad…</p><div class="actions"><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button></div></section>${filtersHTML()}${cubaBriefHTML()}`);
 }
 const showError=()=>{
  if(!valid())return;
@@ -1916,7 +1918,7 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01</p></div>
+<div class="welcome"><div class="welcome-eyebrow">Bienvenido a Gyste</div><h1>${esc(me?.display_name||"Tu comunidad")}, este es tu espacio.</h1><p>Personas, ideas y talentos que merecen ser compartidos.</p><p class="muted" style="font-size:12px;margin:4px 0">Versión beta · Actualización 25/11/2026 · Noticias 05 · Instalación 01 · Privacidad 01 · Rendimiento 01</p></div>
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-open-page="cuba">📰 Noticias de Cuba</button><button class="secondary" data-tab="pages">Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
