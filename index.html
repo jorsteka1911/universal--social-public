@@ -340,6 +340,7 @@ const create=document.getElementById("compose-btn");if(create)create.onclick=goC
 bindSpaceButtons();
 bindPageFollows();
 bindPageNavigation();
+bindEditorialSaves();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
 sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
@@ -924,16 +925,32 @@ const GYSTE_PAGES=[
 ];
 // Original editorial notes by Gyste, not imported or attributed to third-party media.
 const GYSTE_EDITORIAL=[
- {id:"cuba",title:"Infórmate sobre Cuba desde varias fuentes",body:"Consulta distintos medios, revisa la fecha de cada noticia y distingue los hechos confirmados de las opiniones. En Páginas y noticias encontrarás fuentes cubanas que puedes seguir.",links:[["14ymedio","https://www.14ymedio.com/"],["elTOQUE","https://eltoque.com/"],["Diario de Cuba","https://diariodecuba.com/"],["NiO Reportando un Crimen · YouTube","https://www.youtube.com/channel/UCQmXhCF82bWfxNwCrSZa2QQ"]]},
- {id:"cuba-ciudadana",title:"Cómo compartir una queja o un reporte ciudadano",body:"Describe lo que ocurrió, cuándo y en qué zona general. Diferencia lo que viste de lo que te contaron. Protege los nombres, direcciones e imágenes de menores y otras personas sin su permiso. No publiques acusaciones sin comprobar. Si existe peligro inmediato, utiliza los canales de ayuda que sean seguros para ti. No tienes que publicar datos que puedan ponerte en riesgo.",links:[["Consultar elTOQUE","https://eltoque.com/"]]}
+ {id:"cuba",noteId:"cuba-fuentes-1",title:"Infórmate sobre Cuba desde varias fuentes",body:"Consulta distintos medios, revisa la fecha de cada noticia y distingue los hechos confirmados de las opiniones. En Páginas y noticias encontrarás fuentes cubanas que puedes seguir.",links:[["14ymedio","https://www.14ymedio.com/"],["elTOQUE","https://eltoque.com/"],["Diario de Cuba","https://diariodecuba.com/"],["NiO Reportando un Crimen · YouTube","https://www.youtube.com/channel/UCQmXhCF82bWfxNwCrSZa2QQ"]]},
+ {id:"cuba-ciudadana",noteId:"ciudadana-reporte-1",title:"Cómo compartir una queja o un reporte ciudadano",body:"Describe lo que ocurrió, cuándo y en qué zona general. Diferencia lo que viste de lo que te contaron. Protege los nombres, direcciones e imágenes de menores y otras personas sin su permiso. No publiques acusaciones sin comprobar. Si existe peligro inmediato, utiliza los canales de ayuda que sean seguros para ti. No tienes que publicar datos que puedan ponerte en riesgo.",links:[["Consultar elTOQUE","https://eltoque.com/"]]},
+ {id:"cuba",noteId:"cuba-verificacion-1",title:"Antes de reenviar una noticia o un vídeo",body:"Busca la publicación original y su fecha. Comprueba si otras fuentes independientes describen el mismo hecho. Una imagen antigua puede circular como si fuera de hoy. Si no puedes verificar una afirmación, compártela solo indicando claramente esa incertidumbre o evita reenviarla.",links:[]},
+ {id:"cuba-ciudadana",noteId:"ciudadana-soluciones-1",title:"De una queja a una propuesta comunitaria",body:"Explica el problema, sus consecuencias y una posible solución. Invita a quienes tengan información útil a participar sin insultos ni amenazas. No compartas teléfonos, direcciones o datos personales de terceros sin permiso. Si necesitas ayuda, elige un canal que sea seguro para ti.",links:[]}
 ];
-function editorialFeed(mode,pageId=null){
- const followed=pageFollows(),notes=GYSTE_EDITORIAL.filter(n=>(!pageId||n.id===pageId)&&(mode!=="following"||followed.has(n.id)));
+function editorialFeed(mode,pageId=null,limit=Infinity){
+ const followed=pageFollows(),saved=editorialSaved(),notes=GYSTE_EDITORIAL.filter(n=>(!pageId||n.id===pageId)&&(mode!=="following"||followed.has(n.id))&&(mode!=="saved"||saved.has(n.noteId))).slice(0,limit);
  if(!notes.length)return "";
  return '<section aria-label="Publicaciones de páginas Gyste">'+notes.map(n=>{
  const page=GYSTE_PAGES.find(p=>p[0]===n.id),has=followed.has(n.id);
- return `<article class="post" data-editorial-page="${esc(n.id)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions"><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
+ return `<article class="post" data-editorial-page="${esc(n.id)}" data-editorial-note="${esc(n.noteId)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions"><button class="secondary" data-editorial-save="${esc(n.noteId)}" aria-pressed="${saved.has(n.noteId)}">${saved.has(n.noteId)?"✓ Guardado en este dispositivo":"🔖 Guardar artículo"}</button><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
  }).join("")+'</section>';
+}
+const editorialSavedKey=uid=>"gyste-editorial-saved-v1:"+uid;
+function editorialSaved(){
+ if(!me?.id)return new Set();
+ try{const values=JSON.parse(localStorage.getItem(editorialSavedKey(me.id))||"[]");return new Set(Array.isArray(values)?values.filter(id=>GYSTE_EDITORIAL.some(n=>n.noteId===id)):[]);}catch{return new Set();}
+}
+function bindEditorialSaves(){
+ app.querySelectorAll("[data-editorial-save]").forEach(b=>b.onclick=()=>{
+  const uid=me?.id,id=b.dataset.editorialSave;if(!uid||!GYSTE_EDITORIAL.some(n=>n.noteId===id))return;
+  const saved=editorialSaved();saved.has(id)?saved.delete(id):saved.add(id);
+  try{localStorage.setItem(editorialSavedKey(uid),JSON.stringify([...saved]));}catch{return say("No se pudo guardar el artículo en este dispositivo.",true);}
+  if(tab==="saved"){const list=document.getElementById("editorial-saved-list");if(list){list.innerHTML=editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>';bindEditorialSaves();bindPageNavigation();bindPageFollows();}return;}
+  app.querySelectorAll("[data-editorial-save]").forEach(btn=>{if(btn.dataset.editorialSave!==id)return;btn.textContent=saved.has(id)?"✓ Guardado en este dispositivo":"🔖 Guardar artículo";btn.setAttribute("aria-pressed",String(saved.has(id)));});
+ });
 }
 const pageKey=uid=>"gyste-pages-v1:"+uid;
 function pageFollows(){try{const v=JSON.parse(localStorage.getItem(pageKey(me?.id))||"[]");return new Set(Array.isArray(v)?v.filter(x=>GYSTE_PAGES.some(p=>p[0]===x)):[]);}catch{return new Set();}}
@@ -965,7 +982,7 @@ function bindPageNavigation(){
  });
 }
 function pageShelf(mode){const f=pageFollows(),pages=mode==="following"?GYSTE_PAGES.filter(p=>f.has(p[0])):[...GYSTE_PAGES.filter(p=>["cuba","cuba-ciudadana","nio","14ymedio","eltoque"].includes(p[0])),...GYSTE_PAGES.filter(p=>!["cuba","cuba-ciudadana","nio","14ymedio","eltoque"].includes(p[0]))].slice(0,5);return `<section class="panel"><div class="section-heading"><h2>${mode==="following"?"Tus páginas":"Páginas recomendadas"}</h2><button class="text-link" data-tab="pages">Ver todas</button></div><div style="display:flex;gap:10px;overflow-x:auto">${pages.map(p=>`<div style="flex:0 0 min(85%,280px)">${pageCard(p)}</div>`).join("")||"<p>Elige páginas que te interesen.</p>"}</div><p class="muted">Fuentes de consulta, no noticias en directo.</p></section>`;}
-function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{app.querySelectorAll("[data-page-follow]").forEach(btn=>{if(btn.dataset.pageFollow!==id)return;btn.textContent=f.has(id)?"Siguiendo":"Seguir";btn.setAttribute("aria-pressed",String(f.has(id)));if(homeFilter==="following"&&!f.has(id))btn.closest("article")?.remove();});}});}
+function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{app.querySelectorAll("[data-page-follow]").forEach(btn=>{if(btn.dataset.pageFollow!==id)return;btn.textContent=f.has(id)?"Siguiendo":"Seguir";btn.setAttribute("aria-pressed",String(f.has(id)));if(tab==="feed"&&homeFilter==="following"&&!f.has(id))btn.closest("article")?.remove();});}});}
 async function goReelCompose(initialFile=null,initialCaption=""){
  sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
  if(tab!=="feed")return;
@@ -1558,10 +1575,10 @@ async function savedView(){
  const uid=me?.id;if(!uid)return;const valid=()=>tab==="saved"&&me?.id===uid;
  const {data,error}=await db.from("gyste_saved_posts").select("post_id").eq("user_id",uid).order("created_at",{ascending:false}).limit(100);
  if(!valid())return;
- if(error){shell(`<p class="error">${esc(error.message)}</p>`);return;}
+ if(error){shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="error">No se pudieron cargar las publicaciones de la comunidad.</p><button class="secondary" data-tab="saved">Reintentar</button></section><h3>Artículos guardados en este dispositivo</h3><div id="editorial-saved-list">${editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>'}</div>`);return;}
  const ids=(data||[]).map(x=>x.post_id);let items=[];
  if(ids.length){const result=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",ids);if(!valid())return;if(result.error){shell(`<p class="error">${esc(result.error.message)}</p>`);return;}const map=new Map((result.data||[]).map(p=>[p.id,p]));items=ids.map(id=>map.get(id)).filter(Boolean);}
- const cards=await prepareCards(items);if(!valid())return;shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="muted">Solo tú puedes ver esta lista.</p></section>${cards||'<p class="muted">Todavía no has guardado publicaciones.</p>'}`);bindPostActions();
+ const cards=await prepareCards(items);if(!valid())return;shell(`<section class="panel"><h2>Mis publicaciones guardadas</h2><p class="muted">Solo tú puedes ver esta lista.</p></section><h3>Artículos de páginas Gyste</h3><p class="muted">Estos artículos se guardan en este navegador, no se sincronizan entre dispositivos.</p><div id="editorial-saved-list">${editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>'}</div><h3>Publicaciones de la comunidad</h3>${cards||'<p class="muted">Todavía no has guardado publicaciones de la comunidad.</p>'}`);bindPostActions();
 }
 const draftKey=uid=>"gyste-post-draft-v1:"+uid;
 function readPostDraft(uid){try{return (localStorage.getItem(draftKey(uid))||"").slice(0,5000);}catch{return "";}}
@@ -1614,7 +1631,7 @@ shell(`
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${contentFirst?`<div class="actions"><button type="button" class="primary" id="quick-compose">＋ Crear publicación</button><button class="secondary" data-tab="pages">📰 Páginas</button><button class="secondary" data-tab="reels">▶ Reels</button><button class="secondary" data-tab="stories">Historias</button></div>`:composerHTML}
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
-<div id="feed">${contentFirst?editorialFeed(homeFilter):""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}${contentFirst?pageShelf(homeFilter):""}</div>
+<div id="feed">${contentFirst?editorialFeed(homeFilter,null,2):""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}${contentFirst?pageShelf(homeFilter):""}</div>
 ${contentFirst?composerHTML:""}
 ${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${extraHTML}`);
 document.getElementById("publish").onclick=publish;
