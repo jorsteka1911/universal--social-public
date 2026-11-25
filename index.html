@@ -1467,7 +1467,7 @@ function postCard(p,author,mediaOverride=null){
  <div class="reaction-bar">${REACTION_TYPES.map(([key,emoji,label])=>`<button type="button" data-target="${esc(target)}" data-react="${key}" class="${reactionMine.get(target)===key?"chosen":""}" aria-pressed="${reactionMine.get(target)===key}" title="${label}" aria-label="${label}">${emoji}</button>`).join("")}</div>
  <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${isPublic?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button><button class="action" data-sendpost="${esc(source)}">✉ Enviar</button>`:""}</div>
  <div class="reactors-list hidden" id="reactors-${esc(target)}"></div>
- <div id="comments-${esc(target)}" class="hidden"><div id="list-${esc(target)}"></div><form class="commentform" data-comment-form="${esc(target)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button></form></div>
+ <div id="comments-${esc(target)}" class="hidden"><div id="list-${esc(target)}"></div><form class="commentform" data-comment-form="${esc(target)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button><p class="muted" role="status" data-comment-status></p></form></div>
  </article>`;
 }
 let audienceChosen=new Map();
@@ -1590,21 +1590,42 @@ box.classList.toggle("hidden");
 if(!box.classList.contains("hidden"))await loadComments(id);
 }
 
+const commentLoads=new WeakMap(),commentSendLocks=new Set();
 async function loadComments(id){
-const list=document.getElementById("list-"+id);if(!list)return;
-list.innerHTML='<p class="muted">Cargando comentarios…</p>';
-const {data,error}=await db.from("gyste_comments").select("id,user_id,content,created_at").eq("post_id",id).order("created_at");
-if(error){list.textContent="No se pudieron cargar los comentarios: "+error.message;return;}
-const ids=[...new Set((data||[]).map(c=>c.user_id))];let map={};
-if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
-list.innerHTML=(data||[]).map(c=>`<div class="comment"><div class="comment-author"><span class="face">${avatarContent(map[c.user_id])}</span><b>${esc(map[c.user_id]?.display_name||"Miembro")}</b></div><div>${esc(c.content)}</div><small>${time(c.created_at)}</small></div>`).join("")||'<p class="muted">Sé el primero en comentar.</p>';
+ const uid=me?.id,list=document.getElementById("list-"+id);if(!uid||!list)return;
+ const marker={};commentLoads.set(list,marker);
+ const valid=()=>me?.id===uid&&list.isConnected&&commentLoads.get(list)===marker;
+ list.innerHTML='<p class="muted">Cargando comentarios…</p>';
+ try{
+  const {data,error}=await db.from("gyste_comments").select("id,user_id,content,created_at").eq("post_id",id).order("created_at");
+  if(!valid())return;if(error)throw error;
+  const ids=[...new Set((data||[]).map(c=>c.user_id))],map={};
+  if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);if(!valid())return;(u||[]).forEach(x=>map[x.user_id]=x);}
+  if(!valid())return;
+  list.innerHTML=(data||[]).map(c=>`<div class="comment"><div class="comment-author"><span class="face">${avatarContent(map[c.user_id])}</span><b>${esc(map[c.user_id]?.display_name||"Miembro")}</b></div><div>${esc(c.content)}</div><small>${time(c.created_at)}</small></div>`).join("")||'<p class="muted">Sé el primero en comentar.</p>';
+ }catch{
+  if(!valid())return;
+  list.innerHTML='<p class="muted" role="status">No se pudieron cargar los comentarios.</p><button type="button" class="secondary" data-comment-retry>Reintentar</button>';
+  list.querySelector("[data-comment-retry]").onclick=()=>{if(valid())loadComments(id);};
+ }
 }
-
 async function sendComment(e){
-e.preventDefault();const form=e.currentTarget;const id=form.dataset.commentForm;const input=form.querySelector("input");const content=input.value.trim();if(!content)return;
-const {error}=await db.from("gyste_comments").insert({post_id:id,user_id:me.id,content});
-if(error)return say("No se pudo comentar: "+error.message,true);
-input.value="";await loadComments(id);say("Comentario publicado.");
+ e.preventDefault();const form=e.currentTarget,uid=me?.id,id=form.dataset.commentForm,input=form.querySelector("input"),button=form.querySelector("button"),status=form.querySelector("[data-comment-status]");
+ if(!uid||!id||!input||!button||button.disabled)return;
+ const content=input.value.trim(),key=uid+":"+id;
+ if(!content||content.length>2000){if(status)status.textContent="Escribe un comentario de entre 1 y 2000 caracteres.";return;}
+ if(commentSendLocks.has(key))return;
+ const active=()=>me?.id===uid&&form.isConnected;
+ commentSendLocks.add(key);button.disabled=true;input.disabled=true;button.textContent="Enviando…";if(status)status.textContent="";
+ try{
+  const {error}=await db.from("gyste_comments").insert({post_id:id,user_id:uid,content});
+  if(error)throw error;if(!active())return;
+  input.value="";if(status)status.textContent="Comentario publicado.";await loadComments(id);
+ }catch{
+  if(active()&&status)status.textContent="No se pudo confirmar el envío. Tu texto se conserva. Revisa los comentarios antes de volver a enviarlo.";
+ }finally{
+  commentSendLocks.delete(key);input.disabled=false;button.disabled=false;button.textContent="Enviar";
+ }
 }
 
 function spaceTile(s){
