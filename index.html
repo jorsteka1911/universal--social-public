@@ -1181,7 +1181,7 @@ function postMediaHTML(p){
  return `<div class="media-gallery ${items.length>1?"multi":""}">${items.map((m,i)=>{
   const url=mediaItemUrl(m,p);if(!url)return '<p class="muted">Archivo no disponible temporalmente.</p>';
   const video=m.type?.startsWith("video/");
-  const element=video?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`:`<img class="media" loading="lazy" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
+  const element=video?`<video class="media" controls playsinline preload="none" src="${esc(url)}"></video><p class="muted" style="margin:4px 8px;font-size:12px">Pulsa ▶ para cargar y reproducir.</p>`:`<img class="media" loading="lazy" decoding="async" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
   return `<div class="media-frame ${video?"video-frame":""}">${element}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
  }).join("")}</div>`;
 }
@@ -1315,17 +1315,18 @@ async function reportPost(id,b){
 let videoFilter="all",videoLimit=60;
 let videoLayout="list",verticalVideoKey="";
 async function videosView(){
- const uid=me?.id,filter=videoFilter,limit=videoLimit,layout=videoLayout;
+ const uid=me?.id,filter=videoFilter,limit=videoLimit,layout=videoLayout;if(!uid)return;
  const valid=()=>tab==="videos"&&me?.id===uid&&videoFilter===filter&&videoLimit===limit&&videoLayout===layout;
- let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":""));
- if(videoFilter==="mine")q=q.eq("user_id",me.id);
- if(videoFilter==="following")q=q.in("user_id",[...new Set([me.id,...following])]);
- const {data,error}=await q.order("created_at",{ascending:false}).limit(limit);
+ shell('<section class="panel"><h2>▶ Vídeos de Gyste</h2><p role="status">Buscando vídeos…</p></section>');
+ let q=db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).or("media_type.like.video/%,media_url.like.gyste-gallery-v1:%");
+ if(filter==="mine")q=q.eq("user_id",uid);
+ if(filter==="following")q=q.in("user_id",[...new Set([uid,...following])]);
+ const {data,error}=await q.order("created_at",{ascending:false}).order("id",{ascending:false}).limit(limit);
  if(!valid())return;
- if(error){shell(`<p class="error">${esc(error.message)}</p>`);return;}
+ if(error){shell('<section class="panel"><h2>▶ Vídeos de Gyste</h2><p class="error">No se pudieron cargar los vídeos. Comprueba Internet y vuelve a intentarlo.</p><button class="secondary full" data-tab="videos">Reintentar</button></section>');return;}
  const items=(data||[]).filter(p=>postMediaItems(p).some(m=>m.type?.startsWith("video/")));
  const cards=await prepareCards(items);if(!valid())return;
- shell(`<section class="panel"><h2>▶ Vídeos de Gyste</h2><p class="muted">Descubre vídeos, reacciona, comenta y guarda tus favoritos.</p><div class="actions"><button class="secondary" data-video-layout="list" aria-pressed="${videoLayout==="list"}">☷ Lista</button><button class="secondary" data-video-layout="vertical" aria-pressed="${videoLayout==="vertical"}">▯ Un vídeo a la vez</button></div><div class="actions"><button class="secondary" data-vfilter="all">Todos</button><button class="secondary" data-vfilter="following">Siguiendo</button><button class="secondary" data-vfilter="mine">Mis vídeos</button><button class="primary" id="new-video">+ Publicar vídeo</button></div><p class="muted">${videoFilter==="all"?"Todos los vídeos":videoFilter==="following"?"Personas que sigues":"Mis vídeos"}</p></section>${videoLayout==="vertical"?`<section class="panel"><p class="muted">Modo vertical · vídeos de cualquier duración. Tú decides cuándo reproducirlos.</p><div class="vertical-video-controls"><button class="secondary" id="vertical-prev">↑ Anterior</button><span id="vertical-count" role="status"></span><button class="secondary" id="vertical-next">Siguiente ↓</button></div><div class="vertical-video-stage" id="vertical-stage"></div></section>`:(cards||'<p class="muted">No hay vídeos en esta selección.</p>')}${(data||[]).length===videoLimit&&videoLimit<300?'<button class="secondary full" id="more-videos">Buscar más vídeos</button>':""}`);
+ shell(`<section class="panel"><h2>▶ Vídeos de Gyste</h2><p class="muted">Descubre vídeos, reacciona, comenta y guarda tus favoritos. En la lista los vídeos solicitan la carga al reproducirlos; el modo vertical prepara un vídeo a la vez.</p><div class="actions"><button class="secondary" data-video-layout="list" aria-pressed="${videoLayout==="list"}">☷ Lista</button><button class="secondary" data-video-layout="vertical" aria-pressed="${videoLayout==="vertical"}">▯ Un vídeo a la vez</button></div><div class="actions"><button class="secondary" data-vfilter="all">Todos</button><button class="secondary" data-vfilter="following">Siguiendo</button><button class="secondary" data-vfilter="mine">Mis vídeos</button><button class="primary" id="new-video">+ Publicar vídeo</button></div><p class="muted">${videoFilter==="all"?"Todos los vídeos":videoFilter==="following"?"Personas que sigues":"Mis vídeos"}</p></section>${videoLayout==="vertical"?`<section class="panel"><p class="muted">Modo vertical · vídeos de cualquier duración. Tú decides cuándo reproducirlos.</p><div class="vertical-video-controls"><button class="secondary" id="vertical-prev">↑ Anterior</button><span id="vertical-count" role="status"></span><button class="secondary" id="vertical-next">Siguiente ↓</button></div><div class="vertical-video-stage" id="vertical-stage"></div></section>`:(cards||'<p class="muted">No hay vídeos en esta selección.</p>')}${(data||[]).length===videoLimit&&videoLimit<300?'<button class="secondary full" id="more-videos">Buscar más vídeos</button>':""}`);
  if(videoLayout==="vertical")bindVerticalVideos(items);else bindPostActions();
  app.querySelectorAll("[data-video-layout]").forEach(b=>b.onclick=()=>{if(videoLayout===b.dataset.videoLayout)return;videoLayout=b.dataset.videoLayout;videosView();});
  app.querySelectorAll("[data-vfilter]").forEach(b=>b.onclick=()=>{videoFilter=b.dataset.vfilter;videoLimit=60;verticalVideoKey="";videosView();});
