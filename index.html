@@ -1767,10 +1767,15 @@ async function safetyView(){
 }
 let moderationEpoch=0;
 const moderationLocks=new Set();
-async function confirmModerationChange(uid,query,field,expected){
+function mergeModerationQueue(pending,history){
+ if(pending.error||history.error||!Array.isArray(pending.data)||!Array.isArray(history.data)||!Number.isSafeInteger(pending.count)||pending.count<pending.data.length)return null;
+ const rows=[...new Map([...pending.data,...history.data].map(r=>[r.id,r])).values()];
+ return {rows,pendingCount:pending.count};
+}
+async function confirmModerationChange(uid,query,field,expected,expectedStatus=null){
  if(!uid||me?.id!==uid||moderationLocks.has(uid))return false;
  moderationLocks.add(uid);
- try{const {data,error}=await query();if(error)throw error;return Array.isArray(data)&&data.length===1&&data[0][field]===expected;}
+ try{const {data,error}=await query();if(error)throw error;return me?.id===uid&&Array.isArray(data)&&data.length===1&&data[0][field]===expected&&(expectedStatus===null||data[0].status===expectedStatus);}
  finally{moderationLocks.delete(uid);}
 }
 async function moderationView(){
@@ -1780,28 +1785,28 @@ async function moderationView(){
  if(!valid())return;
  if(roleError){shell('<section class="panel"><h2>Moderación</h2><p>No se pudieron comprobar tus permisos.</p><button class="secondary" data-tab="moderation">Reintentar</button></section>');return;}
  if(!role){shell('<section class="panel"><h2>Acceso restringido</h2><p>Solo las cuentas autorizadas pueden moderar Gyste.</p><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>');return;}
- const [reports,hidden,editorial]=await Promise.all([db.from("gyste_reports").select("id,post_id,reason,details,created_at,status").order("created_at",{ascending:false}).limit(100),db.from("gyste_hidden_posts").select("post_id,created_at").order("created_at",{ascending:false}).limit(100),db.from("gyste_editorial_comments").select("id,note_id,content,status,created_at").eq("status","pending").order("created_at").limit(100)]);
+ const [pending,history,hidden,editorial]=await Promise.all([db.from("gyste_reports").select("id,post_id,reason,details,created_at,status",{count:"exact"}).eq("status","pending").order("created_at",{ascending:true}).order("id",{ascending:true}).limit(100),db.from("gyste_reports").select("id,post_id,reason,details,created_at,status").neq("status","pending").order("created_at",{ascending:false}).limit(30),db.from("gyste_hidden_posts").select("post_id,created_at").order("created_at",{ascending:false}).limit(100),db.from("gyste_editorial_comments").select("id,note_id,content,status,created_at").eq("status","pending").order("created_at").limit(100)]);
  if(!valid())return;
- if(reports.error||hidden.error){shell('<section class="panel"><h2>Moderación</h2><p>No se pudieron cargar los registros. Inténtalo de nuevo.</p><button class="secondary" data-tab="moderation">Actualizar</button></section>');return;}
- const rows=reports.data||[],hiddenIds=new Set((hidden.data||[]).map(h=>h.post_id)),postIds=[...new Set(rows.map(r=>r.post_id))],visible=new Map();
+ const queue=mergeModerationQueue(pending,history);if(!queue||hidden.error){shell('<section class="panel"><h2>Moderación</h2><p>No se pudieron cargar los registros. Inténtalo de nuevo.</p><button class="secondary" data-tab="moderation">Actualizar</button></section>');return;}
+ const rows=queue.rows,hiddenIds=new Set((hidden.data||[]).map(h=>h.post_id)),postIds=[...new Set(rows.map(r=>r.post_id))],visible=new Map();
  if(postIds.length){const p=await db.from("posts").select("id,content,audience").in("id",postIds);(p.data||[]).forEach(x=>visible.set(x.id,x));}
  if(!valid())return;
  const labels={bullying:"Acoso o bullying",sexual:"Contenido sexual inapropiado",violence:"Violencia o amenazas",spam:"Spam",privacy:"Privacidad",other:"Otro"},states={pending:"Pendiente",reviewed:"Revisada",resolved:"Resuelta"};
- shell(`<section class="panel"><h2>Panel de moderación</h2><p class="muted">Solo para cuentas autorizadas. No permite acceder a conversaciones privadas. Revisa cada denuncia antes de decidir.</p><p><b>${rows.filter(r=>r.status==="pending").length}</b> pendientes entre las últimas 100 denuncias · <b>${hiddenIds.size}</b> publicaciones ocultas en la lista.</p><button class="secondary" data-tab="moderation">Actualizar</button><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>${rows.map(r=>`<article class="panel"><h3>${esc(labels[r.reason]||r.reason)}</h3><p>${esc(states[r.status]||r.status)} · ${time(r.created_at)}</p><p>${esc(r.details||"Sin detalles adicionales.")}</p><p class="muted">Publicación: ${esc(visible.get(r.post_id)?.content||"Sin texto o no accesible para esta cuenta.")}</p><div class="actions">${visible.has(r.post_id)?`<button class="secondary" data-review-post="${esc(r.post_id)}">Ver publicación</button>`:""}<button class="secondary" data-review-report="${esc(r.id)}">Marcar revisada</button><button class="secondary" data-resolve-report="${esc(r.id)}">Marcar resuelta</button>${hiddenIds.has(r.post_id)?`<button class="secondary" data-restore-post="${esc(r.post_id)}">Restaurar publicación</button>`:`<button class="secondary" data-hide-post="${esc(r.post_id)}">Ocultar publicación</button>`}</div></article>`).join("")||'<p class="panel muted">No hay denuncias registradas.</p>'}${editorialModerationHTML(editorial)}`);
- const act=async(b,query,field,expected,msg)=>{
+ shell(`<section class="panel"><h2>Panel de moderación</h2><p class="muted">Solo para cuentas autorizadas. No permite acceder a conversaciones privadas. Revisa cada denuncia antes de decidir.</p><p><b>${queue.pendingCount}</b> denuncias pendientes en total · se muestran primero hasta 100 pendientes, de la más antigua a la más reciente · <b>${hiddenIds.size}</b> publicaciones ocultas en la lista.</p><button class="secondary" data-tab="moderation">Actualizar</button><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>${rows.map(r=>`<article class="panel"><h3>${esc(labels[r.reason]||r.reason)}</h3><p>${esc(states[r.status]||r.status)} · ${time(r.created_at)}</p><p>${esc(r.details||"Sin detalles adicionales.")}</p><p class="muted">Publicación: ${esc(visible.get(r.post_id)?.content||"Sin texto o no accesible para esta cuenta.")}</p><div class="actions">${visible.has(r.post_id)?`<button class="secondary" data-review-post="${esc(r.post_id)}">Ver publicación</button>`:""}${r.status==="pending"?`<button class="secondary" data-review-report="${esc(r.id)}">Marcar revisada</button>`:""}${r.status!=="resolved"?`<button class="secondary" data-resolve-report="${esc(r.id)}">Marcar resuelta</button>`:""}${hiddenIds.has(r.post_id)?`<button class="secondary" data-restore-post="${esc(r.post_id)}">Restaurar publicación</button>`:`<button class="secondary" data-hide-post="${esc(r.post_id)}">Ocultar publicación</button>`}</div></article>`).join("")||'<p class="panel muted">No hay denuncias registradas.</p>'}${editorialModerationHTML(editorial)}`);
+ const act=async(b,query,field,expected,msg,expectedStatus=null)=>{
  if(!valid()||b.disabled||moderationLocks.has(uid))return;
  b.disabled=true;const label=b.textContent;b.textContent="Guardando…";
  try{
- const confirmed=await confirmModerationChange(uid,query,field,expected);
+ const confirmed=await confirmModerationChange(uid,query,field,expected,expectedStatus);
  if(!valid())return;if(!confirmed)throw Error("Cambio no confirmado");
  say(msg);await moderationView();
  }catch{if(valid())say("No se pudo confirmar la acción. Actualiza el panel antes de reintentar.",true);}
  finally{b.disabled=false;b.textContent=label;}
  };
- app.querySelectorAll("[data-editorial-review]").forEach(b=>b.onclick=()=>{const id=b.dataset.editorialReview,status=b.dataset.reviewStatus;if(!["published","rejected"].includes(status)||!confirm(status==="published"?"¿Publicar este comentario para los miembros de Gyste?":"¿Rechazar este comentario?"))return;act(b,()=>db.from("gyste_editorial_comments").update({status}).eq("id",id).eq("status","pending").select("id"),"id",id,status==="published"?"Comentario publicado.":"Comentario rechazado.");});
+ app.querySelectorAll("[data-editorial-review]").forEach(b=>b.onclick=()=>{const id=b.dataset.editorialReview,status=b.dataset.reviewStatus;if(!["published","rejected"].includes(status)||!confirm(status==="published"?"¿Publicar este comentario para los miembros de Gyste?":"¿Rechazar este comentario?"))return;act(b,()=>db.from("gyste_editorial_comments").update({status}).eq("id",id).eq("status","pending").select("id,status"),"id",id,status==="published"?"Comentario publicado.":"Comentario rechazado.",status);});
  app.querySelectorAll("[data-review-post]").forEach(b=>b.onclick=()=>{sharedPostId=b.dataset.reviewPost;selectedSpaceId=null;homeFilter="all";tab="feed";renderTab();});
- app.querySelectorAll("[data-review-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"reviewed"}).eq("id",b.dataset.reviewReport).select("id"),"id",b.dataset.reviewReport,"Denuncia revisada."));
- app.querySelectorAll("[data-resolve-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"resolved"}).eq("id",b.dataset.resolveReport).select("id"),"id",b.dataset.resolveReport,"Denuncia resuelta."));
+ app.querySelectorAll("[data-review-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"reviewed"}).eq("id",b.dataset.reviewReport).eq("status","pending").select("id,status"),"id",b.dataset.reviewReport,"Denuncia revisada.","reviewed"));
+ app.querySelectorAll("[data-resolve-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"resolved"}).eq("id",b.dataset.resolveReport).in("status",["pending","reviewed"]).select("id,status"),"id",b.dataset.resolveReport,"Denuncia resuelta.","resolved"));
  app.querySelectorAll("[data-hide-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Ocultar esta publicación de Gyste? Es reversible y no borra el archivo original."))act(b,()=>db.from("gyste_hidden_posts").insert({post_id:b.dataset.hidePost,hidden_by:uid}).select("post_id"),"post_id",b.dataset.hidePost,"Publicación ocultada.");});
  app.querySelectorAll("[data-restore-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Restaurar la visibilidad según la privacidad original?"))act(b,()=>db.from("gyste_hidden_posts").delete().eq("post_id",b.dataset.restorePost).select("post_id"),"post_id",b.dataset.restorePost,"Publicación restaurada.");});
 }
