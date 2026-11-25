@@ -773,6 +773,22 @@ function pageCard(p){const [id,icon,name,desc,url,view]=p,has=pageFollows().has(
 function pagesView(){const f=pageFollows();shell(`<section class="panel"><h2>Páginas y noticias</h2><p>Selecciona las fuentes que te interesan. Tu seguimiento se guarda en este navegador; las fuentes externas no publican automáticamente en Gyste.</p><h3>Mis páginas (${f.size})</h3>${GYSTE_PAGES.filter(p=>f.has(p[0])).map(pageCard).join("")||"<p>Aún no sigues páginas.</p>"}<h3>Descubrir páginas</h3>${GYSTE_PAGES.filter(p=>!f.has(p[0])).map(pageCard).join("")}</section>`);}
 function pageShelf(mode){const f=pageFollows(),pages=mode==="following"?GYSTE_PAGES.filter(p=>f.has(p[0])):GYSTE_PAGES.slice(0,5);return `<section class="panel"><div class="section-heading"><h2>${mode==="following"?"Tus páginas":"Páginas recomendadas"}</h2><button class="text-link" data-tab="pages">Ver todas</button></div><div style="display:flex;gap:10px;overflow-x:auto">${pages.map(p=>`<div style="flex:0 0 min(85%,280px)">${pageCard(p)}</div>`).join("")||"<p>Elige páginas que te interesen.</p>"}</div><p class="muted">Fuentes de consulta, no noticias en directo.</p></section>`;}
 function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{b.textContent=f.has(id)?"Siguiendo":"Seguir";b.setAttribute("aria-pressed",String(f.has(id)));if(homeFilter==="following"&&!f.has(id))b.closest("article")?.remove();}});}
+async function goReelCompose(){
+ sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
+ if(tab!=="feed")return;
+ const input=document.getElementById("media"),button=document.getElementById("publish"),audience=document.getElementById("audience"),status=document.getElementById("media-selection");
+ if(!input||!button||!audience||!status)return;
+ input.accept="video/mp4,video/webm";input.multiple=false;audience.value="only_me";audience.onchange?.();
+ const hint=document.createElement("p");hint.className="muted";hint.textContent="Nuevo Reel · Elige un vídeo MP4 o WebM de hasta 50 MB. Empieza en Solo yo; puedes elegir otra privacidad antes de publicar.";input.parentElement.insertBefore(hint,input);
+ const preview=document.createElement("video");preview.controls=true;preview.playsInline=true;preview.preload="metadata";preview.hidden=true;preview.style.cssText="width:100%;max-height:32dvh;object-fit:contain;background:#05090e";input.parentElement.append(preview);
+ let objectUrl="";const cleanup=()=>{if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl="";}};
+ const observer=new MutationObserver(()=>{if(!input.isConnected){cleanup();observer.disconnect();}});observer.observe(app,{childList:true,subtree:true});
+ button.textContent="Compartir Reel";button.disabled=true;
+ const isVideo=f=>!!f&&["video/mp4","video/webm"].includes(f.type)&&f.size>0&&f.size<=MAX_POST_BYTES;
+ input.onchange=()=>{cleanup();preview.removeAttribute("src");preview.hidden=true;const f=input.files?.[0];button.disabled=!isVideo(f);if(button.disabled){status.textContent=f?"Elige un vídeo MP4 o WebM de hasta 50 MB.":"Selecciona un vídeo.";return;}status.textContent=f.name+" · "+(f.size/1048576).toFixed(1)+" MB";objectUrl=URL.createObjectURL(f);preview.src=objectUrl;preview.hidden=false;};
+ button.onclick=()=>{if(!isVideo(input.files?.[0]))return say("Selecciona un vídeo compatible de hasta 50 MB.",true);return publish();};
+ input.scrollIntoView({block:"center"});
+}
 let reelViewEpoch=0,reelVideoKey="";
 async function reelsView(){
  const epoch=++reelViewEpoch,uid=me?.id,valid=()=>tab==="reels"&&me?.id===uid&&epoch===reelViewEpoch;
@@ -798,7 +814,7 @@ async function reelsView(){
  if(v){const ready=()=>{if(active()){play.disabled=false;status.textContent=Number.isFinite(v.duration)?"Duración: "+Math.ceil(v.duration)+" s · Pulsa Reproducir":"Pulsa Reproducir";}};v.addEventListener("loadedmetadata",ready);if(v.readyState>=1)ready();v.addEventListener("play",()=>{if(active()){play.textContent="⏸ Pausar";status.textContent="Reproduciendo";}});v.addEventListener("pause",()=>{if(active()){play.textContent="▶ Reproducir";status.textContent="Vídeo pausado";}});v.addEventListener("ended",()=>{if(active()){play.textContent="↻ Repetir";status.textContent="Vídeo terminado";}});v.addEventListener("error",()=>{if(active()){play.disabled=true;status.textContent="No se pudo reproducir el archivo. Pulsa Recargar vídeo.";}});play.onclick=async()=>{if(!v.paused){v.pause();return;}try{if(v.ended)v.currentTime=0;await v.play();}catch{if(active())status.textContent="No se pudo iniciar. Prueba los controles del vídeo o Recargar vídeo.";}};}
  bindPostActions();
  }
- prev.onclick=()=>{if(index>0){index--;return draw();}};next.onclick=()=>{if(index<entries.length-1){index++;return draw();}};document.getElementById("reelpublish").onclick=goCompose;await draw();
+ prev.onclick=()=>{if(index>0){index--;return draw();}};next.onclick=()=>{if(index<entries.length-1){index++;return draw();}};document.getElementById("reelpublish").onclick=goReelCompose;await draw();
  }catch(e){if(valid())shell(`<section class="panel"><h2>▶ Reels</h2><p class="error">No se pudieron cargar los vídeos: ${esc(e.message||"Error de conexión")}</p><button class="secondary" data-tab="reels">Reintentar</button></section>`);}
 }
 function historyView(){
