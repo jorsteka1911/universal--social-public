@@ -407,10 +407,24 @@ function appearanceView(){
  draw();
 }
 let gysteInstallPrompt=null;
-window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();gysteInstallPrompt=e;if(tab==="install"&&me)installView();});
-window.addEventListener("appinstalled",()=>{gysteInstallPrompt=null;if(tab==="install"&&me)installView();});
+function isGysteInstalled(){return matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;}
+function refreshGuestInstall(){
+ const b=document.getElementById("guest-install"),status=document.getElementById("guest-install-status");if(!b||!status)return;
+ const installed=isGysteInstalled();b.hidden=installed||!gysteInstallPrompt;
+ status.textContent=installed?"Gyste se está ejecutando como aplicación instalada.":"Si no aparece el botón Instalar, utiliza el menú de tu navegador.";
+}
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();gysteInstallPrompt=e;refreshGuestInstall();if(tab==="install"&&me)installView();});
+window.addEventListener("appinstalled",()=>{gysteInstallPrompt=null;refreshGuestInstall();if(tab==="install"&&me)installView();});
+async function requestGuestInstall(button){
+ const prompt=gysteInstallPrompt;if(!prompt||button.disabled||isGysteInstalled())return;
+ gysteInstallPrompt=null;button.disabled=true;
+ let message="Si quieres instalar Gyste, utiliza también el menú de tu navegador.";
+ try{await prompt.prompt();const result=await prompt.userChoice;if(result?.outcome==="accepted")message="Solicitud de instalación aceptada. Comprueba la pantalla de inicio.";else message="Instalación cancelada. Puedes seguir utilizando Gyste en el navegador.";}
+ catch{message="No se pudo abrir la instalación. Usa el menú de tu navegador.";}
+ finally{button.disabled=false;refreshGuestInstall();const status=document.getElementById("guest-install-status");if(button.isConnected&&status&&!isGysteInstalled())status.textContent=message;}
+}
 function installView(){
- const standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+ const standalone=isGysteInstalled();
  shell(`<section class="panel"><h2>📲 Instalar Gyste</h2><p>${standalone?"Gyste se está ejecutando como aplicación instalada.":"Añade Gyste a la pantalla principal de tu teléfono."}</p><img src="/gyste-icon-192.svg" width="96" height="96" alt="Icono Gyste"><p>En Chrome para Android, abre el menú de tres puntos del navegador y busca Instalar aplicación o Añadir a pantalla de inicio. No confundas ese menú con el de Gyste.</p>${!standalone&&gysteInstallPrompt?'<button class="primary full" id="install-gyste">Instalar aplicación</button>':""}<p class="muted">Necesitas conexión a Internet para consultar publicaciones y mensajes. Esta versión web no está todavía en Google Play.</p></section>`);
  const b=document.getElementById("install-gyste");if(b)b.onclick=async()=>{const prompt=gysteInstallPrompt;if(!prompt)return;gysteInstallPrompt=null;b.disabled=true;try{await prompt.prompt();await prompt.userChoice;}catch{}if(tab==="install")installView();};
 }
@@ -534,7 +548,10 @@ app.innerHTML=`
 <button class="primary full" id="login">Entrar</button>
 <button class="secondary full" id="forgot">¿Olvidaste tu contraseña?</button>
 <details id="signup-details" style="margin-top:18px"><summary>¿Todavía no tienes cuenta? Registrarme</summary><p class="muted">Usa el correo y una contraseña de al menos 8 caracteres en los campos de arriba.</p><button type="button" class="secondary full" id="signup-rules">Leer normas de convivencia y privacidad</button><label style="display:flex;align-items:flex-start;gap:10px;margin:12px 0"><input type="checkbox" id="signup-accept"><span>He leído las normas de convivencia y entiendo cómo se comparte el contenido.</span></label><button class="primary full" id="signup">Crear cuenta</button></details><p class="muted" style="font-size:12px">Gyste está en fase beta. Evita compartir datos personales o fotografías ajenas sin autorización.</p>
+<details style="margin-top:16px"><summary>📲 Instalar Gyste en mi teléfono</summary><button type="button" class="primary full" id="guest-install" hidden>Instalar Gyste</button><p id="guest-install-status" role="status" class="muted"></p><p>Android: abre esta página en Chrome, toca los tres puntos y busca Instalar aplicación o Añadir a pantalla de inicio. iPhone: abre en Safari, toca Compartir y Añadir a pantalla de inicio.</p><p class="muted">Versión web beta; aún no disponible en Google Play. Requiere Internet.</p></details>
 </section>`;
+document.getElementById("guest-install").onclick=e=>requestGuestInstall(e.currentTarget);
+refreshGuestInstall();
 document.getElementById("login").onclick=login;
 document.getElementById("forgot").onclick=sendPasswordReset;
 document.getElementById("signup").onclick=signup;
