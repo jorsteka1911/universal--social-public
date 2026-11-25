@@ -308,7 +308,7 @@ app.innerHTML=`
 <div class="menu-dropdown">
 <button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
 <button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
-<button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
+<button data-tab="reels">▶ Reels</button><button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
 <button data-tab="searchposts">🔎 Buscar publicaciones</button><button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
@@ -323,7 +323,7 @@ ${content}
 </main>
 <nav class="mobile-nav" aria-label="Navegación principal">
 ${navButton("feed","Inicio","⌂")}
-${navButton("videos","Vídeos","▶")}
+${navButton("reels","Reels","▶")}
 <button type="button" id="compose-btn" aria-label="Crear publicación"><b class="create-icon" aria-hidden="true">+</b>Crear</button>
 ${navButton("messages","Mensajes","✉")}
 ${navButton("profile","Perfil","○")}
@@ -664,6 +664,7 @@ if(tab==="explore")return exploreView();
 if(tab==="searchposts")return searchPostsView();
 if(tab==="learn")return learnView();
 if(tab==="series")return seriesView();
+if(tab==="reels")return reelsView();
 if(tab==="videos")return videosView();
 if(tab==="history")return historyView();
 if(tab==="stories")return storiesView();
@@ -753,6 +754,17 @@ async function storiesView(){
  const {error}=await db.from("gyste_stories").insert({id,user_id:uid,content,audience,media_path:path,media_type:file?.type||null});if(error)throw error;committed=true;say("Historia publicada durante 24 horas.");if(tab==="stories")await storiesView();
  }catch(e){if(path&&!committed)await db.storage.from(STORY_BUCKET).remove([path]);status.textContent="No se pudo publicar la historia.";}finally{b.disabled=false;}
  };
+}
+const originalReels=[
+["🚘","El futuro ya se imaginaba",["1925: un automóvil controlado por radio","Los inventores exploraban el futuro","La tecnología sigue evolucionando"]],
+["🎨","Crea algo hoy",["Todo empieza con una idea","No necesitas hacerlo perfecto","Comparte tu talento en Gyste"]],
+["💛","El valor de la amistad",["Escucha con cariño","Comparte con respeto","Construyamos una comunidad amable"]]];
+let reelIndex=0;
+function reelsView(){
+ const r=originalReels[reelIndex];shell(`<section class="panel"><h2>Reels Gyste</h2><p>Animaciones originales con asistencia de IA, sin vídeos ni música ajenos.</p><div id="reelstage" style="width:min(100%,280px);aspect-ratio:9/16;margin:auto;background:linear-gradient(145deg,#102a47,#62427c);color:white;border-radius:18px;display:flex;flex-direction:column;justify-content:center;text-align:center;padding:20px;box-sizing:border-box"><div style="font-size:60px">${r[0]}</div><h2>${esc(r[1])}</h2><p id="reeltext" style="font-size:22px"></p><small>GYSTE · ORIGINAL IA</small></div><div class="actions"><button class="secondary" id="reelprev">Anterior</button><button class="primary" id="reelplay">Reproducir</button><button class="secondary" id="reelnext">Siguiente</button></div><p id="reelstatus"></p><button class="secondary full" data-tab="videos">Vídeos de la comunidad</button></section>`);
+ const stage=document.getElementById("reelstage"),play=document.getElementById("reelplay");let timer=null,scene=0;const draw=()=>{document.getElementById("reeltext").textContent=r[2][scene];document.getElementById("reelstatus").textContent=(reelIndex+1)+"/3 · "+(scene+1)+"/3";};const stop=()=>{clearInterval(timer);timer=null;play.textContent="Reproducir";};draw();
+ play.onclick=()=>{if(timer){stop();return;}scene=0;draw();play.textContent="Pausar";timer=setInterval(()=>{if(!stage.isConnected||tab!=="reels"||scene===2){stop();return;}scene++;draw();},4000);};
+ document.getElementById("reelprev").onclick=()=>{stop();reelIndex=(reelIndex+2)%3;reelsView();};document.getElementById("reelnext").onclick=()=>{stop();reelIndex=(reelIndex+1)%3;reelsView();};
 }
 function historyView(){
  const cards=historicalImages.map(x=>{
@@ -1152,7 +1164,7 @@ ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">←
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
 </section>
 <div class="section-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones</span></div>
-<div id="feed">${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
+<div id="feed">${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver animaciones originales</button></section>`:""}${cards||`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`}</div>`);
 document.getElementById("publish").onclick=publish;
  bindAudiencePicker();
  bindPostDraft();
