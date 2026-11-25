@@ -1293,25 +1293,44 @@ async function safetyView(){
  document.getElementById("save-message-privacy").onclick=async e=>{const b=e.currentTarget;if(!valid()||b.disabled||pref.error)return;b.disabled=true;const message_audience=document.getElementById("message-audience").value;const q=pref.data?db.from("gyste_privacy_settings").update({message_audience}).eq("user_id",uid):db.from("gyste_privacy_settings").insert({user_id:uid,message_audience});const {error}=await q;if(!valid())return;if(error){say("No se pudo guardar la privacidad.",true);b.disabled=false;return;}say("Privacidad guardada.");await safetyView();};
  app.querySelectorAll("[data-unblock]").forEach(b=>b.onclick=async()=>{if(!valid()||b.disabled||!confirm("¿Desbloquear esta cuenta?"))return;b.disabled=true;const {error}=await db.from("gyste_blocks").delete().eq("blocker_id",uid).eq("blocked_id",b.dataset.unblock);if(!valid())return;if(error){say(error.message,true);b.disabled=false;}else await safetyView();});
 }
+let moderationEpoch=0;
+const moderationLocks=new Set();
+async function confirmModerationChange(uid,query,field,expected){
+ if(!uid||me?.id!==uid||moderationLocks.has(uid))return false;
+ moderationLocks.add(uid);
+ try{const {data,error}=await query();if(error)throw error;return Array.isArray(data)&&data.length===1&&data[0][field]===expected;}
+ finally{moderationLocks.delete(uid);}
+}
 async function moderationView(){
- const uid=me?.id;if(!uid)return;
+ const uid=me?.id;if(!uid)return;const epoch=++moderationEpoch,valid=()=>tab==="moderation"&&me?.id===uid&&epoch===moderationEpoch;
+ shell('<section class="panel"><h2>Moderación</h2><p role="status">Comprobando permisos…</p></section>');
  const {data:role,error:roleError}=await db.from("gyste_moderators").select("user_id").eq("user_id",uid).maybeSingle();
- if(tab!=="moderation"||me?.id!==uid)return;
- if(roleError||!role){shell('<section class="panel"><h2>Acceso restringido</h2><p>Solo las cuentas autorizadas pueden moderar Gyste.</p><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>');return;}
+ if(!valid())return;
+ if(roleError){shell('<section class="panel"><h2>Moderación</h2><p>No se pudieron comprobar tus permisos.</p><button class="secondary" data-tab="moderation">Reintentar</button></section>');return;}
+ if(!role){shell('<section class="panel"><h2>Acceso restringido</h2><p>Solo las cuentas autorizadas pueden moderar Gyste.</p><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>');return;}
  const [reports,hidden]=await Promise.all([db.from("gyste_reports").select("id,post_id,reason,details,created_at,status").order("created_at",{ascending:false}).limit(100),db.from("gyste_hidden_posts").select("post_id,created_at").order("created_at",{ascending:false}).limit(100)]);
- if(tab!=="moderation"||me?.id!==uid)return;
+ if(!valid())return;
  if(reports.error||hidden.error){shell('<section class="panel"><h2>Moderación</h2><p>No se pudieron cargar los registros. Inténtalo de nuevo.</p><button class="secondary" data-tab="moderation">Actualizar</button></section>');return;}
  const rows=reports.data||[],hiddenIds=new Set((hidden.data||[]).map(h=>h.post_id)),postIds=[...new Set(rows.map(r=>r.post_id))],visible=new Map();
  if(postIds.length){const p=await db.from("posts").select("id,content,audience").in("id",postIds);(p.data||[]).forEach(x=>visible.set(x.id,x));}
- if(tab!=="moderation"||me?.id!==uid)return;
+ if(!valid())return;
  const labels={bullying:"Acoso o bullying",sexual:"Contenido sexual inapropiado",violence:"Violencia o amenazas",spam:"Spam",privacy:"Privacidad",other:"Otro"},states={pending:"Pendiente",reviewed:"Revisada",resolved:"Resuelta"};
  shell(`<section class="panel"><h2>Panel de moderación</h2><p class="muted">Solo para cuentas autorizadas. No permite acceder a conversaciones privadas. Revisa cada denuncia antes de decidir.</p><p><b>${rows.filter(r=>r.status==="pending").length}</b> pendientes entre las últimas 100 denuncias · <b>${hiddenIds.size}</b> publicaciones ocultas en la lista.</p><button class="secondary" data-tab="moderation">Actualizar</button><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>${rows.map(r=>`<article class="panel"><h3>${esc(labels[r.reason]||r.reason)}</h3><p>${esc(states[r.status]||r.status)} · ${time(r.created_at)}</p><p>${esc(r.details||"Sin detalles adicionales.")}</p><p class="muted">Publicación: ${esc(visible.get(r.post_id)?.content||"Sin texto o no accesible para esta cuenta.")}</p><div class="actions">${visible.has(r.post_id)?`<button class="secondary" data-review-post="${esc(r.post_id)}">Ver publicación</button>`:""}<button class="secondary" data-review-report="${esc(r.id)}">Marcar revisada</button><button class="secondary" data-resolve-report="${esc(r.id)}">Marcar resuelta</button>${hiddenIds.has(r.post_id)?`<button class="secondary" data-restore-post="${esc(r.post_id)}">Restaurar publicación</button>`:`<button class="secondary" data-hide-post="${esc(r.post_id)}">Ocultar publicación</button>`}</div></article>`).join("")||'<p class="panel muted">No hay denuncias registradas.</p>'}`);
- const act=async(b,query,msg)=>{if(b.disabled)return;b.disabled=true;const {error}=await query;if(error){say("No se pudo realizar la acción.",true);b.disabled=false;return;}say(msg);if(tab==="moderation")await moderationView();};
+ const act=async(b,query,field,expected,msg)=>{
+ if(!valid()||b.disabled||moderationLocks.has(uid))return;
+ b.disabled=true;const label=b.textContent;b.textContent="Guardando…";
+ try{
+ const confirmed=await confirmModerationChange(uid,query,field,expected);
+ if(!valid())return;if(!confirmed)throw Error("Cambio no confirmado");
+ say(msg);await moderationView();
+ }catch{if(valid())say("No se pudo confirmar la acción. Actualiza el panel antes de reintentar.",true);}
+ finally{b.disabled=false;b.textContent=label;}
+ };
  app.querySelectorAll("[data-review-post]").forEach(b=>b.onclick=()=>{sharedPostId=b.dataset.reviewPost;selectedSpaceId=null;homeFilter="all";tab="feed";renderTab();});
- app.querySelectorAll("[data-review-report]").forEach(b=>b.onclick=()=>act(b,db.from("gyste_reports").update({status:"reviewed"}).eq("id",b.dataset.reviewReport),"Denuncia revisada."));
- app.querySelectorAll("[data-resolve-report]").forEach(b=>b.onclick=()=>act(b,db.from("gyste_reports").update({status:"resolved"}).eq("id",b.dataset.resolveReport),"Denuncia resuelta."));
- app.querySelectorAll("[data-hide-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Ocultar esta publicación de Gyste? Es reversible y no borra el archivo original."))act(b,db.from("gyste_hidden_posts").insert({post_id:b.dataset.hidePost,hidden_by:uid}),"Publicación ocultada.");});
- app.querySelectorAll("[data-restore-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Restaurar la visibilidad según la privacidad original?"))act(b,db.from("gyste_hidden_posts").delete().eq("post_id",b.dataset.restorePost),"Publicación restaurada.");});
+ app.querySelectorAll("[data-review-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"reviewed"}).eq("id",b.dataset.reviewReport).select("id"),"id",b.dataset.reviewReport,"Denuncia revisada."));
+ app.querySelectorAll("[data-resolve-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"resolved"}).eq("id",b.dataset.resolveReport).select("id"),"id",b.dataset.resolveReport,"Denuncia resuelta."));
+ app.querySelectorAll("[data-hide-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Ocultar esta publicación de Gyste? Es reversible y no borra el archivo original."))act(b,()=>db.from("gyste_hidden_posts").insert({post_id:b.dataset.hidePost,hidden_by:uid}).select("post_id"),"post_id",b.dataset.hidePost,"Publicación ocultada.");});
+ app.querySelectorAll("[data-restore-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Restaurar la visibilidad según la privacidad original?"))act(b,()=>db.from("gyste_hidden_posts").delete().eq("post_id",b.dataset.restorePost).select("post_id"),"post_id",b.dataset.restorePost,"Publicación restaurada.");});
 }
 const blockLocks=new Set(),reportLocks=new Set();
 async function blockUser(id,b){
