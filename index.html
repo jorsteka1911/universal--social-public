@@ -342,6 +342,7 @@ bindPageFollows();
 bindPageNavigation();
 bindEditorialSaves();
 bindEditorialReactions();
+bindEditorialComments();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
 sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
@@ -939,8 +940,55 @@ function editorialFeed(mode,pageId=null,limit=Infinity){
  if(!notes.length)return "";
  return '<section aria-label="Publicaciones de páginas Gyste">'+notes.map(n=>{
  const page=GYSTE_PAGES.find(p=>p[0]===n.id),has=followed.has(n.id);
- return `<article class="post" data-editorial-page="${esc(n.id)}" data-editorial-note="${esc(n.noteId)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions">${editorialReactionHTML(n.noteId)}<button class="secondary" data-editorial-save="${esc(n.noteId)}" aria-pressed="${saved.has(n.noteId)}">${esc(editorialSaveLabel(n.noteId))}</button><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div></article>`;
+ return `<article class="post" data-editorial-page="${esc(n.id)}" data-editorial-note="${esc(n.noteId)}"><div class="posthead"><div class="posthead-left"><span class="face">${page[1]}</span><div><button type="button" class="text-link author" data-open-page="${esc(n.id)}">${esc(page[2])}</button><span class="post-time">Publicación editorial de Gyste · Orientación</span></div></div><button type="button" class="secondary" data-page-follow="${esc(n.id)}" aria-pressed="${has}">${has?"Siguiendo":"Seguir"}</button></div><h3 style="padding:0 12px">${esc(n.title)}</h3><div class="bodytext">${esc(n.body)}</div><div class="actions">${n.links.map(([label,url])=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`).join("")}</div><div class="actions">${editorialReactionHTML(n.noteId)}<button class="secondary" data-editorial-save="${esc(n.noteId)}" aria-pressed="${saved.has(n.noteId)}">${esc(editorialSaveLabel(n.noteId))}</button><button class="secondary" data-open-page="${esc(n.id)}">Ver página y publicaciones</button></div>${editorialCommentsHTML(n.noteId)}</article>`;
  }).join("")+'</section>';
+}
+const editorialCommentLoads=new WeakMap(),editorialCommentLocks=new Set(),editorialCommentAttempts=new WeakMap();
+function editorialCommentsHTML(id){
+ return `<details class="panel" data-editorial-comments="${esc(id)}"><summary>◯ Comentarios</summary><p class="muted">Tu comentario y nombre de perfil serán visibles para los miembros si se aprueba. Actualmente los envíos quedan pendientes de revisión; no se publican al instante. No compartas datos privados ni acusaciones sin comprobar.</p><div data-editorial-comment-list role="status"></div><button class="secondary" type="button" data-editorial-comment-refresh>Actualizar comentarios</button><form data-editorial-comment-form><label>Tu comentario<textarea class="field" maxlength="2000" required></textarea></label><button type="submit" class="primary">Enviar a revisión</button><p class="muted" data-editorial-comment-status role="status"></p></form></details>`;
+}
+function editorialCommentRows(rows,uid,names){
+ return rows.map(c=>`<div class="comment"><b>${esc(c.user_id===uid?"Tú":names.get(c.user_id)||"Miembro de Gyste")}</b> <small>${esc(time(c.created_at))}</small>${c.user_id===uid&&c.status!=="published"?`<p class="muted">${c.status==="pending"?"Pendiente de revisión":"No aprobado"}</p>`:""}<div class="bodytext">${esc(c.content)}</div>${c.user_id===uid?`<button type="button" class="secondary" data-editorial-comment-delete="${esc(c.id)}">Eliminar mi comentario</button>`:""}</div>`).join("")||'<p class="muted">Todavía no hay comentarios visibles.</p>';
+}
+async function loadEditorialComments(panel){
+ const uid=me?.id,id=panel.dataset.editorialComments,list=panel.querySelector("[data-editorial-comment-list]");if(!uid||!list)return;
+ const marker={};editorialCommentLoads.set(panel,marker);
+ const active=()=>panel.isConnected&&me?.id===uid&&session?.user?.id===uid&&editorialCommentLoads.get(panel)===marker;
+ list.textContent="Cargando comentarios…";
+ try{
+ const {data,error}=await db.from("gyste_editorial_comments").select("id,user_id,content,status,created_at").eq("note_id",id).or("status.eq.published,user_id.eq."+uid).order("created_at",{ascending:false}).limit(100);
+ if(error)throw error;if(!active())return;
+ const rows=(data||[]).filter(c=>c.status==="published"||c.user_id===uid),ids=[...new Set(rows.filter(c=>c.user_id!==uid).map(c=>c.user_id))],names=new Map();
+ if(ids.length){const result=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",ids);if(!active())return;if(!result.error)(result.data||[]).forEach(x=>names.set(x.user_id,x.display_name));}
+ list.innerHTML=editorialCommentRows(rows,uid,names);
+ list.querySelectorAll("[data-editorial-comment-delete]").forEach(b=>b.onclick=async()=>{if(!active()||b.disabled||!confirm("¿Eliminar tu comentario?"))return;b.disabled=true;try{const {data,error}=await db.from("gyste_editorial_comments").delete().eq("id",b.dataset.editorialCommentDelete).eq("user_id",uid).select("id");if(error||!data?.length)throw Error("delete");if(active())await loadEditorialComments(panel);}catch{if(active())say("No se pudo confirmar la eliminación.",true);}finally{b.disabled=false;}});
+ }catch{if(active())list.textContent="No se pudieron cargar los comentarios. Pulsa Actualizar comentarios.";}
+}
+async function sendEditorialComment(panel,form){
+ const uid=me?.id,note=panel.dataset.editorialComments,input=form.querySelector("textarea"),button=form.querySelector("button"),status=form.querySelector("[data-editorial-comment-status]"),content=input.value.trim();
+ if(!uid||session?.user?.id!==uid||!GYSTE_EDITORIAL.some(n=>n.noteId===note)||!content||content.length>2000)return;
+ const key=uid+":"+note,active=()=>panel.isConnected&&me?.id===uid&&session?.user?.id===uid;
+ if(editorialCommentLocks.has(key))return;
+ let attempt=editorialCommentAttempts.get(form);if(!attempt||attempt.content!==content||attempt.uid!==uid){attempt={id:crypto.randomUUID(),content,uid};editorialCommentAttempts.set(form,attempt);}
+ editorialCommentLocks.add(key);button.disabled=true;input.disabled=true;status.textContent="Enviando…";
+ try{
+ const {error}=await db.from("gyste_editorial_comments").insert({id:attempt.id,user_id:uid,note_id:note,content});
+ if(error){const existing=await db.from("gyste_editorial_comments").select("id,content").eq("id",attempt.id).eq("user_id",uid).maybeSingle();if(existing.error||existing.data?.content!==content)throw error;}
+ if(!active())return;editorialCommentAttempts.delete(form);input.value="";status.textContent="Recibido. Tu comentario está pendiente de revisión.";await loadEditorialComments(panel);
+ }catch{if(active())status.textContent="No se pudo confirmar el envío. Conservamos tu texto; puedes reintentar.";}
+ finally{editorialCommentLocks.delete(key);button.disabled=false;input.disabled=false;}
+}
+function bindEditorialComments(){
+ app.querySelectorAll("[data-editorial-comments]").forEach(panel=>{
+ panel.ontoggle=()=>{if(panel.open)void loadEditorialComments(panel);};
+ panel.querySelector("[data-editorial-comment-refresh]").onclick=()=>loadEditorialComments(panel);
+ const form=panel.querySelector("[data-editorial-comment-form]");form.onsubmit=e=>{e.preventDefault();void sendEditorialComment(panel,form);};
+ });
+}
+function editorialModerationHTML(result){
+ if(result.error)return '<section class="panel"><h2>Comentarios de artículos</h2><p>No se pudo cargar la cola de revisión.</p></section>';
+ const rows=result.data||[];
+ return '<section class="panel"><h2>Comentarios de artículos pendientes</h2><p>Revisa los datos personales, amenazas y acusaciones antes de publicar. Se muestran hasta 100 pendientes.</p>'+rows.map(c=>`<article class="comment"><b>${esc(GYSTE_EDITORIAL.find(n=>n.noteId===c.note_id)?.title||c.note_id)}</b><div class="bodytext">${esc(c.content)}</div><small>${esc(time(c.created_at))}</small><div class="actions"><button class="primary" data-editorial-review="${esc(c.id)}" data-review-status="published">Aprobar</button><button class="secondary" data-editorial-review="${esc(c.id)}" data-review-status="rejected">Rechazar</button></div></article>`).join("")+(rows.length?"":"<p>No hay comentarios pendientes.</p>")+'</section>';
 }
 let editorialReactionState=null;
 function editorialReactionsFor(uid){
@@ -1059,7 +1107,7 @@ function refreshEditorialButtons(){
 function refreshEditorialSavedList(){
  if(tab!=="saved")return;
  const list=document.getElementById("editorial-saved-list");
- if(list){list.innerHTML=editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>';bindEditorialSaves();bindPageNavigation();bindPageFollows();bindEditorialReactions();}
+ if(list){list.innerHTML=editorialFeed("saved")||'<p class="muted">No tienes artículos guardados.</p>';bindEditorialSaves();bindPageNavigation();bindPageFollows();bindEditorialReactions();bindEditorialComments();}
 }
 function bindEditorialSaves(){
  app.querySelectorAll("[data-editorial-save]").forEach(b=>b.onclick=async()=>{
@@ -1574,14 +1622,14 @@ async function moderationView(){
  if(!valid())return;
  if(roleError){shell('<section class="panel"><h2>Moderación</h2><p>No se pudieron comprobar tus permisos.</p><button class="secondary" data-tab="moderation">Reintentar</button></section>');return;}
  if(!role){shell('<section class="panel"><h2>Acceso restringido</h2><p>Solo las cuentas autorizadas pueden moderar Gyste.</p><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>');return;}
- const [reports,hidden]=await Promise.all([db.from("gyste_reports").select("id,post_id,reason,details,created_at,status").order("created_at",{ascending:false}).limit(100),db.from("gyste_hidden_posts").select("post_id,created_at").order("created_at",{ascending:false}).limit(100)]);
+ const [reports,hidden,editorial]=await Promise.all([db.from("gyste_reports").select("id,post_id,reason,details,created_at,status").order("created_at",{ascending:false}).limit(100),db.from("gyste_hidden_posts").select("post_id,created_at").order("created_at",{ascending:false}).limit(100),db.from("gyste_editorial_comments").select("id,note_id,content,status,created_at").eq("status","pending").order("created_at").limit(100)]);
  if(!valid())return;
  if(reports.error||hidden.error){shell('<section class="panel"><h2>Moderación</h2><p>No se pudieron cargar los registros. Inténtalo de nuevo.</p><button class="secondary" data-tab="moderation">Actualizar</button></section>');return;}
  const rows=reports.data||[],hiddenIds=new Set((hidden.data||[]).map(h=>h.post_id)),postIds=[...new Set(rows.map(r=>r.post_id))],visible=new Map();
  if(postIds.length){const p=await db.from("posts").select("id,content,audience").in("id",postIds);(p.data||[]).forEach(x=>visible.set(x.id,x));}
  if(!valid())return;
  const labels={bullying:"Acoso o bullying",sexual:"Contenido sexual inapropiado",violence:"Violencia o amenazas",spam:"Spam",privacy:"Privacidad",other:"Otro"},states={pending:"Pendiente",reviewed:"Revisada",resolved:"Resuelta"};
- shell(`<section class="panel"><h2>Panel de moderación</h2><p class="muted">Solo para cuentas autorizadas. No permite acceder a conversaciones privadas. Revisa cada denuncia antes de decidir.</p><p><b>${rows.filter(r=>r.status==="pending").length}</b> pendientes entre las últimas 100 denuncias · <b>${hiddenIds.size}</b> publicaciones ocultas en la lista.</p><button class="secondary" data-tab="moderation">Actualizar</button><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>${rows.map(r=>`<article class="panel"><h3>${esc(labels[r.reason]||r.reason)}</h3><p>${esc(states[r.status]||r.status)} · ${time(r.created_at)}</p><p>${esc(r.details||"Sin detalles adicionales.")}</p><p class="muted">Publicación: ${esc(visible.get(r.post_id)?.content||"Sin texto o no accesible para esta cuenta.")}</p><div class="actions">${visible.has(r.post_id)?`<button class="secondary" data-review-post="${esc(r.post_id)}">Ver publicación</button>`:""}<button class="secondary" data-review-report="${esc(r.id)}">Marcar revisada</button><button class="secondary" data-resolve-report="${esc(r.id)}">Marcar resuelta</button>${hiddenIds.has(r.post_id)?`<button class="secondary" data-restore-post="${esc(r.post_id)}">Restaurar publicación</button>`:`<button class="secondary" data-hide-post="${esc(r.post_id)}">Ocultar publicación</button>`}</div></article>`).join("")||'<p class="panel muted">No hay denuncias registradas.</p>'}`);
+ shell(`<section class="panel"><h2>Panel de moderación</h2><p class="muted">Solo para cuentas autorizadas. No permite acceder a conversaciones privadas. Revisa cada denuncia antes de decidir.</p><p><b>${rows.filter(r=>r.status==="pending").length}</b> pendientes entre las últimas 100 denuncias · <b>${hiddenIds.size}</b> publicaciones ocultas en la lista.</p><button class="secondary" data-tab="moderation">Actualizar</button><button class="secondary" data-tab="safety">Volver a Seguridad</button></section>${rows.map(r=>`<article class="panel"><h3>${esc(labels[r.reason]||r.reason)}</h3><p>${esc(states[r.status]||r.status)} · ${time(r.created_at)}</p><p>${esc(r.details||"Sin detalles adicionales.")}</p><p class="muted">Publicación: ${esc(visible.get(r.post_id)?.content||"Sin texto o no accesible para esta cuenta.")}</p><div class="actions">${visible.has(r.post_id)?`<button class="secondary" data-review-post="${esc(r.post_id)}">Ver publicación</button>`:""}<button class="secondary" data-review-report="${esc(r.id)}">Marcar revisada</button><button class="secondary" data-resolve-report="${esc(r.id)}">Marcar resuelta</button>${hiddenIds.has(r.post_id)?`<button class="secondary" data-restore-post="${esc(r.post_id)}">Restaurar publicación</button>`:`<button class="secondary" data-hide-post="${esc(r.post_id)}">Ocultar publicación</button>`}</div></article>`).join("")||'<p class="panel muted">No hay denuncias registradas.</p>'}${editorialModerationHTML(editorial)}`);
  const act=async(b,query,field,expected,msg)=>{
  if(!valid()||b.disabled||moderationLocks.has(uid))return;
  b.disabled=true;const label=b.textContent;b.textContent="Guardando…";
@@ -1592,6 +1640,7 @@ async function moderationView(){
  }catch{if(valid())say("No se pudo confirmar la acción. Actualiza el panel antes de reintentar.",true);}
  finally{b.disabled=false;b.textContent=label;}
  };
+ app.querySelectorAll("[data-editorial-review]").forEach(b=>b.onclick=()=>{const id=b.dataset.editorialReview,status=b.dataset.reviewStatus;if(!["published","rejected"].includes(status)||!confirm(status==="published"?"¿Publicar este comentario para los miembros de Gyste?":"¿Rechazar este comentario?"))return;act(b,()=>db.from("gyste_editorial_comments").update({status}).eq("id",id).eq("status","pending").select("id"),"id",id,status==="published"?"Comentario publicado.":"Comentario rechazado.");});
  app.querySelectorAll("[data-review-post]").forEach(b=>b.onclick=()=>{sharedPostId=b.dataset.reviewPost;selectedSpaceId=null;homeFilter="all";tab="feed";renderTab();});
  app.querySelectorAll("[data-review-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"reviewed"}).eq("id",b.dataset.reviewReport).select("id"),"id",b.dataset.reviewReport,"Denuncia revisada."));
  app.querySelectorAll("[data-resolve-report]").forEach(b=>b.onclick=()=>act(b,()=>db.from("gyste_reports").update({status:"resolved"}).eq("id",b.dataset.resolveReport).select("id"),"id",b.dataset.resolveReport,"Denuncia resuelta."));
