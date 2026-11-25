@@ -1622,10 +1622,24 @@ function postMediaHTML(p){
   return `<div class="media-frame ${video?"video-frame":""}">${element}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
  }).join("")}</div>`;
 }
+// Photo failure recovery: keep the original URL (including any signature), never substitute another image.
+function bindPhotoRecovery(frame,image,button){
+ if(frame.dataset.photoRecovery==="1")return;
+ frame.dataset.photoRecovery="1";
+ const status=document.createElement("p");status.className="muted";status.setAttribute("role","status");status.style.cssText="padding:10px;margin:0;text-align:center";status.hidden=true;
+ const retry=document.createElement("button");retry.type="button";retry.className="secondary";retry.textContent="Reintentar foto";retry.style.cssText="margin:8px auto;display:none";frame.append(status,retry);
+ let failed=false;
+ const loading=()=>{failed=false;image.style.display="";button.disabled=true;status.hidden=false;status.textContent="Cargando fotografía…";retry.style.display="none";};
+ const ready=()=>{failed=false;image.style.display="";button.disabled=false;status.hidden=true;retry.style.display="none";};
+ const error=()=>{failed=true;image.style.display="none";button.disabled=true;status.hidden=false;status.textContent="No se pudo cargar esta fotografía. Reintenta o vuelve a abrir la publicación para renovar el acceso.";retry.style.display="block";};
+ image.addEventListener("load",ready);image.addEventListener("error",error);
+ retry.onclick=()=>{if(!failed)return;const url=image.getAttribute("src");if(!url)return;loading();image.removeAttribute("src");image.setAttribute("src",url);};
+ if(image.complete){if(image.naturalWidth>0)ready();else error();}else{button.disabled=true;}
+}
 function bindMediaActions(){
  app.querySelectorAll(".media-expand").forEach(b=>{
   const frame=b.closest(".media-frame"),original=b.textContent;
-   const image=frame.querySelector("img");if(image){b.onclick=()=>openPhotoViewer(image);image.style.cursor="zoom-in";image.onclick=b.onclick;return;}
+   const image=frame.querySelector("img");if(image){bindPhotoRecovery(frame,image,b);b.onclick=()=>{if(!b.disabled)openPhotoViewer(image);};image.style.cursor="zoom-in";image.onclick=b.onclick;return;}
   const refresh=()=>{b.textContent=(document.fullscreenElement===frame||frame.classList.contains("media-overlay"))?"✕ Salir de pantalla completa":original;};
   frame.addEventListener("fullscreenchange",refresh);
   b.onclick=async()=>{
