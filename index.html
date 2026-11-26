@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r18">
+<meta name="gyste-build" content="2026-11-26-r19">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -766,16 +766,33 @@ function applyWallpaper(value){
  document.body.style.setProperty("--gyste-wallpaper",wallpaperCSS(v));
  if(v.kind==="default")document.body.style.removeProperty("--mint");else document.body.style.setProperty("--mint",wallpaperAccent(v));
 }
+function gysteConnectionPreference(uid=me?.id){
+ if(!uid)return "auto";
+ try{const v=localStorage.getItem("gyste-data-saver:"+uid);if(v==="on"||v==="off")return v;}catch{}
+ return "auto";
+}
+function classifyGysteConnection(online,info){
+ if(online===false)return "offline";
+ if(!info)return "unknown";
+ if(info.saveData===true||["slow-2g","2g","3g"].includes(info.effectiveType)||(Number.isFinite(info.downlink)&&info.downlink>0&&info.downlink<=1)||(Number.isFinite(info.rtt)&&info.rtt>=600))return "slow";
+ return ["4g"].includes(info.effectiveType)||(Number.isFinite(info.downlink)&&info.downlink>1)?"normal":"unknown";
+}
+function gysteConnectionInfo(){return navigator.connection||navigator.mozConnection||navigator.webkitConnection;}
 function gysteDataSaver(uid=me?.id){
  if(!uid)return false;
- try{const value=localStorage.getItem("gyste-data-saver:"+uid);if(value==="on")return true;if(value==="off")return false;}catch{}
- return navigator.connection?.saveData===true;
+ const pref=gysteConnectionPreference(uid);
+ return pref==="on"||pref==="auto"&&["slow","offline"].includes(classifyGysteConnection(navigator.onLine,gysteConnectionInfo()));
+}
+function gysteConnectionDescription(uid=me?.id){
+ const state=classifyGysteConnection(navigator.onLine,gysteConnectionInfo());
+ const label={offline:"Sin conexión detectada",slow:"Conexión limitada o ahorro del sistema activo",normal:"Conexión aparentemente normal",unknown:"Calidad de conexión no disponible"}[state];
+ return label+" · "+(gysteDataSaver(uid)?"Modo ligero activo":"Modo normal activo");
 }
 function appearanceView(){
  const uid=me.id;let current=readWallpaper(uid),pending=current,busy=false;
- shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div class="data-saver-setting"><label><input id="data-saver-toggle" type="checkbox" ${gysteDataSaver(uid)?"checked":""}> Ahorrar datos móviles</label><p>Las fotos de las publicaciones se descargan al pulsar Ver foto. Los vídeos no se reproducen automáticamente. No cambia la calidad del archivo original ni la privacidad. Ajuste de esta cuenta en este navegador.</p><p id="data-saver-status" role="status"></p></div><h3>Vista previa de tu Gyste</h3><div id="wallpaper-preview" class="wallpaper-preview"><div class="appearance-demo" aria-hidden="true"><div class="appearance-demo-head"><span class="demo-logo">G</span> GYSTE</div><div class="appearance-demo-post"><b>Tu comunidad</b><p style="margin:6px 0">Comparte algo que te inspire.</p><span style="color:var(--preview-accent)">♡ &nbsp; Comentar &nbsp; · &nbsp; Guardar</span></div><span class="appearance-demo-action">Crear publicación</span></div></div><p class="appearance-demo-caption">Muestra ilustrativa de los colores. Las publicaciones reales conservan su contenido.</p><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false"><span class="theme-swatch" style="background:${THEME_ACCENTS[k]}" aria-hidden="true"></span>${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Elegir fondo original</button><div class="appearance-save-row"><button type="button" class="primary" id="wallpaper-apply" disabled>Guardar estilo</button><button type="button" class="secondary" id="wallpaper-cancel" disabled>Cancelar cambio</button></div><p id="wallpaper-status" role="status" aria-live="polite"></p></section>`);
+ shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div class="data-saver-setting"><h3>Conexión inteligente Gyste</h3><label>Modo de conexión<select id="data-saver-toggle" class="field"><option value="auto" ${gysteConnectionPreference(uid)==="auto"?"selected":""}>Automático</option><option value="off" ${gysteConnectionPreference(uid)==="off"?"selected":""}>Normal</option><option value="on" ${gysteConnectionPreference(uid)==="on"?"selected":""}>Ligero · ahorrar datos</option></select></label><p id="gyste-connection-detail" role="status">${esc(gysteConnectionDescription(uid))}</p><p>El modo ligero carga fotos de publicaciones bajo demanda y reduce algunas consultas y precargas. En automático se adapta cuando el navegador informa de conexiones limitadas. Si no informa de la calidad (por ejemplo, en algunos iPhone), puedes elegir Ligero manualmente. No aumenta la señal. Los ajustes se aplican a las próximas cargas y se guardan en este navegador.</p><p id="data-saver-status" role="status"></p></div><h3>Vista previa de tu Gyste</h3><div id="wallpaper-preview" class="wallpaper-preview"><div class="appearance-demo" aria-hidden="true"><div class="appearance-demo-head"><span class="demo-logo">G</span> GYSTE</div><div class="appearance-demo-post"><b>Tu comunidad</b><p style="margin:6px 0">Comparte algo que te inspire.</p><span style="color:var(--preview-accent)">♡ &nbsp; Comentar &nbsp; · &nbsp; Guardar</span></div><span class="appearance-demo-action">Crear publicación</span></div></div><p class="appearance-demo-caption">Muestra ilustrativa de los colores. Las publicaciones reales conservan su contenido.</p><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false"><span class="theme-swatch" style="background:${THEME_ACCENTS[k]}" aria-hidden="true"></span>${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Elegir fondo original</button><div class="appearance-save-row"><button type="button" class="primary" id="wallpaper-apply" disabled>Guardar estilo</button><button type="button" class="secondary" id="wallpaper-cancel" disabled>Cancelar cambio</button></div><p id="wallpaper-status" role="status" aria-live="polite"></p></section>`);
  const status=document.getElementById("wallpaper-status"),preview=document.getElementById("wallpaper-preview");
- const saver=document.getElementById("data-saver-toggle");saver.onchange=()=>{if(me?.id!==uid)return;try{localStorage.setItem("gyste-data-saver:"+uid,saver.checked?"on":"off");document.getElementById("data-saver-status").textContent=saver.checked?"Ahorro activado para las próximas publicaciones.":"Ahorro desactivado.";}catch{saver.checked=gysteDataSaver(uid);document.getElementById("data-saver-status").textContent="No se pudo guardar la preferencia.";} };
+ const saver=document.getElementById("data-saver-toggle");saver.onchange=()=>{if(me?.id!==uid)return;try{if(!["auto","on","off"].includes(saver.value))return;localStorage.setItem("gyste-data-saver:"+uid,saver.value);document.getElementById("data-saver-status").textContent="Preferencia guardada. Se aplicará a las próximas cargas.";paintGysteConnection();}catch{saver.value=gysteConnectionPreference(uid);document.getElementById("data-saver-status").textContent="No se pudo guardar la preferencia.";} };
  const apply=document.getElementById("wallpaper-apply"),cancel=document.getElementById("wallpaper-cancel");
  const dirty=()=>JSON.stringify(current)!==JSON.stringify(pending);
  const draw=()=>{preview.style.backgroundImage=wallpaperCSS(pending);preview.style.setProperty("--preview-accent",wallpaperAccent(pending));app.querySelectorAll("[data-wallpaper]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.wallpaper===pending.kind)));apply.disabled=cancel.disabled=busy||!dirty();};
@@ -793,8 +810,8 @@ function appearanceView(){
  draw();
 }
 const GYSTE_BUILD=document.querySelector('meta[name="gyste-build"]')?.content||"desconocida";
-function paintGysteConnection(){const node=document.getElementById("gyste-connection");if(node)node.hidden=navigator.onLine!==false;}
-window.addEventListener("offline",paintGysteConnection);window.addEventListener("online",paintGysteConnection);
+function paintGysteConnection(){const node=document.getElementById("gyste-connection"),detail=document.getElementById("gyste-connection-detail");if(node){const offline=navigator.onLine===false,light=gysteDataSaver();node.hidden=!offline&&!light;node.textContent=offline?"Sin conexión detectada. No cierres esta pantalla si tienes archivos o texto pendientes.":"Conexión inteligente · modo ligero activo. Puedes cambiarlo en Apariencia y ahorro de datos.";}if(detail)detail.textContent=gysteConnectionDescription();}
+window.addEventListener("offline",paintGysteConnection);window.addEventListener("online",paintGysteConnection);gysteConnectionInfo()?.addEventListener?.("change",paintGysteConnection);
 function classifyGysteBuild(current,remote){if(!/^\d{4}-\d{2}-\d{2}-r\d+$/.test(remote||""))return "unknown";return current===remote?"same":"different";}
 function gysteUpdateHTML(){return '<details class="gyste-update-panel"><summary>Versión y actualización de Gyste</summary><p class="muted">Versión abierta: '+esc(GYSTE_BUILD)+'</p><p class="muted">La comprobación compara esta pantalla con la página publicada. Consume una descarga de la página, sin enviar mensajes ni archivos. Recargar puede cerrar borradores no guardados.</p><button type="button" class="secondary full" id="gyste-check-build">Comprobar versión publicada</button><button type="button" class="secondary full" id="gyste-reload-build">Recargar Gyste</button><p id="gyste-build-status" role="status" aria-live="polite"></p></details>';}
 function bindGysteUpdate(){
@@ -3140,7 +3157,7 @@ function paintUnreadBadges(){
  app.querySelectorAll("[data-unread-kind]").forEach(node=>{const kind=node.dataset.unreadKind,count=uid&&unreadState.uid===uid?unreadState[kind]:null,label=unreadLabel(count);node.textContent=label;node.hidden=!label;const b=node.closest("button");if(b)b.setAttribute("aria-label",(kind==="messages"?"Mensajes":"Notificaciones")+(label?" · "+count+" sin leer":""));});
 }
 async function refreshUnreadBadges(force=false){
- const uid=me?.id;if(!uid||session?.user?.id!==uid||document.hidden)return;
+ const uid=me?.id;if(!uid||session?.user?.id!==uid||document.hidden||navigator.onLine===false)return;
  if(unreadState.uid!==uid)unreadState={uid,stamp:0,serial:0,loading:false,messages:null,notifications:null};
  const state=unreadState,now=Date.now(),interval=gysteDataSaver(uid)?120000:60000;
  if(!force&&(state.loading||now-state.stamp<interval))return;
@@ -3296,7 +3313,7 @@ function chatMarkup(items){
 const chatRefreshLocks=new WeakSet(),chatRefreshQueued=new WeakSet();
 async function refreshChatMessages(target,markRead=false){
  const uid=me?.id,list=document.getElementById("chatlist"),status=document.getElementById("chat-refresh-status");
- if(!uid||tab!=="messages"||chatUser!==target||!list)return;
+ if(!uid||tab!=="messages"||chatUser!==target||!list||navigator.onLine===false)return;
  if(chatRefreshLocks.has(list)){if(markRead)chatRefreshQueued.add(list);return;}
  const valid=()=>me?.id===uid&&tab==="messages"&&chatUser===target&&list.isConnected&&document.getElementById("chatlist")===list;
  chatRefreshLocks.add(list);
