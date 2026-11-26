@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r16">
+<meta name="gyste-build" content="2026-11-26-r17">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2451,14 +2451,19 @@ function bindPostDraft(){
 }
 let postPreviewUrls=[];
 function clearPostPreviews(){for(const url of postPreviewUrls)URL.revokeObjectURL(url);postPreviewUrls=[];}
+function postFileMode(f){
+ if(!f||!f.size||f.size>MAX_POST_BYTES)return "invalid";
+ if(MEDIA_TYPES.includes(f.type))return "direct";
+ return chatPhotoCompatibility(f)!=="none"?"convert":"invalid";
+}
 function renderPostPreviews(files){
  clearPostPreviews();const host=document.getElementById("post-preview");if(!host)return;
  host.replaceChildren();
  for(const f of files.slice(0,MAX_POST_FILES)){
-  if(!MEDIA_TYPES.includes(f.type)||!f.size||f.size>MAX_POST_BYTES)continue;
+  if(postFileMode(f)==="invalid")continue;
   const tile=document.createElement("div"),media=document.createElement(f.type.startsWith("video/")?"video":"img"),url=URL.createObjectURL(f),name=document.createElement("small");
   postPreviewUrls.push(url);media.src=url;if(media.tagName==="VIDEO"){media.preload="metadata";media.muted=true;media.playsInline=true;}else media.alt="Vista previa de "+f.name;
-  name.textContent=f.name;tile.append(media,name);host.append(tile);
+  name.textContent=f.name;media.onerror=()=>{if(media.isConnected){media.remove();name.textContent=f.name+" · "+(postFileMode(f)==="convert"?"Se intentará convertir a JPG":"Vista previa no disponible");}};tile.append(media,name);host.append(tile);
  }
 }
 function homeFollowedPagesHTML(){
@@ -2534,7 +2539,7 @@ const composerHTML=`<section class="panel composer" id="composer" ${contentFirst
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea><div class="row"><button type="button" class="secondary" id="draft-save">Guardar borrador</button><button type="button" class="secondary" id="draft-restore" hidden>Recuperar borrador</button><button type="button" class="ghost" id="draft-discard" hidden>Borrar borrador</button></div><p id="draft-status" class="muted" role="status">Opcional: guarda solo el texto en este navegador. No se publica ni se sincroniza. Evita guardarlo en dispositivos compartidos. Los archivos no se conservan.</p>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
-<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label><div id="post-preview" aria-label="Vista previa local de los archivos"></div>
+<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label><div id="post-preview" aria-label="Vista previa local de los archivos"></div>
 </div>
 <button id="publish" class="primary full">Compartir publicación</button><button class="secondary full" id="open-creator-studio" type="button">✨ Estudio creativo</button>
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
@@ -2562,7 +2567,7 @@ const quickStudio=document.getElementById("quick-studio");if(quickStudio)quickSt
  document.getElementById("media").onchange=e=>{
  const files=Array.from(e.target.files||[]),bytes=files.reduce((n,f)=>n+f.size,0);
  renderPostPreviews(bytes<=MAX_POST_BYTES&&files.length<=MAX_POST_FILES?files:[]);
- document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":""):"Puedes seleccionar varias fotos de una vez.";
+ document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":files.some(f=>postFileMode(f)==="invalid")?" · Hay formatos no admitidos. Usa JPG, PNG, WebP o MP4.":files.some(f=>postFileMode(f)==="convert")?" · Se intentará convertir las fotos compatibles a JPG antes de publicar.":""):"Puedes seleccionar varias fotos de una vez.";
  };
 bindPostActions();
 if(contentFirst)void loadHomeCircle(valid);
@@ -2622,7 +2627,7 @@ async function publish(options={}){
  const text=textInput.value.trim();
  const files=batch?[options.reelFile]:Array.from(mediaInput.files||[]);
  if(!text&&!files.length)return say("Escribe algo o elige fotos o vídeos.",true);
- if(files.length>MAX_POST_FILES||files.some(f=>!f||!MEDIA_TYPES.includes(f.type)||!f.size||f.size>MAX_POST_BYTES)||files.reduce((n,f)=>n+f.size,0)>MAX_POST_BYTES)
+ if(files.length>MAX_POST_FILES||files.some(f=>postFileMode(f)==="invalid")||files.reduce((n,f)=>n+f.size,0)>MAX_POST_BYTES)
  return say("Selecciona hasta 10 archivos compatibles, con un máximo de 50 MB en total.",true);
  const b=document.getElementById("publish");if(!b||publishLocks.has(me.id)||(b.disabled&&!batch))return {ok:false};
  const uid=me.id,space=document.getElementById("postspace")?.value||null;
@@ -2633,13 +2638,16 @@ async function publish(options={}){
  publishLocks.add(uid);b.disabled=true;b.textContent="Publicando…";
  const controls=[textInput,mediaInput,document.getElementById("postspace"),document.getElementById("audience"),document.getElementById("audience-search"),...document.querySelectorAll("#audience-chosen button,#audience-results button")].filter(Boolean),previous=controls.map(c=>c.disabled);
  controls.forEach(c=>c.disabled=true);
- const uploaded=[];let postCommitted=false,insertAttempted=false;
+ const uploaded=[];let postCommitted=false,insertAttempted=false,preparationError=false;
  try{
-  for(let i=0;i<files.length;i++){
+  const prepared=[];
+  for(let i=0;i<files.length;i++){if(!active())throw Error("Sección cerrada");const original=files[i];if(postFileMode(original)==="convert"){b.textContent="Preparando foto "+(i+1)+" de "+files.length+"…";try{prepared.push(await prepareLightChatPhoto(original,true,false));}catch{preparationError=true;throw Error("Conversión no disponible");}}else prepared.push(original);}
+  if(prepared.some(f=>!MEDIA_TYPES.includes(f.type)||!f.size||f.size>MAX_POST_BYTES)||prepared.reduce((n,f)=>n+f.size,0)>MAX_POST_BYTES){preparationError=true;throw Error("Archivos preparados demasiado grandes");}
+  for(let i=0;i<prepared.length;i++){
    if(!active())throw Error("Sección cerrada");
-   const file=files[i],ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type];
+   const file=prepared[i],ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type];
    const path=uid+"/"+postId+"-"+crypto.randomUUID()+"."+ext;
-   b.textContent="Subiendo "+(i+1)+" de "+files.length+"…";
+   b.textContent="Subiendo "+(i+1)+" de "+prepared.length+"…";
    const {error}=await db.storage.from(bucket).upload(path,file,{upsert:false,contentType:file.type});if(error)throw error;
    uploaded.push({path,type:file.type});
   }
@@ -2661,7 +2669,7 @@ async function publish(options={}){
   try{resetFeedPage();await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
   if(uploaded.length&&!insertAttempted&&me?.id===uid){try{const {error}=await db.storage.from(bucket).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}catch{}}
-  if(active())say(postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo publicar. Conservamos tu selección mientras sigas en esta pantalla.",true);
+  if(active())say(preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo publicar. Conservamos tu selección mientras sigas en esta pantalla.",true);
   if(batch)return {ok:postCommitted,warning:postCommitted};
    }finally{publishLocks.delete(uid);controls.forEach((c,i)=>c.disabled=previous[i]);if(b.isConnected&&!batch){b.disabled=false;b.textContent="Compartir publicación";}}
 }
