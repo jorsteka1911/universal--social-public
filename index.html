@@ -427,6 +427,16 @@ header{gap:6px;padding:8px 9px}
 .notice-item .notice-copy{overflow-wrap:anywhere;line-height:1.45}
 .notice-item .notice-meta{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;color:var(--muted);font-size:11px}
 .notice-item button{min-height:40px;padding:7px 9px;font-size:12px}
+/* Centro de seguridad: controles visibles y lenguaje claro */
+.safety-center{max-width:720px;margin-inline:auto}
+.safety-intro{border-radius:14px;background:#15374a;padding:14px;margin:0 0 14px}
+.safety-intro h2{margin:0 0 7px;color:var(--mint)}
+.safety-checks{display:grid;gap:8px;margin:10px 0}
+.safety-check{border:1px solid var(--line);padding:12px;border-radius:12px}
+.safety-check strong{display:block;color:var(--mint);margin-bottom:5px}
+.safety-check p{font-size:13px;margin:0}
+.explore-person-actions{flex-wrap:wrap}
+.explore-person-actions .person-block{flex:0 0 100%;color:var(--muted);border:0;min-height:36px}
 </style>
 </head>
 <body>
@@ -569,9 +579,9 @@ paintUnreadBadges();void refreshUnreadBadges();
 
 function navigationDraftState(){
  const post=document.getElementById("posttext"),media=document.getElementById("media"),msg=document.getElementById("msg"),chatfile=document.getElementById("chatfile"),reel=document.getElementById("reel-upload-status");
- const busy=!!me?.id&&(publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id));
+ const busy=!!me?.id&&(publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id)||feedbackSendLocks.has(me.id));
  const changedProfile=tab==="profile"&&["display","username","bio"].some(id=>{const f=document.getElementById(id);return f&&f.value!==f.defaultValue;});
- const text=!!(changedProfile||post?.value.trim()||msg?.value.trim()||Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim()));
+ const text=!!(changedProfile||document.getElementById("feedback-body")?.value.trim()||post?.value.trim()||msg?.value.trim()||Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim()));
  const files=!!(media?.files?.length||chatfile?.files?.length||voiceDraft||voiceCapture||Number(reel?.dataset.pending||0)>0);
  return {busy,text,files};
 }
@@ -791,7 +801,7 @@ async function challengesView(){
 const FEEDBACK_LABELS={idea:"Nueva idea",error:"Error técnico",accessibility:"Accesibilidad",safety:"Seguridad y privacidad",other:"Otra propuesta"};
 const FEEDBACK_STATES={pending:"Recibida",reviewed:"Revisada",implemented:"Implementada",closed:"Cerrada"};
 function aboutGysteView(){shell('<section class="panel"><h2>Acerca de Gyste</h2><p>GYSTE fue concebido y promovido por su fundador, JORSTEKA (cuenta de desarrollo jorsteka1911). Su desarrollo incorpora aportaciones humanas y asistencia de herramientas de inteligencia artificial.</p><p>© 2026 Gyste / JORSTEKA. Derechos reservados sobre las aportaciones originales que correspondan a sus titulares. Los contenidos de usuarios y componentes externos conservan sus derechos y licencias respectivos.</p><p>Versión beta. La identificación del fundador no implica una cesión de derechos a usuarios ni inversores. Los derechos de propiedad intelectual se reconocen en la medida en que correspondan legalmente a sus titulares. Esta mención no acredita un registro oficial de marca ni de propiedad intelectual.</p><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><button class="secondary full" data-tab="feedback">Enviar sugerencia</button></section>');}
-let commercialInterest=null;
+let commercialInterest=null,safetyFeedbackRequest=null;
 const GYSTE_OFFERS=[
  {id:"local7",title:"Escaparate local",price:"4,99 €",period:"7 días",description:"Propuesta de ficha destacada en el directorio de negocios, identificada como patrocinada."},
  {id:"local30",title:"Escaparate mensual",price:"12,99 €",period:"30 días",description:"Propuesta de ficha destacada durante un mes, sin renovación automática."}
@@ -858,6 +868,7 @@ async function feedbackView(){
  const row=(x,admin=false)=>`<article class="post"><b>${esc(FEEDBACK_LABELS[x.category]||x.category)}</b><p class="muted">${esc(FEEDBACK_STATES[x.status]||x.status)} · ${time(x.created_at)}</p><p class="bodytext">${esc(x.body)}</p>${admin?`<label>Estado<select class="field" data-feedback-id="${esc(x.id)}">${Object.entries(FEEDBACK_STATES).map(([k,v])=>`<option value="${k}" ${k===x.status?"selected":""}>${v}</option>`).join("")}</select></label>`:""}</article>`;
  shell(`<section class="panel"><h2>💡 Construyamos Gyste juntos</h2><p>Envía tus ideas, errores y propuestas. Tu mensaje no se publica. Podrás consultarlo tú y el equipo autorizado, que puede utilizar IA para analizar propuestas. No incluyas contraseñas, datos personales, datos de menores ni información confidencial. Para denunciar publicaciones utiliza Denunciar.</p><form id="feedback-form"><label>Tipo<select class="field" id="feedback-category">${Object.entries(FEEDBACK_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label><button type="button" class="secondary full" id="feedback-bug-template">Usar guía para informar de un error</button><label>Tu sugerencia<textarea class="field" id="feedback-body" minlength="10" maxlength="2000" required></textarea></label><p class="muted" id="feedback-length" aria-live="polite"></p><button type="submit" class="primary full">Enviar sugerencia privada</button><p id="feedback-result" role="status"></p></form></section><section class="panel"><h3>Mis sugerencias</h3>${mine.error?"No se pudieron cargar.":(mine.data||[]).map(x=>row(x)).join("")||"Todavía no hay sugerencias."}</section>${role.data?'<section class="panel"><h3>Revisión autorizada</h3><button class="secondary" id="feedback-review">Consultar propuestas</button><div id="feedback-admin"></div></section>':""}`);
  const form=document.getElementById("feedback-form");if(commercialInterest){const request=commercialInterest;commercialInterest=null;if(request.uid===uid){document.getElementById("feedback-category").value="other";document.getElementById("feedback-body").value=request.text;document.getElementById("feedback-result").textContent="Revisa el texto y envíalo solo si deseas manifestar interés. No se realizará ningún cobro.";}}const bodyInput=document.getElementById("feedback-body"),categoryInput=document.getElementById("feedback-category"),template=document.getElementById("feedback-bug-template"),out=document.getElementById("feedback-result"),submit=form.querySelector('[type="submit"]');
+ if(safetyFeedbackRequest){const request=safetyFeedbackRequest;safetyFeedbackRequest=null;if(request.uid===uid){categoryInput.value="safety";out.textContent="Describe el problema sin incluir nombres de menores, contraseñas ni conversaciones privadas. La atención no es inmediata. Envía únicamente si lo deseas.";}}
  const count=()=>{document.getElementById("feedback-length").textContent=bodyInput.value.length+" / 2000 caracteres";};
  bodyInput.oninput=count;count();
  template.onclick=()=>{if(!valid()||feedbackSendLocks.has(uid))return;if(bodyInput.value.trim()&&!confirm("¿Sustituir el texto por la guía de errores?"))return;categoryInput.value="error";bodyInput.value=feedbackBugTemplate;count();bodyInput.focus();};
@@ -898,6 +909,7 @@ async function copyGuestLink(){
  catch{field.focus();field.select();status.textContent="Mantén pulsado el enlace y elige Copiar.";}
 }
 function authView(){
+safetyFeedbackRequest=null;
 resetUnreadBadges();
 resetFeedPage();
 cubaNewsFilter={uid:null,query:"",topic:""};
@@ -2094,6 +2106,11 @@ async function saveVerifiedMessagePrivacy(uid,value,exists,dbClient){
  return !read.error&&read.data?.message_audience===value;
 }
 let safetyViewEpoch=0;
+function messagePrivacyLabel(pref){
+ if(!pref||pref.error)return "No se ha podido comprobar quién puede escribirte.";
+ const mode=pref.data?.message_audience||"mutual";
+ return ({all:"Todos los miembros pueden solicitar contacto, salvo bloqueos.",mutual:"Solo personas que se siguen mutuamente, salvo bloqueos.",none:"No se permiten nuevos mensajes."})[mode]||"Preferencia no reconocida. Revisa los ajustes.";
+}
 function moderationAccountStatus(result,uid){
  if(!result||result.error)return "No se pudo comprobar el permiso de moderación.";
  return result.data?.user_id===uid?"Moderación habilitada para esta cuenta.":"Esta cuenta no tiene permisos de moderación.";
@@ -2106,8 +2123,9 @@ async function safetyView(){
  if(error){shell(`<p class="error">${esc(error.message)}</p>`);return;}
  const ids=(data||[]).map(x=>x.blocked_id);let names={};if(ids.length){const {data:p}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",ids);(p||[]).forEach(x=>names[x.user_id]=x.display_name);}
  if(!valid())return;
- shell(`<section class="panel"><h2>Seguridad y convivencia</h2><p>Respeta a los demás. No compartas datos personales ni imágenes ajenas sin permiso. Si eres menor, evita publicar tu colegio, domicilio, horarios, teléfono o ubicación. Habla con un adulto de confianza si recibes mensajes incómodos o amenazas. Bloquea y denuncia a quien te moleste.</p><p>Las denuncias se registran para revisión, pero la atención de moderación todavía está en preparación. No esperes una respuesta inmediata. Si existe una amenaza urgente, contacta con los servicios de emergencia.</p><button class="secondary full" id="safety-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><button class="secondary full" data-tab="feedback">Informar de un problema de seguridad</button><h3>Visibilidad de tus contenidos</h3><p>Al publicar, comprueba la audiencia. Las fotos de perfil y portada son públicas. El contenido público puede ser copiado o compartido fuera de Gyste. Los mensajes no tienen cifrado de extremo a extremo.</p><details><summary>Administración y datos de mi cuenta</summary><p role="status">${esc(moderationAccountStatus(mod,uid))}</p><label for="safety-account-id">Identificador de mi cuenta</label><input class="field" id="safety-account-id" readonly value="${esc(uid)}"><button type="button" class="secondary full" id="copy-safety-account">Copiar identificador</button><p class="muted">Este identificador sirve para verificar qué cuenta debe recibir permisos. No es una contraseña y no concede permisos por sí mismo. No compartas contraseñas ni códigos de acceso.</p><p id="copy-safety-status" role="status"></p></details>${!mod.error&&mod.data?.user_id===uid?`<button class="primary full" data-tab="moderation">🛡 Panel de moderación</button>`:""}<h3>Privacidad de mensajes</h3><label>Quién puede enviarme mensajes<select id="message-audience" class="field" ${pref.error?"disabled":""}>${[["all","Todos los miembros"],["mutual","Solo personas que se siguen mutuamente"],["none","Nadie"]].map(([v,l])=>`<option value="${v}" ${(pref.data?.message_audience||"mutual")===v?"selected":""}>${l}</option>`).join("")}</select></label><button id="save-message-privacy" class="primary" ${pref.error?"disabled":""}>Guardar privacidad</button><p class="muted">No elimina conversaciones anteriores. ${pref.error?"No se ha podido comprobar tu preferencia actual. Vuelve a cargar esta sección.":""}</p><h3>Usuarios bloqueados</h3>${ids.map(id=>`<div class="userrow"><b>${esc(names[id]||"Miembro")}</b><button class="secondary" data-unblock="${esc(id)}">Desbloquear</button></div>`).join("")||"<p>No tienes usuarios bloqueados.</p>"}</section>`);
+ shell(`<section class="panel safety-center"><div class="safety-intro"><h2>🛡 Centro de seguridad</h2><p>Tu bienestar importa. Controla tus contactos y decide qué compartir.</p></div><div class="safety-checks"><div class="safety-check"><strong>Privacidad de mensajes</strong><p>${esc(messagePrivacyLabel(pref))}</p></div><div class="safety-check"><strong>Bloqueos</strong><p>${ids.length} cuenta(s) bloqueada(s). Puedes gestionar la lista más abajo.</p></div><div class="safety-check"><strong>Ayuda ante el acoso</strong><p>Denuncia la publicación o envía una solicitud privada de ayuda. No se adjuntan conversaciones automáticamente.</p><button type="button" class="secondary full" id="safety-help">Pedir ayuda o informar</button></div></div><p>Respeta a los demás. No compartas datos personales ni imágenes ajenas sin permiso. Si eres menor, evita publicar tu colegio, domicilio, horarios, teléfono o ubicación. Habla con un adulto de confianza si recibes mensajes incómodos o amenazas. Bloquea y denuncia a quien te moleste.</p><p>Las denuncias se registran para revisión, pero la atención de moderación todavía está en preparación. No esperes una respuesta inmediata. Si existe una amenaza urgente, contacta con los servicios de emergencia.</p><button class="secondary full" id="safety-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><button class="secondary full" data-tab="feedback">Informar de un problema de seguridad</button><h3>Visibilidad de tus contenidos</h3><p>Al publicar, comprueba la audiencia. Las fotos de perfil y portada son públicas. El contenido público puede ser copiado o compartido fuera de Gyste. Los mensajes no tienen cifrado de extremo a extremo.</p><details><summary>Administración y datos de mi cuenta</summary><p role="status">${esc(moderationAccountStatus(mod,uid))}</p><label for="safety-account-id">Identificador de mi cuenta</label><input class="field" id="safety-account-id" readonly value="${esc(uid)}"><button type="button" class="secondary full" id="copy-safety-account">Copiar identificador</button><p class="muted">Este identificador sirve para verificar qué cuenta debe recibir permisos. No es una contraseña y no concede permisos por sí mismo. No compartas contraseñas ni códigos de acceso.</p><p id="copy-safety-status" role="status"></p></details>${!mod.error&&mod.data?.user_id===uid?`<button class="primary full" data-tab="moderation">🛡 Panel de moderación</button>`:""}<h3>Privacidad de mensajes</h3><label>Quién puede enviarme mensajes<select id="message-audience" class="field" ${pref.error?"disabled":""}>${[["all","Todos los miembros"],["mutual","Solo personas que se siguen mutuamente"],["none","Nadie"]].map(([v,l])=>`<option value="${v}" ${(pref.data?.message_audience||"mutual")===v?"selected":""}>${l}</option>`).join("")}</select></label><button id="save-message-privacy" class="primary" ${pref.error?"disabled":""}>Guardar privacidad</button><p class="muted">No elimina conversaciones anteriores. ${pref.error?"No se ha podido comprobar tu preferencia actual. Vuelve a cargar esta sección.":""}</p><h3>Usuarios bloqueados</h3>${ids.map(id=>`<div class="userrow"><b>${esc(names[id]||"Miembro")}</b><button class="secondary" data-unblock="${esc(id)}">Desbloquear</button></div>`).join("")||"<p>No tienes usuarios bloqueados.</p>"}</section>`);
  document.getElementById("safety-rules").onclick=showCommunityRules;
+ document.getElementById("safety-help").onclick=openSafetyFeedback;
  document.getElementById("copy-safety-account").onclick=async()=>{
   if(!valid())return;
   const input=document.getElementById("safety-account-id"),status=document.getElementById("copy-safety-status");
@@ -2778,11 +2796,12 @@ return list.map(p=>`<article class="explore-person">
 <div class="avatar">${avatarContent(p)}</div>
 <div class="userinfo"><b>${esc(p.display_name||"Miembro")}</b><div class="muted">@${esc(p.username||"usuario")}</div><small>${esc(p.bio||"")}</small></div>
 <div class="explore-person-actions"><button type="button" class="secondary" data-follow="${esc(p.user_id)}" aria-pressed="${following.has(p.user_id)}">${following.has(p.user_id)?"Siguiendo":"Seguir"}</button>
-<button type="button" class="ghost" data-chat="${esc(p.user_id)}">Mensaje</button></div>
+<button type="button" class="ghost" data-chat="${esc(p.user_id)}">Mensaje</button><button type="button" class="ghost person-block" data-blockuser="${esc(p.user_id)}">Bloquear cuenta</button></div>
 </article>`).join("")||'<p class="muted">No se encontraron personas.</p>';
 }
 
 function bindPeople(){
+app.querySelectorAll(".person-block").forEach(b=>b.onclick=()=>blockUser(b.dataset.blockuser,b));
 app.querySelectorAll("[data-follow]").forEach(b=>{b.onclick=()=>follow(b.dataset.follow,b);});
 document.querySelectorAll("[data-chat]").forEach(b=>{b.onclick=()=>{if(!confirmNavigationDraft())return;chatUser=b.dataset.chat;goTab("messages",null,true);};});
 }
@@ -3111,8 +3130,12 @@ async function refreshChatMessages(target,markRead=false){
 }
 // A missing profile can be a block, deletion or temporary visibility issue. Never infer which.
 function chatContactAvailable(person){return !!person&&typeof person==="object"&&!Array.isArray(person);}
+function openSafetyFeedback(){
+ if(!me?.id||!confirmNavigationDraft())return;
+ safetyFeedbackRequest={uid:me.id};goTab("feedback",null,true);
+}
 function chatSafetyNotice(person){
- return '<div class="actions"><button type="button" class="secondary" data-tab="safety">🛡 Seguridad y privacidad</button><button type="button" class="secondary" data-tab="feedback">Informar de un problema</button></div><p class="muted">Si alguien te molesta, puedes bloquearlo. Para pedir ayuda, elige Seguridad y privacidad en Sugerencias. No se envía automáticamente ningún mensaje ni archivo de esta conversación. La atención de moderación está en preparación.</p>'+(!chatContactAvailable(person)?'<p role="status">Este perfil no está disponible. Puedes consultar los mensajes anteriores, pero no enviar nuevos mensajes desde esta pantalla.</p>':'');
+ return '<div class="actions"><button type="button" class="secondary" data-tab="safety">🛡 Seguridad y privacidad</button><button type="button" class="secondary" id="chat-safety-feedback">Pedir ayuda o informar</button></div><p class="muted">Si alguien te molesta, puedes bloquearlo. Para pedir ayuda, elige Seguridad y privacidad en Sugerencias. No se envía automáticamente ningún mensaje ni archivo de esta conversación. La atención de moderación está en preparación.</p>'+(!chatContactAvailable(person)?'<p role="status">Este perfil no está disponible. Puedes consultar los mensajes anteriores, pero no enviar nuevos mensajes desde esta pantalla.</p>':'');
 }
 async function messagesView(){
  stopChatRefresh();stopVoiceCapture();chatRenderSignature="";chatMediaCache.clear();
@@ -3169,6 +3192,7 @@ async function messagesView(){
  document.getElementById("sendmsg").onsubmit=sendMessage;
  document.getElementById("chatfile").onchange=()=>{stopVoiceCapture();resetVoiceUI();updateChatFileUI();};}
  document.getElementById("block-chat").onclick=e=>blockUser(target,e.currentTarget);
+ document.getElementById("chat-safety-feedback").onclick=openSafetyFeedback;
  const chatList=document.getElementById("chatlist");
  await refreshChatMessages(target,true);
  if(valid()&&chatList?.isConnected&&document.getElementById("chatlist")===chatList)chatRefreshTimer=setInterval(()=>{if(document.visibilityState!=="hidden")refreshChatMessages(target,true);},8000);
