@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r26">
+<meta name="gyste-build" content="2026-11-26-r27">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -659,7 +659,7 @@ paintUnreadBadges();void refreshUnreadBadges();
 function businessDraftChanged(form){if(!form?.dataset.initial)return false;return JSON.stringify(Array.from(form.querySelectorAll("input,select,textarea")).map(f=>f.value))!==form.dataset.initial;}
 function navigationDraftState(){
  const post=document.getElementById("posttext"),media=document.getElementById("media"),msg=document.getElementById("msg"),chatfile=document.getElementById("chatfile"),reel=document.getElementById("reel-upload-status");
- const busy=!!me?.id&&(pendingBusy.size>0||publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id)||feedbackSendLocks.has(me.id)||document.getElementById("business-form")?.dataset.busy==="true"||Boolean(document.getElementById("reel-generate")?.disabled));
+ const busy=!!me?.id&&(gysteLogoutBusy||pendingBusy.size>0||publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id)||feedbackSendLocks.has(me.id)||document.getElementById("business-form")?.dataset.busy==="true"||Boolean(document.getElementById("reel-generate")?.disabled));
  const changedProfile=tab==="profile"&&["display","username","bio"].some(id=>{const f=document.getElementById(id);return f&&f.value!==f.defaultValue;});
  const creatorDraft=tab==="studio"&&["creator-topic","creator-script","creator-caption","reel-scene-text","creator-ai-prompt","creator-ai-import"].some(id=>document.getElementById(id)?.value.trim());
  const text=!!(creatorDraft||changedProfile||businessDraftChanged(document.getElementById("business-form"))||document.getElementById("feedback-body")?.value.trim()||post?.value.trim()||msg?.value.trim()||Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim()));
@@ -1249,11 +1249,42 @@ async function signup(){
   }
 }
 
+let gysteLogoutBusy=false;
 async function logout(){
-if(!confirmNavigationDraft())return;
-const {error}=await db.auth.signOut();
-if(error)return say("No se pudo cerrar sesión: "+error.message,true);
-session=null;me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=null;homeFilter="all";authView();
+ if(gysteLogoutBusy||!confirmNavigationDraft())return;
+ const uid=me?.id;if(!uid)return;
+ gysteLogoutBusy=true;
+ try{
+  let jobs=null;
+  try{jobs=await pendingList(uid);}catch{}
+  if(me?.id!==uid||session?.user?.id!==uid)return;
+  if(jobs?.length){
+   const choice=await choosePendingLogout(jobs.length);
+   if(choice==="cancel"||me?.id!==uid||session?.user?.id!==uid)return;
+   if(choice==="clear"){
+    if(!confirm("Se eliminarán "+jobs.length+" copias pendientes de este dispositivo. No se borrarán publicaciones ni mensajes ya enviados. ¿Continuar?"))return;
+    try{await clearAccountPending(uid);}catch{return say("No se pudo confirmar el borrado de las copias locales. No se ha cerrado la sesión.",true);}
+    if(me?.id!==uid||session?.user?.id!==uid)return;
+   }
+  }else if(jobs===null&&!confirm("No se pudo comprobar si hay archivos pendientes en este dispositivo. Cerrar sesión no los elimina. ¿Continuar?"))return;
+  const {error}=await db.auth.signOut();if(error)return say("No se pudo cerrar sesión. Comprueba la conexión.",true);
+  session=null;me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=null;homeFilter="all";authView();
+ }finally{gysteLogoutBusy=false;}
+}
+function choosePendingLogout(count){
+ return new Promise(resolve=>{
+  const d=document.createElement("dialog");d.className="assist-dialog";
+  d.setAttribute("aria-label","Copias pendientes al cerrar sesión");
+  const title=document.createElement("h2");title.textContent="Archivos pendientes";
+  const p=document.createElement("p");p.textContent="Tienes "+count+" envíos pendientes guardados en este dispositivo. Si es compartido, recomendamos quitar esas copias. No están cifradas por Gyste.";
+  d.append(title,p);
+  let selected="cancel";
+  for(const [value,label] of [["keep","Conservar y cerrar sesión"],["clear","Borrar copias y cerrar sesión"],["cancel","Cancelar"]]){
+   const b=document.createElement("button");b.type="button";b.className="secondary full";b.textContent=label;b.onclick=()=>{selected=value;d.close();};d.append(b);
+  }
+  d.addEventListener("close",()=>{d.remove();resolve(selected);},{once:true});
+  document.body.append(d);d.showModal();
+ });
 }
 
 // Start independent reads together, but never render them before server identity validation.
@@ -2912,6 +2943,17 @@ async function pendingTx(mode,fn){
 }
 const pendingGet=id=>pendingTx("readonly",s=>s.get(id)),pendingList=uid=>pendingTx("readonly",s=>s.index("uid").getAll(uid)),pendingSave=j=>pendingTx("readwrite",s=>s.put(j)),pendingRemove=id=>pendingTx("readwrite",s=>s.delete(id));
 const pendingAccount=uid=>me?.id===uid&&session?.user?.id===uid;
+async function clearAccountPending(uid){
+ if(!pendingAccount(uid)||pendingBusy.size)throw Error("Cuenta no disponible o envío en curso");
+ const d=await openPending();
+ await new Promise((resolve,reject)=>{
+  const tx=d.transaction("jobs","readwrite"),store=tx.objectStore("jobs"),q=store.index("uid").openCursor(IDBKeyRange.only(uid));
+  q.onsuccess=()=>{if(!pendingAccount(uid)){tx.abort();return;}const cursor=q.result;if(cursor){cursor.delete();cursor.continue();}};
+  tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error("Borrado cancelado"));tx.onerror=()=>reject(tx.error);
+ });
+ if((await pendingList(uid)).length!==0)throw Error("Quedan copias pendientes");
+ void paintPending();
+}
 async function pendingLock(id,fn){
  if(pendingBusy.has(id))throw Error("Envío en curso");
  pendingBusy.add(id);
