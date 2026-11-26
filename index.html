@@ -2221,7 +2221,8 @@ bindMediaActions();
 }
 
 const PRIVATE_BUCKET="gyste-private-media";
-const bucketFor=p=>p.audience&&p.audience!=="public"?PRIVATE_BUCKET:BUCKET;
+const legacyPublicVideoIds=new Set(["fda0c4fb-b921-4a78-a5a0-6e9c847da529","7ffa635a-ec7a-4101-b741-373393086024"]);
+const bucketFor=p=>legacyPublicVideoIds.has(p.id)||(p.audience&&p.audience!=="public")?PRIVATE_BUCKET:BUCKET;
 async function prepareMediaUrls(list){
  const uid=me?.id;
  await Promise.all([BUCKET,PRIVATE_BUCKET].map(async bucket=>{
@@ -2373,6 +2374,8 @@ async function prepareCards(list,{media=true,html=true,split=false}={}){
  if(!u.error)(u.data||[]).forEach(x=>postAuthors[x.user_id]=x);
  if(!html)return "";const rendered=posts.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===uid?me:null)));return split?rendered:rendered.join("");
 }
+document.addEventListener("click",e=>{document.querySelectorAll("details.post-menu[open]").forEach(menu=>{if(!menu.contains(e.target))menu.open=false;});},true);
+document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll("details.post-menu[open]").forEach(menu=>menu.open=false);});
 function bindPostActions(){
  bindMemberProfiles();
  bindMediaActions();
