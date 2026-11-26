@@ -2858,7 +2858,7 @@ function postCard(p,author,mediaOverride=null){
  const hasVideo=original&&postMediaItems(original).some(m=>m.type?.startsWith("video/"));
  return `<article class="post" data-post-card="${esc(target)}">
  ${p.repost_of?`<div class="repost-label">🔁 ${esc(author?.display_name||"Miembro")} republicó esta publicación</div>`:""}
- <div class="posthead"><div class="posthead-left"><button type="button" class="face" data-author-id="${esc(original?.user_id||"")}" data-member-profile="${esc(original?.user_id||"")}" aria-label="Ver perfil del autor">${avatarContent(sourceAuthor)}</button><div><span class="author">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
+ <div class="posthead"><div class="posthead-left"><button type="button" class="face" data-author-id="${esc(original?.user_id||"")}" data-member-profile="${esc(original?.user_id||"")}" aria-label="Ver perfil del autor">${avatarContent(sourceAuthor)}</button><div><button type="button" class="author" style="background:none;border:0;color:inherit;padding:0;text-align:left" data-member-profile="${esc(original?.user_id||"")}">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</button><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
  <details class="post-menu"><summary aria-label="Más opciones">⋯</summary><div class="post-menu-items">
  <button data-savepost="${esc(target)}" aria-pressed="${savedIds.has(target)}">${savedIds.has(target)?"Quitar de guardados":"🔖 Guardar publicación"}</button>
  ${isPublic?`<button data-repost="${esc(source)}">🔁 Republicar en mi perfil</button>`:""}
@@ -3451,11 +3451,11 @@ async function memberProfileView(){
  const {data:p,error}=await db.from("gyste_profiles").select("user_id,display_name,username,bio,avatar_url,cover_url").eq("user_id",id).maybeSingle();
  if(!valid())return;
  if(error||!p){shell('<section class="panel"><p>Perfil no disponible.</p><button data-tab="explore" class="secondary">Volver a Explorar</button></section>');return;}
- const {data:posts,error:postError}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).eq("user_id",id).order("created_at",{ascending:false}).limit(60);
+ const {data:posts,error:postError}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).eq("user_id",id).eq("audience","public").order("created_at",{ascending:false}).limit(60);
  if(!valid())return;
  const cards=postError?"":await prepareCards(posts||[]);
  if(!valid())return;
- shell(`<section class="panel profile-section"><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions"><button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button><button class="secondary" data-chat="${esc(id)}">Mensaje</button></div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones visibles para ti.</p>${postError?'<p>No se pudieron cargar las publicaciones.</p>':cards||'<p>No hay publicaciones visibles.</p>'}`);
+ shell(`<section class="panel profile-section"><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions"><button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button><button class="secondary" data-chat="${esc(id)}">Mensaje</button></div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones públicas visibles para ti.</p>${postError?'<p>No se pudieron cargar las publicaciones.</p>':cards||'<p>No hay publicaciones visibles.</p>'}`);
  bindPeople();bindPostActions();
 }
 function bindMemberProfiles(){
