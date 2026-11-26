@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r30">
+<meta name="gyste-build" content="2026-11-26-r31">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3788,19 +3788,29 @@ function openSafetyFeedback(){
 function chatSafetyNotice(person){
  return '<div class="actions"><button type="button" class="secondary" data-tab="safety">🛡 Seguridad y privacidad</button><button type="button" class="secondary" id="chat-safety-feedback">Pedir ayuda o informar</button></div><p class="muted">Si alguien te molesta, puedes bloquearlo. Para pedir ayuda, elige Seguridad y privacidad en Sugerencias. No se envía automáticamente ningún mensaje ni archivo de esta conversación. La atención de moderación está en preparación.</p>'+(!chatContactAvailable(person)?'<p role="status">Este perfil no está disponible. Puedes consultar los mensajes anteriores, pero no enviar nuevos mensajes desde esta pantalla.</p>':'');
 }
-async function messagesView(){
+const GYSTE_INBOX_PAGE=50;
+function gysteInboxPage(rows){
+ const list=Array.isArray(rows)?rows:[];
+ return {rows:list.slice(0,GYSTE_INBOX_PAGE),hasMore:list.length>GYSTE_INBOX_PAGE};
+}
+async function messagesView(page=0){
+ page=Number.isSafeInteger(page)&&page>=0&&page<=10000?page:0;
  stopChatRefresh();stopVoiceCapture();chatRenderSignature="";chatMediaCache.clear();
  const uid=me?.id,requestedChat=chatUser,epoch=++chatViewEpoch;if(!uid)return;
  const valid=()=>tab==="messages"&&me?.id===uid&&chatUser===requestedChat&&epoch===chatViewEpoch;
  if(!requestedChat){
-  const {data,error}=await db.from("gyste_messages").select("sender_id,recipient_id,content,created_at,read_at")
-  .or(`sender_id.eq.${uid},recipient_id.eq.${uid}`).order("created_at",{ascending:false}).limit(200);
+  const {data,error}=await db.rpc("gyste_chat_inbox_v1",{p_limit:GYSTE_INBOX_PAGE+1,p_offset:page*GYSTE_INBOX_PAGE});
   if(!valid())return;
-  if(error){shell(`<p class="error">No se pudieron cargar mensajes: ${esc(error.message)}</p>`);return;}
-  const ids=[...new Set((data||[]).map(m=>m.sender_id===me.id?m.recipient_id:m.sender_id))];let map={};
+  if(error){shell('<section class="panel"><p class="error" role="status">No se pudieron cargar las conversaciones.</p><button type="button" id="inbox-retry">Reintentar</button></section>');document.getElementById("inbox-retry").onclick=()=>{if(valid())messagesView(page);};return;}
+  const {rows,hasMore}=gysteInboxPage(data);
+  if(page>0&&!rows.length){return messagesView(page-1);}
+  const ids=rows.map(m=>m.peer_id);let map={};
   if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
   if(!valid())return;
-  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><div class="chat-inbox-list">${ids.map(id=>{const last=(data||[]).find(m=>m.sender_id===id||m.recipient_id===id);const unread=(data||[]).filter(m=>m.sender_id===id&&m.recipient_id===me.id&&!m.read_at).length;return `<button type="button" class="chat-contact" data-openchat="${esc(id)}"><span class="face">${avatarContent(map[id])}</span><span class="chat-contact-text"><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</button>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div></section>`);
+  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><div class="chat-inbox-list">${ids.map(id=>{const last=rows.find(m=>m.peer_id===id);const unread=Math.max(0,Number(last?.unread_count)||0);return `<button type="button" class="chat-contact" data-openchat="${esc(id)}"><span class="face">${avatarContent(map[id])}</span><span class="chat-contact-text"><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</button>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div><div class="actions">${page>0?'<button type="button" id="inbox-prev">Anteriores</button>':""}${hasMore?'<button type="button" id="inbox-next">Más conversaciones</button>':""}</div></section>`);
+  const prev=document.getElementById("inbox-prev"),next=document.getElementById("inbox-next");
+  if(prev)prev.onclick=()=>{if(valid())messagesView(page-1);};
+  if(next)next.onclick=()=>{if(valid())messagesView(page+1);};
   // Permite iniciar una conversación sin tener mensajes previos.
   const panel=document.querySelector(".chat-inbox");
   if(panel){
