@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r17">
+<meta name="gyste-build" content="2026-11-26-r18">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1660,7 +1660,7 @@ async function goReelCompose(initialFile=null,initialCaption=""){
  if(!input||!button||!audience||!status)return;
  input.accept="video/mp4,video/webm";input.multiple=true;audience.value="only_me";audience.onchange?.();
  const label=input.closest("label");if(label?.firstChild?.nodeType===3)label.firstChild.textContent="Vídeos para Reels (hasta 10, 50 MB por vídeo)";
- const hint=document.createElement("p");hint.className="muted";hint.textContent="Selecciona varios vídeos juntos o añade uno tras otro. Cada vídeo se guarda como un Reel independiente. Revisa la privacidad: empieza en Solo yo.";input.parentElement.insertBefore(hint,input);
+ const hint=document.createElement("p");hint.className="muted";hint.textContent="Selecciona varios vídeos juntos o añade uno tras otro. Recomendamos MP4 con H.264 y AAC para Android e iPhone. Los MOV deben exportarse a MP4. Cada vídeo se guarda como un Reel independiente. La privacidad empieza en Solo yo.";input.parentElement.insertBefore(hint,input);
  const list=document.createElement("div");input.parentElement.append(list);
  const feedback=document.createElement("p");feedback.id="reel-upload-status";feedback.setAttribute("role","status");feedback.setAttribute("aria-live","polite");button.insertAdjacentElement("afterend",feedback);
  const preview=document.createElement("video");preview.controls=true;preview.playsInline=true;preview.preload="metadata";preview.hidden=true;preview.style.cssText="width:100%;max-height:32dvh;object-fit:contain;background:#05090e";input.parentElement.append(preview);
@@ -1701,7 +1701,7 @@ function reelSceneTexts(raw){
 }
 function reelRecordingType(withSound=false){
  if(typeof MediaRecorder==="undefined"||typeof HTMLCanvasElement==="undefined"||!HTMLCanvasElement.prototype.captureStream)return [];
- return (withSound?["video/webm;codecs=vp8,opus","video/webm","video/mp4"]:["video/webm;codecs=vp8","video/webm","video/mp4"]).filter(t=>MediaRecorder.isTypeSupported(t));
+ return (withSound?["video/mp4;codecs=avc1.42001f,mp4a.40.2","video/webm;codecs=vp8,opus","video/webm","video/mp4"]:["video/mp4;codecs=avc1.42001f","video/webm;codecs=vp8","video/webm","video/mp4"]).filter(t=>MediaRecorder.isTypeSupported(t));
 }
 function creatorMusicNotes(style,duration){
  const patterns={calm:{pace:.86,notes:[60,67,64,71,62,69,65,72,64,71,67,74,62,65,69,67]},bright:{pace:.48,notes:[60,64,67,76,65,69,72,69,62,65,69,74,67,71,74,71]}};
@@ -1877,7 +1877,7 @@ function creatorStudioView(){
 function bindReelPlayback(video,button,status,active){
  let pending=false,failed=false;
  const write=(label,message,disabled=false)=>{if(!active())return;button.textContent=label;status.textContent=message;button.disabled=disabled;};
- const error=()=>{failed=true;write("▶ Reproducir","No se pudo reproducir el archivo. Pulsa Recargar vídeo.",true);};
+ const error=()=>{failed=true;write("▶ Reproducir",videoErrorHint(video.error?.code)+" Pulsa Recargar vídeo.",true);};
  const ready=()=>{if(!failed&&video.paused&&!video.ended&&!pending)write("▶ Reproducir",Number.isFinite(video.duration)&&video.duration>0?"Duración: "+Math.ceil(video.duration)+" s · Pulsa Reproducir":"Pulsa Reproducir");};
  const buffering=()=>{if(!failed&&!video.paused&&!video.ended)write("⏸ Pausar","Cargando vídeo…");};
  video.addEventListener("loadedmetadata",ready);
@@ -2133,12 +2133,14 @@ function bindMediaActions(){
  app.querySelectorAll(".media-expand").forEach(b=>{
   const frame=b.closest(".media-frame"),original=b.textContent;
    const image=frame.querySelector("img");if(image?.hasAttribute("data-photo-src"))return;if(image){bindPhotoRecovery(frame,image,b);b.onclick=()=>{if(!b.disabled)openPhotoViewer(image);};image.style.cursor="zoom-in";image.onclick=b.onclick;return;}
+  const video=frame.querySelector("video");if(video)bindVideoRecovery(frame,video);
   const refresh=()=>{b.textContent=(document.fullscreenElement===frame||frame.classList.contains("media-overlay"))?"✕ Salir de pantalla completa":original;};
   if(!b.dataset.fullscreenBound){b.dataset.fullscreenBound="1";frame.addEventListener("fullscreenchange",refresh);}
   b.onclick=async()=>{
    if(document.fullscreenElement===frame){await document.exitFullscreen();return;}
    if(frame.classList.contains("media-overlay")){frame.classList.remove("media-overlay");refresh();return;}
    if(frame.requestFullscreen){try{await frame.requestFullscreen();refresh();return;}catch{}}
+   if(video&&typeof video.webkitEnterFullscreen==="function"){try{video.webkitEnterFullscreen();return;}catch{}}
    frame.classList.add("media-overlay");refresh();
   };
  });
@@ -2451,6 +2453,30 @@ function bindPostDraft(){
 }
 let postPreviewUrls=[];
 function clearPostPreviews(){for(const url of postPreviewUrls)URL.revokeObjectURL(url);postPreviewUrls=[];}
+function videoErrorHint(code){return ({1:"Reproducción interrumpida. Puedes volver a intentarlo.",2:"No se pudo descargar el vídeo. Comprueba Internet y reintenta.",3:"Este dispositivo no pudo decodificar el vídeo. Prueba un MP4 con H.264 y audio AAC.",4:"Formato, códec o acceso no compatible. Prueba MP4 con H.264 y AAC o actualiza el acceso."})[code]||"No se pudo reproducir. Revisa Internet o el formato del vídeo.";}
+function videoProbeResult(code){return code===3||code===4?"unsupported":"unknown";}
+async function probeLocalVideo(file){
+ let url="",video=null,timer=0;
+ try{
+ video=document.createElement("video");video.preload="metadata";video.muted=true;video.playsInline=true;
+ url=URL.createObjectURL(file);
+ return await new Promise(resolve=>{
+ let finished=false;const finish=value=>{if(finished)return;finished=true;clearTimeout(timer);resolve(value);};
+ video.onloadedmetadata=()=>finish(video.videoWidth>0&&video.videoHeight>0?"metadata_ok":"unknown");
+ video.onerror=()=>finish(videoProbeResult(video.error?.code));
+ timer=setTimeout(()=>finish("unknown"),10000);video.src=url;
+ });
+ }catch{return "unknown";}finally{clearTimeout(timer);if(video){video.onloadedmetadata=video.onerror=null;video.removeAttribute("src");video.load();}if(url)URL.revokeObjectURL(url);}
+}
+function bindVideoRecovery(frame,video){
+ if(video.dataset.recoveryBound)return;video.dataset.recoveryBound="1";
+ const status=document.createElement("p"),retry=document.createElement("button");status.className="muted";status.setAttribute("role","status");status.hidden=true;retry.type="button";retry.className="secondary";retry.textContent="Reintentar vídeo";retry.hidden=true;frame.append(status,retry);
+ const fail=()=>{status.textContent=videoErrorHint(video.error?.code);status.hidden=false;retry.hidden=false;};
+ const ready=()=>{status.hidden=true;retry.hidden=true;};
+ video.addEventListener("error",fail);video.addEventListener("playing",ready);video.addEventListener("loadedmetadata",ready);
+ retry.onclick=()=>{if(!video.isConnected)return;const url=video.getAttribute("src");if(!url)return;status.textContent="Recargando vídeo…";retry.hidden=true;try{video.pause();video.load();const p=video.play();if(p?.catch)p.catch(()=>{if(!video.error){status.textContent="Pulsa reproducir para intentarlo de nuevo.";retry.hidden=false;}});}catch{fail();}};
+ if(video.error)fail();
+}
 function postFileMode(f){
  if(!f||!f.size||f.size>MAX_POST_BYTES)return "invalid";
  if(MEDIA_TYPES.includes(f.type))return "direct";
@@ -2463,7 +2489,7 @@ function renderPostPreviews(files){
   if(postFileMode(f)==="invalid")continue;
   const tile=document.createElement("div"),media=document.createElement(f.type.startsWith("video/")?"video":"img"),url=URL.createObjectURL(f),name=document.createElement("small");
   postPreviewUrls.push(url);media.src=url;if(media.tagName==="VIDEO"){media.preload="metadata";media.muted=true;media.playsInline=true;}else media.alt="Vista previa de "+f.name;
-  name.textContent=f.name;media.onerror=()=>{if(media.isConnected){media.remove();name.textContent=f.name+" · "+(postFileMode(f)==="convert"?"Se intentará convertir a JPG":"Vista previa no disponible");}};tile.append(media,name);host.append(tile);
+  name.textContent=f.name;media.onerror=()=>{if(media.isConnected){const hint=media.tagName==="VIDEO"?videoErrorHint(media.error?.code):postFileMode(f)==="convert"?"Se intentará convertir a JPG":"Vista previa no disponible";media.remove();name.textContent=f.name+" · "+hint;name.title=hint;}};tile.append(media,name);host.append(tile);
  }
 }
 function homeFollowedPagesHTML(){
@@ -2638,10 +2664,10 @@ async function publish(options={}){
  publishLocks.add(uid);b.disabled=true;b.textContent="Publicando…";
  const controls=[textInput,mediaInput,document.getElementById("postspace"),document.getElementById("audience"),document.getElementById("audience-search"),...document.querySelectorAll("#audience-chosen button,#audience-results button")].filter(Boolean),previous=controls.map(c=>c.disabled);
  controls.forEach(c=>c.disabled=true);
- const uploaded=[];let postCommitted=false,insertAttempted=false,preparationError=false;
+ const uploaded=[];let postCommitted=false,insertAttempted=false,preparationError=false,videoPreparationError=false;
  try{
   const prepared=[];
-  for(let i=0;i<files.length;i++){if(!active())throw Error("Sección cerrada");const original=files[i];if(postFileMode(original)==="convert"){b.textContent="Preparando foto "+(i+1)+" de "+files.length+"…";try{prepared.push(await prepareLightChatPhoto(original,true,false));}catch{preparationError=true;throw Error("Conversión no disponible");}}else prepared.push(original);}
+  for(let i=0;i<files.length;i++){if(!active())throw Error("Sección cerrada");const original=files[i];if(postFileMode(original)==="convert"){b.textContent="Preparando foto "+(i+1)+" de "+files.length+"…";try{prepared.push(await prepareLightChatPhoto(original,true,false));}catch{preparationError=true;throw Error("Conversión no disponible");}}else{if(original.type.startsWith("video/")){b.textContent="Comprobando vídeo "+(i+1)+" de "+files.length+"…";const result=await probeLocalVideo(original);if(result==="unsupported"){videoPreparationError=true;throw Error("Vídeo incompatible");}}prepared.push(original);}}
   if(prepared.some(f=>!MEDIA_TYPES.includes(f.type)||!f.size||f.size>MAX_POST_BYTES)||prepared.reduce((n,f)=>n+f.size,0)>MAX_POST_BYTES){preparationError=true;throw Error("Archivos preparados demasiado grandes");}
   for(let i=0;i<prepared.length;i++){
    if(!active())throw Error("Sección cerrada");
@@ -2669,7 +2695,7 @@ async function publish(options={}){
   try{resetFeedPage();await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
   if(uploaded.length&&!insertAttempted&&me?.id===uid){try{const {error}=await db.storage.from(bucket).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}catch{}}
-  if(active())say(preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo publicar. Conservamos tu selección mientras sigas en esta pantalla.",true);
+  if(active())say(videoPreparationError?"Este teléfono no puede abrir uno de los vídeos seleccionados. Usa MP4 con H.264 y AAC. No se ha publicado nada.":preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo publicar. Conservamos tu selección mientras sigas en esta pantalla.",true);
   if(batch)return {ok:postCommitted,warning:postCommitted};
    }finally{publishLocks.delete(uid);controls.forEach((c,i)=>c.disabled=previous[i]);if(b.isConnected&&!batch){b.disabled=false;b.textContent="Compartir publicación";}}
 }
@@ -3422,6 +3448,7 @@ async function sendMessage(e){
  try{
  if(!draft||draft.uid!==uid||draft.target!==target||draft.content!==content||draft.file!==file||(!draft.insertAttempted&&draft.light!==light)){
  stage="preparación de la fotografía";let payload=file;if((force||light)&&file){if(status)status.textContent=force?"Convirtiendo fotografía a JPG…":"Preparando foto ligera…";try{payload=await prepareLightChatPhoto(file,force,light);}catch{if(active()&&status)status.textContent=force?"Este teléfono no pudo convertir la foto. Guárdala como JPG o PNG y vuelve a seleccionarla. No se ha enviado.":"No se pudo reducir la foto. Desmarca Foto ligera para enviar el original.";return;}if(!active())return;if(!payload.size||payload.size>MAX_POST_BYTES){if(status)status.textContent="La foto preparada supera el límite de 50 MB.";return;}}
+ if(payload&&chatFileType(payload).startsWith("video/")){stage="comprobación del vídeo";if(status)status.textContent="Comprobando vídeo en este teléfono…";const result=await probeLocalVideo(payload);if(!active())return;if(result==="unsupported"){if(status)status.textContent="Este teléfono no puede abrir el vídeo. Usa MP4 con H.264 y AAC. Conservamos tu selección.";return;}}
  fileType=chatFileType(payload);
  const id=crypto.randomUUID(),ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","audio/webm":"webm","audio/mp4":"m4a","audio/ogg":"ogg","audio/mpeg":"mp3","audio/wav":"wav"})[fileType];
  draft={uid,target,content,file,payload,light,fileType,id,path:file?uid+"/"+id+"."+ext:null,uploaded:false,insertAttempted:false};
