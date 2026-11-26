@@ -474,6 +474,20 @@ button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var
 .creator-photo-tile small{display:block;text-align:center;margin:4px 0}
 .creator-photo-tile .row{gap:3px}
 .creator-photo-tile button{min-height:40px;padding:4px;font-size:12px}
+/* Menú accesible en capa superior: el desplazamiento no mueve Inicio */
+.gyste-menu-dialog{box-sizing:border-box;width:min(480px,calc(100% - 20px));max-width:none;max-height:calc(100vh - 30px);max-height:calc(100dvh - 30px);padding:0;border:1px solid var(--line);border-radius:18px;background:#10283a;color:#f1f7fb;overflow:hidden;box-shadow:0 20px 60px #0009}
+.gyste-menu-dialog[open]{display:flex;flex-direction:column}
+.gyste-menu-dialog::backdrop{background:#000a}
+.gyste-menu-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 14px 9px;border-bottom:1px solid var(--line);flex-shrink:0}
+.gyste-menu-head h2{margin:0;font-size:20px}
+.gyste-menu-head button{min-width:44px;min-height:44px}
+.gyste-menu-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding:4px 12px 16px}
+.gyste-menu-scroll h3{font-size:12px;color:#a9c7d6;margin:15px 2px 8px}
+.gyste-menu-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.gyste-menu-grid button{display:flex;align-items:center;gap:8px;text-align:left;min-height:56px;padding:9px;background:#19394d;border:1px solid #315469;color:#f1f7fb;border-radius:11px;font-size:12px;overflow-wrap:anywhere}
+.gyste-menu-grid button span:first-child{font-size:18px;flex-shrink:0}
+.gyste-menu-grid button:active{background:#275567}
+@media(max-width:320px){.gyste-menu-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -586,16 +600,7 @@ app.innerHTML=`
 <button class="icon-btn ${tab==="explore"?"selected":""}" data-tab="explore" aria-label="Explorar personas y contenidos" title="Explorar">${gysteIcon("explore")}</button>
 <button class="icon-btn ${tab==="notifications"?"selected":""}" data-tab="notifications" aria-label="Notificaciones" title="Notificaciones">${gysteIcon("notifications")}${unreadBadge("notifications")}</button>
 <button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
-<details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">${gysteIcon("menu")}</summary>
-<div class="menu-dropdown">
-<button data-tab="studio">✨ Estudio creativo</button><button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
-<button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
-<button data-tab="pages">📰 Páginas y noticias</button><button data-tab="reels">▶ Reels</button><button data-tab="videos">▶ Vídeos</button><button data-tab="series">🎬 Frutinovelas</button>
-<button data-tab="searchposts">🔎 Buscar publicaciones</button><button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
-<button data-tab="notifications">🔔 Avisos</button>
-<button data-tab="messages">✉ Mensajes</button>
-<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button><button data-tab="appearance">🎨 Apariencia y ahorro de datos</button><button data-tab="feedback">💡 Sugerencias y mejoras</button><button data-tab="commercial">📈 Promocionar mi negocio</button><button data-tab="apps">📱 Aplicaciones y proyectos</button><button data-tab="about">ℹ Acerca de Gyste</button><button data-tab="help">❔ Cómo usar Gyste</button><button data-tab="install">📲 Instalar Gyste</button>
-</div></details>
+<button type="button" class="icon-btn" id="quick-menu-open" aria-label="Más secciones" aria-haspopup="dialog" aria-expanded="false" title="Más secciones">${gysteIcon("menu")}</button>
 </div>
 </header>
 <main class="wrap">
@@ -609,7 +614,7 @@ ${navButton("reels","Reels","▶")}
 <button type="button" id="compose-btn" aria-label="Crear publicación"><b class="create-icon" aria-hidden="true">+</b>Crear</button>
 ${navButton("messages","Mensajes","✉")}
 ${navButton("profile","Perfil","○")}
-</nav>`;
+</nav><dialog id="quick-menu-dialog" class="gyste-menu-dialog" aria-labelledby="quick-menu-title"><div class="gyste-menu-head"><h2 id="quick-menu-title">Tu Gyste</h2><button type="button" id="quick-menu-close" class="secondary" aria-label="Cerrar menú">✕</button></div><div class="gyste-menu-scroll" tabindex="0" aria-label="Secciones de Gyste"><section><h3>Conectar</h3><div class="gyste-menu-grid"><button type="button" data-tab="explore"><span aria-hidden="true">⌕</span><span>Personas</span></button><button type="button" data-tab="messages"><span aria-hidden="true">✉</span><span>Mensajes</span></button><button type="button" data-tab="notifications"><span aria-hidden="true">🔔</span><span>Avisos</span></button><button type="button" data-tab="spaces"><span aria-hidden="true">✧</span><span>Comunidades</span></button></div></section><section><h3>Crear y descubrir</h3><div class="gyste-menu-grid"><button type="button" data-tab="studio"><span aria-hidden="true">✨</span><span>Estudio creativo</span></button><button type="button" data-tab="reels"><span aria-hidden="true">▶</span><span>Reels</span></button><button type="button" data-tab="videos"><span aria-hidden="true">🎥</span><span>Vídeos</span></button><button type="button" data-tab="stories"><span aria-hidden="true">⏳</span><span>Historias</span></button><button type="button" data-tab="saved"><span aria-hidden="true">🔖</span><span>Guardados</span></button><button type="button" data-tab="searchposts"><span aria-hidden="true">⌕</span><span>Buscar publicaciones</span></button><button type="button" data-tab="challenges"><span aria-hidden="true">🏆</span><span>Retos y talentos</span></button></div></section><section><h3>Aprender y disfrutar</h3><div class="gyste-menu-grid"><button type="button" data-tab="learn"><span aria-hidden="true">📚</span><span>Aprender</span></button><button type="button" data-tab="pages"><span aria-hidden="true">📰</span><span>Páginas y noticias</span></button><button type="button" data-tab="history"><span aria-hidden="true">📷</span><span>Historia documental</span></button><button type="button" data-tab="series"><span aria-hidden="true">🎬</span><span>Frutinovelas</span></button></div></section><section><h3>Negocios y proyectos</h3><div class="gyste-menu-grid"><button type="button" data-tab="business"><span aria-hidden="true">🏪</span><span>Negocios</span></button><button type="button" data-tab="commercial"><span aria-hidden="true">📈</span><span>Promocionar mi negocio</span></button><button type="button" data-tab="apps"><span aria-hidden="true">📱</span><span>Aplicaciones y proyectos</span></button></div></section><section><h3>Tu cuenta y ayuda</h3><div class="gyste-menu-grid"><button type="button" data-tab="appearance"><span aria-hidden="true">🎨</span><span>Apariencia y ahorro de datos</span></button><button type="button" data-tab="safety"><span aria-hidden="true">🛡</span><span>Seguridad</span></button><button type="button" data-tab="feedback"><span aria-hidden="true">💡</span><span>Sugerencias y mejoras</span></button><button type="button" data-tab="help"><span aria-hidden="true">❔</span><span>Cómo usar Gyste</span></button><button type="button" data-tab="install"><span aria-hidden="true">📲</span><span>Instalar Gyste</span></button><button type="button" data-tab="about"><span aria-hidden="true">ℹ</span><span>Acerca de Gyste</span></button></div></section></div></dialog>`;
 bindNavigation();
 paintUnreadBadges();void refreshUnreadBadges();
 }
@@ -630,7 +635,8 @@ function confirmNavigationDraft(){
  return !state.text&&!state.files||confirm(state.files?"Tienes archivos, una grabación o texto sin enviar. Si sales de esta pantalla se perderán los cambios no guardados. ¿Continuar?":"Tienes texto sin enviar. Si sales de esta pantalla se perderán los cambios no guardados. ¿Continuar?");
 }
 function bindNavigation(){
-app.querySelectorAll("[data-tab]").forEach(b=>{b.onclick=()=>goTab(b.dataset.tab);});
+app.querySelectorAll("[data-tab]").forEach(b=>{b.onclick=()=>{const dialog=b.closest("#quick-menu-dialog");if(dialog?.open)dialog.close();goTab(b.dataset.tab);};});
+const menu=document.getElementById("quick-menu-dialog"),open=document.getElementById("quick-menu-open"),close=document.getElementById("quick-menu-close");if(menu&&open&&close){open.onclick=()=>{if(menu.open)return;try{menu.showModal();open.setAttribute("aria-expanded","true");menu.querySelector(".gyste-menu-scroll").scrollTop=0;close.focus({preventScroll:true});}catch{say("No se pudo abrir el menú. Prueba actualizar Gyste.",true);}};close.onclick=()=>menu.close();menu.addEventListener("close",()=>{open.setAttribute("aria-expanded","false");if(open.isConnected)open.focus({preventScroll:true});});menu.addEventListener("click",e=>{if(e.target===menu){const rect=menu.getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)menu.close();}}); }
 const create=document.getElementById("compose-btn");if(create)create.onclick=goCompose;
 bindSpaceButtons();
 bindPageFollows();
