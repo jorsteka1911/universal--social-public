@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r15">
+<meta name="gyste-build" content="2026-11-26-r16">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3184,35 +3184,44 @@ function clearChatFilePreview(){
 function updateChatFileUI(){
  const input=document.getElementById("chatfile"),status=document.getElementById("chatfile-status"),send=document.getElementById("send-chat-file"),preview=document.getElementById("chatfile-preview");if(!input||!status||!send||!preview)return;
  clearChatFilePreview();
- const f=input.files?.[0],result=chatFileSelection(f);status.textContent=f?result.message:"";send.hidden=!result.ok;const light=document.getElementById("chat-light-photo-option");if(light)light.hidden=!(result.ok&&chatFileType(f).startsWith("image/"));
+ const f=input.files?.[0],result=chatFileSelection(f);status.textContent=f?result.message:"";send.hidden=!result.ok;const light=document.getElementById("chat-light-photo-option");if(light)light.hidden=!(result.ok&&chatPhotoCompatibility(f)!=="none");
  if(!f)return;
  preview.hidden=false;
- if(result.ok&&chatFileType(f).startsWith("image/")){
+ if(result.ok&&chatPhotoCompatibility(f)!=="none"){
   const img=document.createElement("img");img.alt="Vista previa local de la fotografía";chatFilePreviewUrl=URL.createObjectURL(f);img.src=chatFilePreviewUrl;preview.append(img);
-  img.onerror=()=>{if(img.isConnected){img.remove();status.textContent="No se pudo mostrar la vista previa. Comprueba la fotografía antes de enviar.";}};
+  img.onerror=()=>{if(img.isConnected){img.remove();status.textContent=chatPhotoCompatibility(f)==="convert"?"Este navegador no muestra esta foto. Si no puede convertirla, guárdala como JPG o PNG y vuelve a seleccionarla.":"No se pudo mostrar la vista previa. Comprueba la fotografía antes de enviar.";}};
  }
  const cancel=document.createElement("button");cancel.type="button";cancel.className="secondary";cancel.textContent="Quitar archivo";cancel.onclick=()=>{if(input.disabled)return;input.value="";updateChatFileUI();};preview.append(cancel);
 }
 const CHAT_AUDIO_TYPES=["audio/webm","audio/mp4","audio/ogg","audio/mpeg","audio/wav"];
-const chatFileType=f=>String(f?.type||"").split(";")[0].toLowerCase();
+const chatFileType=f=>{const type=String(f?.type||"").split(";")[0].toLowerCase().trim();return type==="image/jpg"||type==="image/pjpeg"?"image/jpeg":type;};
+function chatPhotoCompatibility(f){
+ if(!f)return "none";
+ const type=chatFileType(f),name=String(f.name||"").toLowerCase();
+ if(["image/heic","image/heif","image/heic-sequence","image/heif-sequence"].includes(type))return "convert";
+ if((!type||type==="application/octet-stream")&&/\.(heic|heif|jpe?g|png|webp)$/.test(name))return "convert";
+ if(["image/jpeg","image/png","image/webp"].includes(type))return "native";
+ return "none";
+}
 function chatPhotoDimensions(width,height){if(!Number.isFinite(width)||!Number.isFinite(height)||width<1||height<1||width*height>40000000)return null;const scale=Math.min(1,1280/Math.max(width,height));return {width:Math.max(1,Math.round(width*scale)),height:Math.max(1,Math.round(height*scale))};}
-async function prepareLightChatPhoto(file){
- if(!chatFileType(file).startsWith("image/")||file.size<=200*1024)return file;
+async function prepareLightChatPhoto(file,force=false,light=true){
+ if(!force&&(!chatFileType(file).startsWith("image/")||file.size<=200*1024))return file;
  const url=URL.createObjectURL(file);
- try{const img=new Image();img.src=url;await img.decode();const dim=chatPhotoDimensions(img.naturalWidth,img.naturalHeight);if(!dim)throw Error("Imagen demasiado grande");
+ try{const img=new Image();img.src=url;await img.decode();const dim=chatPhotoDimensions(img.naturalWidth,img.naturalHeight);if(!dim)throw Error("Imagen demasiado grande");if(force&&!light){const scale=Math.min(1,2400/Math.max(img.naturalWidth,img.naturalHeight));dim.width=Math.max(1,Math.round(img.naturalWidth*scale));dim.height=Math.max(1,Math.round(img.naturalHeight*scale));}
  const canvas=document.createElement("canvas");canvas.width=dim.width;canvas.height=dim.height;const g=canvas.getContext("2d");if(!g)throw Error("Edición no disponible");
  g.fillStyle="#fff";g.fillRect(0,0,dim.width,dim.height);g.drawImage(img,0,0,dim.width,dim.height);
- const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",.8));canvas.width=canvas.height=1;
+ const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",light?.8:.9));canvas.width=canvas.height=1;
  if(!blob?.size||blob.type!=="image/jpeg")throw Error("Conversión no disponible");
- return blob.size<file.size?new File([blob],"Gyste-foto.jpg",{type:"image/jpeg"}):file;
+ return force||blob.size<file.size?new File([blob],"Gyste-foto.jpg",{type:"image/jpeg"}):file;
  }finally{URL.revokeObjectURL(url);}
 }
 function chatFileSelection(f){
  if(!f)return {ok:false,message:"No has seleccionado ningún archivo."};
  const type=chatFileType(f);
- if(![...MEDIA_TYPES,...CHAT_AUDIO_TYPES].includes(type))return {ok:false,message:"Formato no admitido. Elige una foto JPG, PNG o WebP, un vídeo MP4 o WebM, o un audio compatible."};
+ const compatibility=chatPhotoCompatibility(f);
+ if(![...MEDIA_TYPES,...CHAT_AUDIO_TYPES].includes(type)&&compatibility!=="convert")return {ok:false,message:type==="video/quicktime"||/\.mov$/i.test(f.name||"")?"Vídeo MOV: expórtalo como MP4 (H.264) antes de enviarlo.":"Formato no admitido. Elige JPG, PNG, WebP, HEIC/HEIF, MP4 o WebM, o un audio compatible."};
  if(!f.size||f.size>MAX_POST_BYTES)return {ok:false,message:"El archivo está vacío o supera los 50 MB."};
- return {ok:true,message:f.name+" · "+(f.size/1048576).toFixed(1)+" MB · Listo para enviar."};
+ return {ok:true,message:f.name+" · "+(f.size/1048576).toFixed(1)+" MB · "+(compatibility==="convert"?"Se intentará convertir a JPG en tu teléfono.":"Listo para enviar.")};
 }
 
 let voiceCapture=null,voiceDraft=null,voiceDraftUrl=null;
@@ -3340,7 +3349,7 @@ async function messagesView(){
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
  const canCompose=chatContactAvailable(person);
- shell(`<section class="panel chat-thread"><div class="chat-header"><button type="button" id="back" class="ghost" aria-label="Volver a conversaciones">←</button><span class="face">${avatarContent(person)}</span><div class="chat-person"><h2>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Conversación privada</p></div></div><details class="chat-safety"><summary>Seguridad y opciones</summary><button type="button" id="block-chat" class="secondary">Bloquear usuario</button>${chatSafetyNotice(person)}</details>${!canCompose?'<p role="status">Este perfil no está disponible. Puedes consultar mensajes anteriores, pero no enviar nuevos.</p>':""}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><button type="button" class="secondary" id="chat-reload-files">Actualizar conversación y archivos</button><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><label id="chat-light-photo-option" hidden><input type="checkbox" id="chat-light-photo" ${gysteDataSaver()?"checked":""}> Enviar foto ligera (puede reducir calidad y convertir a JPG)</label><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
+ shell(`<section class="panel chat-thread"><div class="chat-header"><button type="button" id="back" class="ghost" aria-label="Volver a conversaciones">←</button><span class="face">${avatarContent(person)}</span><div class="chat-person"><h2>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Conversación privada</p></div></div><details class="chat-safety"><summary>Seguridad y opciones</summary><button type="button" id="block-chat" class="secondary">Bloquear usuario</button>${chatSafetyNotice(person)}</details>${!canCompose?'<p role="status">Este perfil no está disponible. Puedes consultar mensajes anteriores, pero no enviar nuevos.</p>':""}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><button type="button" class="secondary" id="chat-reload-files">Actualizar conversación y archivos</button><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><label id="chat-light-photo-option" hidden><input type="checkbox" id="chat-light-photo" ${gysteDataSaver()?"checked":""}> Enviar foto ligera (puede reducir calidad y convertir a JPG)</label><p class="muted">Android e iPhone: JPG y PNG recomendados. HEIC/HEIF se convierten a JPG si el navegador puede abrirlos. Para vídeos, usa MP4 con H.264.</p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
  document.getElementById("back").onclick=()=>{if(!confirmNavigationDraft())return;stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
  if(canCompose){bindVoiceRecorder(target);
  document.getElementById("sendmsg").onsubmit=sendMessage;
@@ -3394,9 +3403,9 @@ async function sendMessage(e){
  if(!uid||!target||!form||voiceCapture||chatSendLocks.has(key))return;
  const input=document.getElementById("msg"),button=document.getElementById("sendmsgbtn"),fileInput=document.getElementById("chatfile"),status=document.getElementById("chatstatus");
  if(!input||!button||!fileInput||button.disabled)return;
- const content=input.value.trim(),file=voiceDraft||fileInput.files?.[0];let fileType=chatFileType(file);const light=Boolean(document.getElementById("chat-light-photo")?.checked&&fileType.startsWith("image/"));
+ const content=input.value.trim(),file=voiceDraft||fileInput.files?.[0];let fileType=chatFileType(file);const compatibility=chatPhotoCompatibility(file),force=compatibility==="convert"||Boolean(file&&fileType==="image/jpeg"&&file.type!=="image/jpeg"),light=Boolean(document.getElementById("chat-light-photo")?.checked&&compatibility!=="none");
  if(!content&&!file){if(status)status.textContent="Escribe un mensaje o selecciona una fotografía antes de enviar.";return;}
- if(content.length>5000||file&&(![...MEDIA_TYPES,...CHAT_AUDIO_TYPES].includes(fileType)||!file.size||file.size>MAX_POST_BYTES)){if(status)status.textContent="Revisa el texto o el formato y tamaño del archivo (máximo 50 MB).";return;}
+ if(content.length>5000||file&&(!chatFileSelection(file).ok)){if(status)status.textContent="Revisa el texto o el formato y tamaño del archivo (máximo 50 MB).";return;}
  const active=()=>me?.id===uid&&tab==="messages"&&chatUser===target&&form.isConnected&&document.getElementById("sendmsg")===form;
  const controls=[input,button,fileInput,document.getElementById("send-chat-file"),document.getElementById("voice-record"),document.getElementById("voice-cancel"),document.getElementById("chat-light-photo")].filter(Boolean),previous=controls.map(c=>c.disabled);
  chatSendLocks.add(key);controls.forEach(c=>c.disabled=true);button.textContent=file?"Subiendo…":"Enviando…";if(status){status.removeAttribute("data-success");status.textContent="";}
@@ -3404,7 +3413,7 @@ async function sendMessage(e){
  let committed=false,stage="preparación";
  try{
  if(!draft||draft.uid!==uid||draft.target!==target||draft.content!==content||draft.file!==file||(!draft.insertAttempted&&draft.light!==light)){
- stage="preparación de la fotografía";let payload=file;if(light&&file){if(status)status.textContent="Preparando foto ligera…";payload=await prepareLightChatPhoto(file);if(!active())return;}
+ stage="preparación de la fotografía";let payload=file;if((force||light)&&file){if(status)status.textContent=force?"Convirtiendo fotografía a JPG…":"Preparando foto ligera…";try{payload=await prepareLightChatPhoto(file,force,light);}catch{if(active()&&status)status.textContent=force?"Este teléfono no pudo convertir la foto. Guárdala como JPG o PNG y vuelve a seleccionarla. No se ha enviado.":"No se pudo reducir la foto. Desmarca Foto ligera para enviar el original.";return;}if(!active())return;if(!payload.size||payload.size>MAX_POST_BYTES){if(status)status.textContent="La foto preparada supera el límite de 50 MB.";return;}}
  fileType=chatFileType(payload);
  const id=crypto.randomUUID(),ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","audio/webm":"webm","audio/mp4":"m4a","audio/ogg":"ogg","audio/mpeg":"mp3","audio/wav":"wav"})[fileType];
  draft={uid,target,content,file,payload,light,fileType,id,path:file?uid+"/"+id+"."+ext:null,uploaded:false,insertAttempted:false};
