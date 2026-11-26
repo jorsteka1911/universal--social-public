@@ -1,0 +1,47 @@
+name: Gyste regression checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript and profile routing
+        run: |
+          node --input-type=commonjs <<'NODE'
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+          const assert = require('node:assert/strict');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).filter(s => s.trim());
+          assert.ok(scripts.length);
+          for (const script of scripts) new vm.Script(script);
+          new vm.Script(fs.readFileSync('sw.js', 'utf8'));
+          const source = scripts.join('\n');
+          const start = source.indexOf('function openMemberProfile(id){');
+          const end = source.indexOf('async function memberProfileView()', start);
+          assert.ok(start >= 0 && end > start);
+          const calls = [];
+          const context = {me:{id:'self'}, confirmNavigationDraft:()=>true, goTab:(...args)=>calls.push(args), memberProfileId:null};
+          vm.createContext(context);
+          vm.runInContext(source.slice(start,end),context);
+          context.openMemberProfile('other');
+          assert.equal(context.memberProfileId,'other');
+          assert.equal(calls[0][0],'memberprofile');
+          context.openMemberProfile('self');
+          assert.equal(calls[1][0],'profile');
+          context.confirmNavigationDraft=()=>false;
+          context.openMemberProfile('third');
+          assert.equal(calls.length,2);
+          assert.ok(source.includes('if(tab==="memberprofile")return memberProfileView();'));
+          assert.ok(source.includes('.eq("user_id",id).eq("audience","public")'));
+          assert.ok(source.includes('getElementById("chat-profile-name").onclick=()=>openMemberProfile(requestedChat)'));
+          console.log('Syntax and isolated profile navigation checks passed');
+          NODE
