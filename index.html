@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r36">
+<meta name="gyste-build" content="2026-11-26-r37">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3449,6 +3449,8 @@ async function memberProfileView(){
  const uid=me?.id,id=memberProfileId,epoch=++memberProfileEpoch;
  if(!uid||!id)return;
  const valid=()=>tab==="memberprofile"&&me?.id===uid&&memberProfileId===id&&epoch===memberProfileEpoch;
+ shell('<section class="panel"><h2>Perfil</h2><p role="status">Cargando perfil…</p><button type="button" class="secondary" data-tab="explore">Volver a Explorar</button></section>');
+ try{
  const {data:p,error}=await db.from("gyste_profiles").select("user_id,display_name,username,bio,avatar_url,cover_url").eq("user_id",id).maybeSingle();
  if(!valid())return;
  if(error||!p){shell('<section class="panel"><p>Perfil no disponible.</p><button data-tab="explore" class="secondary">Volver a Explorar</button></section>');return;}
@@ -3458,6 +3460,7 @@ async function memberProfileView(){
  if(!valid())return;
  shell(`<section class="panel profile-section"><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions"><button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button><button class="secondary" data-chat="${esc(id)}">Mensaje</button></div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones públicas visibles para ti.</p>${postError?'<p>No se pudieron cargar las publicaciones.</p>':cards||'<p>No hay publicaciones visibles.</p>'}`);
  bindPeople();bindPostActions();
+ }catch{if(valid())shell('<section class="panel"><h2>Perfil</h2><p role="alert">No se pudo cargar el perfil. Comprueba tu conexión.</p><button type="button" class="secondary" data-tab="memberprofile">Reintentar</button><button type="button" class="secondary" data-tab="explore">Volver a Explorar</button></section>');}
 }
 function bindMemberProfiles(){
  app.querySelectorAll("[data-member-profile]").forEach(b=>b.onclick=()=>openMemberProfile(b.dataset.memberProfile));
