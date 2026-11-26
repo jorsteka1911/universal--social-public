@@ -508,6 +508,15 @@ button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var
   .profile-photo-links button:disabled{opacity:1;color:var(--muted);border-color:var(--line);cursor:default}
 }
 button,[role="button"],.notice-item,.chat-contact,.explore-person-actions{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+/* Prevent accidental Android contextual search on reading surfaces, without disabling scrolling or editing. */
+@media (any-pointer:coarse){
+  .post,.bodytext,.comment,.profile-identity,.chat-bubble,.reel-caption{
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  input,textarea,[contenteditable="true"]{
+    -webkit-user-select:text;user-select:text;-webkit-touch-callout:default;
+  }
+}
 </style>
 </head>
 <body>
