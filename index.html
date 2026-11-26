@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r28-preview">
+<meta name="gyste-build" content="2026-11-26-r29-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3753,19 +3753,61 @@ function openSafetyFeedback(){
 function chatSafetyNotice(person){
  return '<div class="actions"><button type="button" class="secondary" data-tab="safety">🛡 Seguridad y privacidad</button><button type="button" class="secondary" id="chat-safety-feedback">Pedir ayuda o informar</button></div><p class="muted">Si alguien te molesta, puedes bloquearlo. Para pedir ayuda, elige Seguridad y privacidad en Sugerencias. No se envía automáticamente ningún mensaje ni archivo de esta conversación. La atención de moderación está en preparación.</p>'+(!chatContactAvailable(person)?'<p role="status">Este perfil no está disponible. Puedes consultar los mensajes anteriores, pero no enviar nuevos mensajes desde esta pantalla.</p>':'');
 }
+
+function mergeGysteInboxPage(state,rows,uid,pageSize){
+ const unique=new Map(state.rows.map(m=>[m.id,m]));
+ for(const m of rows){if(m?.id&&(m.sender_id===uid||m.recipient_id===uid))unique.set(m.id,m);}
+ const sorted=[...unique.values()].sort((a,b)=>{const at=Date.parse(a.created_at),bt=Date.parse(b.created_at);return bt-at||String(b.id).localeCompare(String(a.id));});
+ const peers=new Map();
+ for(const m of sorted){const peer=m.sender_id===uid?m.recipient_id:m.sender_id;if(!peer||peer===uid)continue;if(!peers.has(peer))peers.set(peer,{id:peer,last:m,unread:0});if(m.recipient_id===uid&&!m.read_at)peers.get(peer).unread++;}
+ const last=rows.at(-1);
+ return {rows:sorted,peers:[...peers.values()],cursor:last?{at:last.created_at,id:last.id}:state.cursor,more:rows.length===pageSize};
+}
+const GYSTE_INBOX_PAGE=100;
+async function readGysteInboxPage(uid,cursor){
+ let query=db.from("gyste_messages").select("id,sender_id,recipient_id,content,created_at,read_at").or("sender_id.eq."+uid+",recipient_id.eq."+uid);
+ if(cursor){
+  if(!/^[0-9a-f-]{36}$/i.test(cursor.id)||!Number.isFinite(Date.parse(cursor.at)))throw Error("No se pudo continuar la lista.");
+  // Preserve the database timestamp, including microseconds.
+  const at=String(cursor.at);
+  if(!/^\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:\d{2})$/.test(at))throw Error("Fecha de cursor no válida.");
+  query=query.or("created_at.lt."+at+",and(created_at.eq."+at+",id.lt."+cursor.id+")");
+ }
+ const {data,error}=await query.order("created_at",{ascending:false}).order("id",{ascending:false}).limit(GYSTE_INBOX_PAGE);
+ if(error)throw error;
+ return data||[];
+}
+
 async function messagesView(){
  stopChatRefresh();stopVoiceCapture();chatRenderSignature="";chatMediaCache.clear();
  const uid=me?.id,requestedChat=chatUser,epoch=++chatViewEpoch;if(!uid)return;
  const valid=()=>tab==="messages"&&me?.id===uid&&chatUser===requestedChat&&epoch===chatViewEpoch;
  if(!requestedChat){
-  const {data,error}=await db.from("gyste_messages").select("sender_id,recipient_id,content,created_at,read_at")
-  .or(`sender_id.eq.${uid},recipient_id.eq.${uid}`).order("created_at",{ascending:false}).limit(200);
-  if(!valid())return;
-  if(error){shell(`<p class="error">No se pudieron cargar mensajes: ${esc(error.message)}</p>`);return;}
-  const ids=[...new Set((data||[]).map(m=>m.sender_id===me.id?m.recipient_id:m.sender_id))];let map={};
-  if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
-  if(!valid())return;
-  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><div class="chat-inbox-list">${ids.map(id=>{const last=(data||[]).find(m=>m.sender_id===id||m.recipient_id===id);const unread=(data||[]).filter(m=>m.sender_id===id&&m.recipient_id===me.id&&!m.read_at).length;return `<button type="button" class="chat-contact" data-openchat="${esc(id)}"><span class="face">${avatarContent(map[id])}</span><span class="chat-contact-text"><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</button>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div></section>`);
+  shell('<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><div class="chat-inbox-list" id="gyste-inbox-list"></div><p class="muted" id="gyste-inbox-status" role="status">Cargando conversaciones…</p><button type="button" id="gyste-inbox-more" class="secondary full">Buscar conversaciones anteriores</button></section>');
+  const list=document.getElementById("gyste-inbox-list"),status=document.getElementById("gyste-inbox-status"),more=document.getElementById("gyste-inbox-more");
+  let state={rows:[],peers:[],cursor:null,more:true},loading=false;const profiles=new Map();
+  const active=()=>valid()&&list.isConnected;
+  const render=()=>{
+   list.innerHTML=state.peers.map(({id,last,unread})=>`<button type="button" class="chat-contact" data-openchat="${esc(id)}"><span class="face">${avatarContent(profiles.get(id))}</span><span class="chat-contact-text"><b>${esc(profiles.get(id)?.display_name||"Miembro")}</b><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer en los resultados cargados">${unread}${state.more?"+":""}</span>`:""}</button>`).join("")||'<p class="muted">No se encontraron conversaciones.</p>';
+   list.querySelectorAll("[data-openchat]").forEach(b=>b.onclick=()=>{if(active()){chatUser=b.dataset.openchat;messagesView();}});
+   more.hidden=!state.more;
+   status.textContent=state.more?"Mostrando conversaciones encontradas hasta ahora. Busca más para recuperar las antiguas. Los contadores son parciales.":"Se han recorrido todos los mensajes disponibles en esta consulta.";
+  };
+  const load=async()=>{
+   if(!active()||loading||!state.more)return;
+   loading=true;more.disabled=true;status.textContent="Buscando conversaciones…";
+   try{
+    const rows=await readGysteInboxPage(uid,state.cursor);if(!active())return;
+    const next=mergeGysteInboxPage(state,rows,uid,GYSTE_INBOX_PAGE);
+    if(rows.length&&state.cursor&&next.cursor.id===state.cursor.id&&next.cursor.at===state.cursor.at)throw Error("Cursor repetido");
+    const ids=next.peers.map(p=>p.id).filter(id=>!profiles.has(id));
+    if(ids.length){const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);if(!active())return;if(!error)for(const p of data||[])profiles.set(p.user_id,p);}
+    state=next;render();
+   }catch{if(active())status.textContent="No se pudo cargar esta parte de la bandeja. Conservamos las conversaciones encontradas; vuelve a intentarlo.";}
+   finally{loading=false;if(active())more.disabled=false;}
+  };
+  more.onclick=()=>void load();
+  void load();
   // Permite iniciar una conversación sin tener mensajes previos.
   const panel=document.querySelector(".chat-inbox");
   if(panel){
@@ -3792,7 +3834,6 @@ async function messagesView(){
     }
    });
   }
-  document.querySelectorAll("[data-openchat]").forEach(b=>{b.onclick=()=>{chatUser=b.dataset.openchat;messagesView();};});
   return;
  }
  const target=chatUser;
