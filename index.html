@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r30-preview">
+<meta name="gyste-build" content="2026-11-26-r31-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1079,7 +1079,7 @@ app.innerHTML=`
 <input id="password" class="field" type="password" minlength="6" autocomplete="current-password" placeholder="Contraseña"><label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input id="show-login-password" type="checkbox"> Mostrar contraseña</label>
 <button class="primary full" id="login">Entrar</button>
 <button class="secondary full" id="forgot">¿Olvidaste tu contraseña?</button>
-<details id="signup-details" style="margin-top:18px"><summary>¿Todavía no tienes cuenta? Registrarme</summary><p class="muted">1. Escribe tu correo y una contraseña propia de al menos 8 caracteres arriba. 2. Repite la contraseña abajo. 3. Lee y acepta las normas y pulsa Crear cuenta. Si recibes un correo de confirmación, abre el enlace y vuelve a Gyste. Revisa también Spam.</p><p class="muted">Piloto limitado a personas adultas invitadas. La protección específica de menores, la atención de privacidad y la moderación siguen en preparación.</p><label for="signup-confirm">Repite tu contraseña</label><input id="signup-confirm" class="field" type="password" minlength="8" autocomplete="new-password" placeholder="Repite la contraseña"><p class="muted">Usa una contraseña exclusiva para Gyste. La confirmación solo se utiliza al crear la cuenta.</p><button type="button" class="secondary full" id="signup-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><label style="display:flex;align-items:flex-start;gap:10px;margin:12px 0"><input type="checkbox" id="signup-accept"><span>He leído las normas de convivencia y la información provisional de privacidad, y entiendo cómo se comparte el contenido.</span></label><label style="display:flex;align-items:flex-start;gap:10px;margin:12px 0"><input type="checkbox" id="signup-adult"><span>Confirmo que tengo al menos 18 años y he sido invitado al piloto.</span></label><button class="primary full" id="signup">Crear cuenta</button></details><p class="muted" style="font-size:12px">Gyste está en fase beta. Evita compartir datos personales o fotografías ajenas sin autorización.</p>
+<details id="signup-details" style="margin-top:18px"><summary>¿Todavía no tienes cuenta? Acceso por invitación</summary><p>Esta versión de pruebas no ofrece registro abierto desde la pantalla. Las personas adultas autorizadas recibirán una invitación individual cuando se habilite el piloto cerrado.</p><p>Si ya tienes una cuenta, utiliza Entrar. Si necesitas crear o recuperar tu contraseña, utiliza «¿Olvidaste tu contraseña?» con el correo autorizado.</p><button type="button" class="secondary full" id="signup-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones</a></p><p class="muted">Entorno de pruebas: la restricción del servidor todavía no está activada.</p></details><p class="muted" style="font-size:12px">Gyste está en fase beta. Evita compartir datos personales o fotografías ajenas sin autorización.</p>
 <p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><details open style="margin-top:16px"><summary>📲 Instalar Gyste en mi teléfono</summary><button type="button" class="primary full" id="guest-install" hidden>Instalar Gyste</button><p id="guest-install-status" role="status" class="muted"></p><p><strong>Android:</strong> 1. Abre Gyste en Chrome (no dentro de WhatsApp). 2. Toca los tres puntos de Chrome. 3. Elige Instalar aplicación o Añadir a pantalla de inicio. 4. Abre el icono Gyste desde tu pantalla principal.</p><p><strong>iPhone:</strong> abre Gyste en Safari, toca Compartir y Añadir a pantalla de inicio.</p><label for="guest-share-link">Enlace oficial para compartir con personas adultas del piloto</label><input id="guest-share-link" class="field" readonly value="https://gyste2025.vercel.app/"><button type="button" class="secondary full" id="guest-copy-link">Copiar enlace de Gyste</button><p id="guest-copy-status" role="status" class="muted"></p><p class="muted">Versión web beta; aún no disponible en Google Play. Requiere Internet.</p></details>
 </section>`;
 document.getElementById("guest-install").onclick=e=>requestGuestInstall(e.currentTarget);
@@ -1087,12 +1087,9 @@ refreshGuestInstall();
 document.getElementById("guest-copy-link").onclick=()=>copyGuestLink();
 document.getElementById("login").onclick=login;
 document.getElementById("forgot").onclick=sendPasswordReset;
-document.getElementById("signup").onclick=signup;
 document.getElementById("signup-rules").onclick=showCommunityRules;
-document.getElementById("show-login-password").onchange=e=>{const type=e.target.checked?"text":"password";document.getElementById("password").type=type;document.getElementById("signup-confirm").type=type;};
-document.getElementById("password").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();const registration=document.getElementById("signup-details").open;if(registration){if(document.getElementById("signup-accept").checked)signup();else say("Lee y acepta las normas antes de crear tu cuenta.",true);}else login();}};
-document.getElementById("signup-details").addEventListener("toggle",e=>{const field=document.getElementById("password");field.autocomplete=e.currentTarget.open?"new-password":"current-password";if(!e.currentTarget.open)document.getElementById("signup-confirm").value="";});
-document.getElementById("signup-confirm").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();signup();}};
+document.getElementById("show-login-password").onchange=e=>{document.getElementById("password").type=e.target.checked?"text":"password";};
+document.getElementById("password").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();login();}};
 }
 function showCommunityRules(){
  const d=document.createElement("dialog");
@@ -1216,39 +1213,6 @@ async function login(){
   }
 }
 
-async function signup(){
-  const email=document.getElementById("email").value.trim().toLowerCase();
-  const password=document.getElementById("password").value;
-  const button=document.getElementById("signup");
-  if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
-  if(password.length<8)return say("Para crear una cuenta, elige una contraseña de al menos 8 caracteres.",true);
-  const confirmation=document.getElementById("signup-confirm");
-  if(!confirmation||confirmation.value!==password)return say("Las contraseñas no coinciden. Repite la contraseña antes de crear tu cuenta.",true);
-  if(!document.getElementById("signup-accept")?.checked)return say("Lee las normas de convivencia y la información de privacidad antes de registrarte.",true);
-  if(!document.getElementById("signup-adult")?.checked)return say("El piloto está reservado a personas adultas invitadas.",true);
-  const finish=beginAuthAction(button,"Creando cuenta…");if(!finish)return;
-  try{
-    const {data,error}=await db.auth.signUp({email,password});
-    if(error)throw error;
-    confirmation.value="";
-    // Supabase puede devolver identidades vacías cuando el correo ya existe,
-    // para evitar revelar información de cuentas a terceros.
-    if(data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
-      say("Si puedes acceder con ese correo, pulsa Entrar. Si necesitas recuperar la contraseña, utiliza la opción correspondiente. Si recibes un enlace de confirmación, ábrelo.");
-      return;
-    }
-    if(data.session){
-      session=data.session;
-      await boot();
-    }else{
-      say("Solicitud de registro recibida. Si Supabase requiere confirmar el correo, revisa tu bandeja de entrada y spam.");
-    }
-  }catch(error){
-    say(authMessage(error,"signup"),true);
-  }finally{
-    finish();
-  }
-}
 
 let gysteLogoutBusy=false;
 async function logout(){
@@ -2980,7 +2944,7 @@ async function processPending(job,progress,viewActive,existing=false){
   else{if(existing)throw Error("Copia ya retirada");await pendingSave(job);}
   void paintPending();
   if(navigator.onLine===false)throw Error("Sin conexión; copia guardada");
-  const confirm=j=>j.kind==="post"?confirmPublishedPost(uid,j.id):checkSentMessage(uid,j.row.recipient_id,j.id,j.row.media_path,j.row.media_type);
+  const confirm=j=>j.kind==="post"?(GYSTE_ATOMIC_AUDIENCE_ENABLED&&gysteLimitedAudience(j.row.audience)?gysteConfirmAtomic(uid,j.row,j.members):confirmPublishedPost(uid,j.id)):checkSentMessage(uid,j.row.recipient_id,j.id,j.row.media_path,j.row.media_type);
   await runPending(job,{uid,active,confirm,save:pendingSave,remove:pendingRemove,
    upload:async(j,i,checkpoint)=>{
     const t=j.transfers[i],f=j.files[i];
@@ -2993,8 +2957,9 @@ async function processPending(job,progress,viewActive,existing=false){
     const hadURL=!!t.url;
     try{await attempt();}catch(error){if(!hadURL||!gysteMissingTransfer(error)||!active()||navigator.onLine===false)throw error;t.url=null;t.urlCreatedAt=null;await checkpoint();progress("Recuperando sesión de subida…");await attempt();}
    },
-   insert:async j=>{if(!active())throw Error("Cuenta cambiada");progress("Confirmando envío…");const {error}=await db.from(j.kind==="post"?"posts":"gyste_messages").insert(j.row);if(error)throw error;},
+   insert:async j=>{if(!active())throw Error("Cuenta cambiada");progress("Confirmando envío…");if(GYSTE_ATOMIC_AUDIENCE_ENABLED&&j.kind==="post"&&gysteLimitedAudience(j.row.audience)){await gysteAtomicPublish(db,j.row,j.members);return;}const {error}=await db.from(j.kind==="post"?"posts":"gyste_messages").insert(j.row);if(error)throw error;},
    audience:async j=>{if(!active())throw Error("Cuenta cambiada");if(j.kind!=="post"||!["selected","except"].includes(j.row.audience))return;
+    if(GYSTE_ATOMIC_AUDIENCE_ENABLED){if(!await gysteConfirmAtomic(uid,j.row,j.members))throw Error("Audiencia no confirmada");return;}
     const read=()=>db.from("gyste_post_audience").select("member_ids").eq("post_id",j.id).eq("owner_id",uid).maybeSingle();
     const matches=d=>d&&JSON.stringify([...(d.member_ids||[])].sort())===JSON.stringify([...j.members].sort());
     const previous=await read();if(previous.error)throw previous.error;if(previous.data){if(!matches(previous.data))throw Error("Audiencia diferente");return;}
@@ -3030,6 +2995,28 @@ async function pendingView(){
 
 const pendingPostTransfers=new WeakMap();
 const publishLocks=new Set();
+
+ // Rollout gate: do not activate against the shared production database.
+ const GYSTE_ATOMIC_AUDIENCE_ENABLED=false;
+ function gysteLimitedAudience(mode){return mode==="selected"||mode==="except";}
+ function gysteSameAudience(actual,expected){const normalize=x=>Array.isArray(x)&&x.every(v=>typeof v==="string")?JSON.stringify([...new Set(x)].sort()):null;const a=normalize(actual),b=normalize(expected);return a!==null&&b!==null&&a===b;}
+ async function gysteAtomicPublish(client,row,members){
+ if(!gysteLimitedAudience(row?.audience)||!Array.isArray(members)||!members.length||members.length>100)throw Error("Audiencia no válida");
+ const {data,error}=await client.rpc("gyste_publish_limited_atomic",{p_id:row.id,p_content:row.content,p_audience:row.audience,p_member_ids:members,p_media_url:row.media_url??null,p_media_type:row.media_type??null,p_media_path:row.media_path??null,p_space_id:row.space_id??null});
+ if(error)throw error;
+ if(data!==row.id)throw Error("Publicación no confirmada");
+}
+ async function gysteConfirmAtomic(uid,row,members){
+  try{
+   if(me?.id!==uid)return false;
+   const {data:p,error}=await db.from("posts").select("id,user_id,content,audience,media_url,media_type,media_path,space_id,repost_of").eq("id",row.id).eq("user_id",uid).maybeSingle();
+   if(error||!p||me?.id!==uid||p.user_id!==uid||p.repost_of!=null)return false;
+   if(["id","content","audience","media_url","media_type","media_path","space_id"].some(k=>(p[k]??null)!==(row[k]??null)))return false;
+   const {data:a,error:e}=await db.from("gyste_post_audience").select("member_ids").eq("post_id",row.id).eq("owner_id",uid).maybeSingle();
+   return !e&&me?.id===uid&&!!a&&gysteSameAudience(a.member_ids,members);
+  }catch{return false;}
+ }
+
 async function confirmPublishedPost(uid,id){
  try{const {data,error}=await db.from("posts").select("id,user_id").eq("id",id).eq("user_id",uid).maybeSingle();return !error&&data?.id===id&&data.user_id===uid;}catch{return false;}
 }
@@ -3105,14 +3092,16 @@ async function publish(options={}){
   const newPost={id:postId,content:text,user_id:uid,audience,media_url:url,media_type:first?.type||null,media_path:first?.path||null};
   if(spacesReady)newPost.space_id=space;
   if(!active())throw Error("Sección cerrada");
-  if(insertAttempted)postCommitted=await confirmPublishedPost(uid,postId);
+  const atomic=GYSTE_ATOMIC_AUDIENCE_ENABLED&&gysteLimitedAudience(audience);
+  const verify=()=>atomic?gysteConfirmAtomic(uid,newPost,members):confirmPublishedPost(uid,postId);
+  if(insertAttempted)postCommitted=await verify();
   if(!postCommitted){insertAttempted=true;draft.insertAttempted=true;
-  try{const {error}=await db.from("posts").insert(newPost);if(error)throw error;postCommitted=true;}
-  catch(error){if(me?.id===uid)postCommitted=await confirmPublishedPost(uid,postId);if(!postCommitted)throw error;}}
+  try{if(atomic){await gysteAtomicPublish(db,newPost,members);postCommitted=await verify();if(!postCommitted)throw Error("Audiencia no confirmada");}else{const {error}=await db.from("posts").insert(newPost);if(error)throw error;postCommitted=true;}}
+  catch(error){if(me?.id===uid)postCommitted=await verify();if(!postCommitted)throw error;}}
   pendingPostTransfers.delete(mediaInput);
   if(me?.id!==uid)return {ok:true,warning:true};
  if(readPostDraft(uid).trim()===text)writePostDraft(uid,"");
- if(["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);if(batch)return {ok:true,warning:true};b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
+ if(!atomic&&["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);if(batch)return {ok:true,warning:true};b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
  if(batch)return {ok:true};
   if(!active())return {ok:true};
   sharedPostId=null;
