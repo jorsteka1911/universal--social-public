@@ -354,6 +354,29 @@ header{gap:6px;padding:8px 9px}
 .profile-filter-row button[aria-pressed=true]{background:var(--mint);color:#082b3a;border-color:var(--mint);font-weight:800}
 .profile-filter-row .gyste-icon{width:16px;height:16px}
 #profile-post-list [data-post-card][hidden],#profile-filter-empty[hidden]{display:none!important}
+/* Explorar: descubrimiento por intereses y acceso rápido */
+.explore-hero{background:linear-gradient(125deg,#194b5d,#24354e 85%);border-radius:19px;padding:16px;margin-bottom:12px}
+.explore-hero h1{font-size:25px;color:var(--txt);margin:0 0 4px}
+.explore-hero p{font-size:13px;color:#c6d9e3;margin:0 0 12px}
+.explore-search{display:flex;align-items:center;gap:8px;border:1px solid #52778b;border-radius:24px;padding:0 12px;background:#10283a}
+.explore-search .field{flex:1;min-width:0;border:0;background:transparent;padding:12px 0;margin:0}
+.explore-search .gyste-icon{color:#83e8d5}
+.explore-search-modes{display:flex;gap:6px;margin-top:9px}
+.explore-search-modes button{flex:1;min-height:42px;font-size:12px}
+.explore-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 13px}
+.explore-tile{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0;min-height:95px;text-align:left;padding:12px 10px;border:1px solid #365b70;border-radius:14px;color:var(--txt);background:#15374a}
+.explore-tile:nth-child(3n+2){background:#2b3550}.explore-tile:nth-child(3n){background:#17433f}
+.explore-tile .tile-symbol{font-size:24px;line-height:1.2}
+.explore-tile strong{font-size:12px;overflow-wrap:anywhere}
+.explore-topics{display:flex;gap:6px;overflow-x:auto;padding:3px 0 8px;scrollbar-width:thin}
+.explore-topics button{flex:0 0 auto;white-space:nowrap;min-height:40px;border-radius:20px;font-size:12px}
+.explore-person{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px 10px;padding:12px;margin-bottom:8px;background:var(--panel);border:1px solid var(--line);border-radius:15px}
+.explore-person .avatar{width:48px;height:48px;font-size:20px}
+.explore-person .userinfo small{display:block;overflow-wrap:anywhere;line-height:1.4;color:var(--muted)}
+.explore-person-actions{grid-column:2;display:flex;gap:7px}
+.explore-person-actions button{flex:1;min-height:42px;font-size:12px;padding:7px}
+.explore-person-actions [data-follow][aria-pressed=true]{background:#214b4e;color:#a6f2df}
+@media(max-width:340px){.explore-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -463,7 +486,7 @@ app.innerHTML=`
 <header>
 <button class="brand-button" data-tab="feed" aria-label="Ir al inicio de Gyste"><span class="brand-mark">G</span><span class="brand-copy">GYSTE<small>Un proyecto de JORSTEKA</small></span></button>
 <div class="top-actions">
-<button class="icon-btn ${tab==="explore"?"selected":""}" data-tab="explore" aria-label="Buscar personas" title="Buscar personas">${gysteIcon("explore")}</button>
+<button class="icon-btn ${tab==="explore"?"selected":""}" data-tab="explore" aria-label="Explorar personas y contenidos" title="Explorar">${gysteIcon("explore")}</button>
 <button class="icon-btn ${tab==="notifications"?"selected":""}" data-tab="notifications" aria-label="Notificaciones" title="Notificaciones">${gysteIcon("notifications")}</button>
 <button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">${gysteIcon("menu")}</summary>
@@ -2649,7 +2672,7 @@ async function searchPostsView(){
 }
 async function exploreView(){
 const uid=me?.id;if(!uid)return;
-shell(`<section class="panel"><h3>Descubre personas</h3><label>Buscar por nombre o usuario<input id="search" class="field" type="search" maxlength="60" placeholder="Escribe al menos dos letras…" autocomplete="off"></label><p id="people-status" class="muted" role="status">Busca personas que conozcas o consulta miembros recientes.</p></section><div id="people"></div><button class="secondary full" id="people-more" hidden>Ver más resultados</button>`);
+shell(`<section class="panel explore-hero"><h1>Explorar Gyste</h1><p>Encuentra personas, ideas y comunidades que te interesan.</p><label class="explore-search">${gysteIcon("explore")}<input id="search" class="field" type="search" maxlength="60" placeholder="Busca un nombre o un tema…" aria-label="Buscar personas o temas" autocomplete="off"></label><div class="explore-search-modes"><button type="button" class="primary" id="explore-find-people">Buscar personas</button><button type="button" class="secondary" id="explore-find-posts">Buscar publicaciones</button></div></section><section aria-label="Descubre contenidos"><div class="section-heading"><h2>Descubre a tu manera</h2></div><div class="explore-grid">${[["reels","▶","Reels"],["videos","🎥","Vídeos"],["spaces","✧","Comunidades"],["pages","📰","Páginas y noticias"],["challenges","🏆","Retos y talentos"],["learn","📚","Aprendizaje"],["stories","⏳","Historias"],["studio","✨","Estudio creativo"],["business","🏪","Negocios"]].map(([dest,icon,label])=>`<button type="button" class="explore-tile" data-tab="${dest}"><span class="tile-symbol" aria-hidden="true">${icon}</span><strong>${label}</strong></button>`).join("")}</div><div class="section-heading"><h2>Explora por temas</h2></div><div class="explore-topics">${[["#GysteFoto","Fotografía"],["#GysteDibujo","Arte"],["#GysteAprendo","Aprendizaje"],["deporte","Deporte"],["música","Música"],["naturaleza","Naturaleza"],["#Frutinovela","Historias creativas"]].map(([term,label])=>`<button type="button" class="secondary" data-explore-topic="${esc(term)}">${esc(label)}</button>`).join("")}</div></section><div class="section-heading"><h2>Personas</h2></div><p id="people-status" class="muted" role="status">Busca personas por su nombre o usuario.</p><div id="people"></div><button class="secondary full" id="people-more" hidden>Ver más resultados</button>`);
 const input=document.getElementById("search"),box=document.getElementById("people"),status=document.getElementById("people-status"),more=document.getElementById("people-more");
 let serial=0,timer=null,offset=0;const size=30,valid=()=>tab==="explore"&&me?.id===uid&&input.isConnected;
 async function search(append=false){
@@ -2672,21 +2695,25 @@ async function search(append=false){
 }
 input.oninput=()=>{clearTimeout(timer);++serial;offset=0;profiles=[];box.replaceChildren();more.hidden=true;status.textContent="Buscando…";timer=setTimeout(()=>search(),300);};
 more.onclick=()=>search(true);
+document.getElementById("explore-find-people").onclick=()=>{clearTimeout(timer);search();};
+const findPosts=term=>{if(!valid()||!confirmNavigationDraft())return;clearTimeout(timer);postSearch={uid,term:cleanPostSearch(term),scope:"all",limit:30};goTab("searchposts",null,true);};
+document.getElementById("explore-find-posts").onclick=()=>findPosts(input.value);
+app.querySelectorAll("[data-explore-topic]").forEach(b=>b.onclick=()=>findPosts(b.dataset.exploreTopic));
 await search();
 }
 
 function peopleHTML(list){
-return list.map(p=>`<div class="userrow">
+return list.map(p=>`<article class="explore-person">
 <div class="avatar">${avatarContent(p)}</div>
-<div class="userinfo"><b>${esc(p.display_name)}</b><div class="muted">@${esc(p.username||"usuario")}</div><small>${esc(p.bio||"")}</small></div>
-<button class="secondary" data-follow="${esc(p.user_id)}">${following.has(p.user_id)?"Siguiendo":"Seguir"}</button>
-<button class="ghost" data-chat="${esc(p.user_id)}">Mensaje</button>
-</div>`).join("")||'<p class="muted">No se encontraron personas.</p>';
+<div class="userinfo"><b>${esc(p.display_name||"Miembro")}</b><div class="muted">@${esc(p.username||"usuario")}</div><small>${esc(p.bio||"")}</small></div>
+<div class="explore-person-actions"><button type="button" class="secondary" data-follow="${esc(p.user_id)}" aria-pressed="${following.has(p.user_id)}">${following.has(p.user_id)?"Siguiendo":"Seguir"}</button>
+<button type="button" class="ghost" data-chat="${esc(p.user_id)}">Mensaje</button></div>
+</article>`).join("")||'<p class="muted">No se encontraron personas.</p>';
 }
 
 function bindPeople(){
 app.querySelectorAll("[data-follow]").forEach(b=>{b.onclick=()=>follow(b.dataset.follow,b);});
-document.querySelectorAll("[data-chat]").forEach(b=>{b.onclick=()=>{chatUser=b.dataset.chat;tab="messages";messagesView();};});
+document.querySelectorAll("[data-chat]").forEach(b=>{b.onclick=()=>{if(!confirmNavigationDraft())return;chatUser=b.dataset.chat;goTab("messages",null,true);};});
 }
 
 async function follow(id,b){
@@ -2696,7 +2723,7 @@ try{
 const q=was?db.from("gyste_follows").delete().eq("follower_id",uid).eq("followed_id",id):db.from("gyste_follows").insert({follower_id:uid,followed_id:id});
 const {error}=await q;if(error)throw error;
 if(me?.id!==uid)return;was?following.delete(id):following.add(id);
-if(b.isConnected)b.textContent=was?"Seguir":"Siguiendo";
+if(b.isConnected){b.textContent=was?"Seguir":"Siguiendo";b.setAttribute("aria-pressed",String(!was));}
 say(was?"Has dejado de seguir a esta persona.":"Ahora sigues a esta persona.");
 }catch(e){if(me?.id===uid)say("No se pudo cambiar el seguimiento.",true);}
 finally{b.disabled=false;}
