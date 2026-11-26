@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r29-preview">
+<meta name="gyste-build" content="2026-11-26-r30-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -877,7 +877,7 @@ function appearanceView(){
 const GYSTE_BUILD=document.querySelector('meta[name="gyste-build"]')?.content||"desconocida";
 function paintGysteConnection(){const node=document.getElementById("gyste-connection"),detail=document.getElementById("gyste-connection-detail");if(node){const offline=navigator.onLine===false,light=gysteDataSaver();node.hidden=!offline&&!light;node.textContent=offline?"Sin conexión detectada. Recupera los archivos guardados desde Archivos pendientes cuando vuelva Internet. Conserva los borradores aún no guardados.":"Conexión inteligente · modo ligero activo. Se adapta a la conexión y las pausas de reproducción. Puedes cambiarlo en Apariencia y ahorro de datos.";}if(detail)detail.textContent=gysteConnectionDescription();}
 window.addEventListener("offline",paintGysteConnection);window.addEventListener("online",paintGysteConnection);gysteConnectionInfo()?.addEventListener?.("change",paintGysteConnection);
-function classifyGysteBuild(current,remote){if(!/^\d{4}-\d{2}-\d{2}-r\d+$/.test(remote||""))return "unknown";return current===remote?"same":"different";}
+function classifyGysteBuild(current,remote){if(!/^\d{4}-\d{2}-\d{2}-r\d+(?:-preview)?$/.test(remote||""))return "unknown";return current===remote?"same":"different";}
 function gysteUpdateHTML(){return '<details class="gyste-update-panel"><summary>Versión y actualización de Gyste</summary><p class="muted">Versión abierta: '+esc(GYSTE_BUILD)+'</p><p class="muted">La comprobación compara esta pantalla con la página publicada. Consume una descarga de la página, sin enviar mensajes ni archivos. Recargar puede cerrar borradores no guardados.</p><button type="button" class="secondary full" id="gyste-check-build">Comprobar versión publicada</button><button type="button" class="secondary full" id="gyste-reload-build">Recargar Gyste</button><p id="gyste-build-status" role="status" aria-live="polite"></p></details>';}
 function bindGysteUpdate(){
  const check=document.getElementById("gyste-check-build"),reload=document.getElementById("gyste-reload-build"),status=document.getElementById("gyste-build-status");
@@ -2314,7 +2314,9 @@ return q.range(offset,offset+FEED_PAGE_SIZE);
 }
 
 let cardsEpoch=0;
-async function prepareCards(list,{media=true,html=true,split=false}={}){
+function gysteTextFeed(uid=me?.id){try{return !!uid&&localStorage.getItem("gyste-text-feed:"+uid)==="1";}catch{return false;}}
+function gysteTextPostMedia(p){const count=p?postMediaItems(p).length:0;return count?'<p class="muted">📎 '+count+' archivo(s) multimedia omitidos por el modo texto.</p>':"";}
+async function prepareCards(list,{media=true,html=true,split=false,textOnly=false}={}){
  const epoch=++cardsEpoch,uid=me?.id,localPosts=list||[],localOriginals=new Map();
  const refs=[...new Set(localPosts.map(p=>p.repost_of).filter(Boolean))];
  if(refs.length){const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).in("id",refs);if(!error)(data||[]).forEach(p=>localOriginals.set(p.id,p));}
@@ -2332,7 +2334,7 @@ async function prepareCards(list,{media=true,html=true,split=false}={}){
  if(!r.error)(r.data||[]).forEach(x=>reactionMine.set(x.post_id,x.reaction_type));
  if(!s.error)(s.data||[]).forEach(x=>savedIds.add(x.post_id));
  if(!u.error)(u.data||[]).forEach(x=>postAuthors[x.user_id]=x);
- if(!html)return "";const rendered=posts.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===uid?me:null)));return split?rendered:rendered.join("");
+ if(!html)return "";const rendered=posts.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===uid?me:null),textOnly?gysteTextPostMedia(p.repost_of?localOriginals.get(p.repost_of):p):null));return split?rendered:rendered.join("");
 }
 function bindPostActions(){
  bindMediaActions();
@@ -2737,6 +2739,7 @@ const epoch=++feedViewEpoch,filter=selectedSpaceId?"space":homeFilter,viewKey=JS
 const valid=()=>epoch===feedViewEpoch&&tab==="feed"&&session&&JSON.stringify([me?.id,selectedSpaceId,homeFilter,sharedPostId])===viewKey;
 const page=sharedPostId?0:Number.isSafeInteger(requestedPage)&&requestedPage>=0?requestedPage:feedPageState.key===viewKey?feedPageState.page:0;
 feedPageState={key:viewKey,page};
+const textOnly=gysteTextFeed();
 const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
 if(general&&valid()){
  shell(`<section class="panel"><h2>Inicio</h2><p role="status">Cargando publicaciones de la comunidad…</p><button class="secondary" data-tab="pages">Páginas y noticias</button></section>${filtersHTML()}`);
@@ -2754,7 +2757,7 @@ try{
  hasNext=!sharedPostId&&rows.length>FEED_PAGE_SIZE;
  data=rows.slice(0,FEED_PAGE_SIZE);
  if(!sharedPostId&&page>0&&!data.length){return feedView(page-1);}
- cards=await prepareCards(data,{split:true});
+ cards=await prepareCards(data,{split:true,media:!textOnly,textOnly});
 }catch{showError();return;}
 if(!valid())return;
 if(sharedPostId&&!(data||[]).length){shell(`<section class="panel"><h2>Publicación no disponible</h2><p>Puede haber sido eliminada o no tienes permiso para verla.</p><button class="primary" data-tab="feed">Volver al inicio</button></section>`);return;}
@@ -2783,10 +2786,13 @@ ${contentFirst?homeFollowedPagesHTML():""}
 ${contentFirst?`<div class="home-links" aria-label="Tu comunidad"><button class="secondary" data-tab="pages">📰 Páginas y noticias</button><button class="secondary" data-tab="spaces">✧ Espacios</button><button class="secondary" data-tab="stories">⏳ Historias</button><button class="secondary" data-tab="explore">Personas</button></div>`:""}
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
 ${!contentFirst?composerHTML:""}
+<div class="panel"><button type="button" class="secondary full" id="feed-text-toggle" aria-pressed="${textOnly}">${textOnly?"Desactivar modo texto":"Activar modo texto · ahorrar datos"}</button><p class="muted">${textOnly?"No se cargan fotos ni vídeos adjuntos de las publicaciones de esta sección. Los avatares y otros módulos pueden seguir usando datos.":"Lee publicaciones sin cargar sus archivos multimedia. Puedes volver al modo normal cuando quieras."}</p><p id="feed-text-status" role="status"></p></div>
 <div class="section-heading" id="community-feed-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones en esta página</span></div>
 <div id="feed">${communityCards[0]||""}${contentFirst&&page===0?editorialFeed(homeFilter,null,1):""}${communityCards.slice(1).join("")}${!communityCards.length?`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`:""}${!sharedPostId&&(page>0||hasNext)?feedPageHTML(page,hasNext):""}${contentFirst&&page===0&&(homeFilter==="all"||pageFollows().has("cuba"))?cubaBriefHTML():""}${contentFirst&&page===0&&(homeFilter==="all"||pageFollows().has("cuba")||pageFollows().has("caribe-tiempo"))?caribbeanBulletinsHTML():""}${contentFirst&&page===0?pageShelf(homeFilter):""}</div>
 ${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${contentFirst?`<details class="home-more"><summary>Más herramientas y espacios</summary>${extraHTML}</details>`:extraHTML}`);
 document.getElementById("publish").onclick=publish;
+const textToggle=document.getElementById("feed-text-toggle");
+textToggle.onclick=()=>{if(!valid()||!confirmNavigationDraft())return;try{localStorage.setItem("gyste-text-feed:"+me.id,textOnly?"0":"1");}catch{document.getElementById("feed-text-status").textContent="No se pudo guardar el modo de conexión.";return;}void feedView(page);};
 const quickCompose=document.getElementById("quick-compose");if(quickCompose)quickCompose.onclick=()=>revealPostComposer(true);
 const closeComposer=document.getElementById("composer-close");if(closeComposer)closeComposer.onclick=()=>{if(publishLocks.has(me?.id))return;document.getElementById("composer").hidden=true;quickCompose?.setAttribute("aria-expanded","false");quickCompose?.focus({preventScroll:true});quickCompose?.scrollIntoView({block:"center"});};
 const quickMedia=document.getElementById("quick-media");if(quickMedia)quickMedia.onclick=()=>{const media=document.getElementById("media");if(media&&!media.disabled){revealPostComposer();media.click();}};
@@ -3627,7 +3633,47 @@ async function notificationView(){
 // No afirma ofrecer cifrado de extremo a extremo ni notificaciones push.
 let chatRefreshTimer=null,chatViewEpoch=0;
 let chatRenderSignature="";
-function stopChatRefresh(){if(chatRefreshTimer){clearInterval(chatRefreshTimer);chatRefreshTimer=null;}}
+
+function gysteChatDelay(idle,light,available){
+ if(!available)return 60000;
+ const base=light?15000:8000;
+ return Math.min(60000,base*2**Math.min(3,Math.max(0,idle)));
+}
+function createGysteChatPoll({refresh,valid,available,light,setTimer,clearTimer,listen}){
+ let timer=null,stopped=false,running=false,wakePending=false,idle=0;
+ const cancelTimer=()=>{if(timer!==null){clearTimer(timer);timer=null;}};
+ const schedule=delay=>{cancelTimer();if(!stopped&&valid())timer=setTimer(tick,delay);};
+ async function tick(){
+  timer=null;if(stopped||!valid())return;
+  if(!available()){schedule(60000);return;}
+  if(running){wakePending=true;return;}
+  running=true;let result="error";
+  try{result=await refresh();}catch{}
+  finally{
+   running=false;if(stopped||!valid())return;
+   idle=result==="changed"?0:Math.min(3,idle+1);
+   if(wakePending){wakePending=false;idle=0;schedule(0);}
+   else schedule(gysteChatDelay(idle,light(),available()));
+  }
+ }
+ const wake=()=>{if(stopped||!valid()||!available())return;idle=0;if(running){wakePending=true;return;}schedule(0);};
+ const unlisten=listen(wake);
+ schedule(gysteChatDelay(0,light(),available()));
+ return ()=>{stopped=true;cancelTimer();unlisten();};
+}
+let chatPollStop=null;
+function startGysteChatPoll(target,valid){
+ stopChatRefresh();
+ chatPollStop=createGysteChatPoll({
+ refresh:()=>refreshChatMessages(target,true),valid,
+ available:()=>navigator.onLine!==false&&document.visibilityState!=="hidden",
+ light:()=>gysteDataSaver(),
+ setTimer:(fn,ms)=>setTimeout(fn,ms),clearTimer:id=>clearTimeout(id),
+ listen:wake=>{window.addEventListener("online",wake);document.addEventListener("visibilitychange",wake);return()=>{window.removeEventListener("online",wake);document.removeEventListener("visibilitychange",wake);};}
+ });
+}
+
+function stopChatRefresh(){if(chatRefreshTimer){clearInterval(chatRefreshTimer);chatRefreshTimer=null;}if(chatPollStop){chatPollStop();chatPollStop=null;}}
 const CHAT_BUCKET="gyste-chat-media";
 let chatFilePreviewUrl=null;
 function clearChatFilePreview(){
@@ -3730,7 +3776,8 @@ async function refreshChatMessages(target,markRead=false){
  const signature=JSON.stringify(ordered.map(m=>[m.id,m.created_at,m.read_at,m.media_path,chatMediaCache.get(m.media_path)?.url]));
  if(status)status.textContent="";
  if(document.fullscreenElement||list.querySelector(".media-overlay")||Array.from(list.querySelectorAll("video,audio")).some(v=>!v.paused&&!v.ended))return;
- if(signature!==chatRenderSignature){
+ const changed=signature!==chatRenderSignature;
+ if(changed){
  const oldTop=list.scrollTop,nearBottom=!chatRenderSignature||list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();
  list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{if(!valid()||!confirmNavigationDraft())return;sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});
  list.querySelectorAll("[data-chat-media-retry]").forEach(b=>b.onclick=()=>{if(!valid())return;b.disabled=true;chatMediaCache.clear();chatRenderSignature="";void refreshChatMessages(target,true).finally(()=>{if(b.isConnected)b.disabled=false;});});
@@ -3741,7 +3788,8 @@ async function refreshChatMessages(target,markRead=false){
  const {error:readError}=await db.from("gyste_messages").update({read_at:new Date().toISOString()}).eq("recipient_id",uid).eq("sender_id",target).in("id",unread).is("read_at",null);
  if(readError&&valid()&&status)status.textContent="No se pudieron confirmar los avisos de lectura.";else if(!readError&&valid())void refreshUnreadBadges(true);
  }
- }catch{if(valid()&&status)status.textContent="No se pudieron actualizar los mensajes. Se volverá a intentar.";}
+ return changed?"changed":"idle";
+ }catch{if(valid()&&status)status.textContent="No se pudieron actualizar los mensajes. Se volverá a intentar.";return "error";}
  finally{chatRefreshLocks.delete(list);if(chatRefreshQueued.has(list)){chatRefreshQueued.delete(list);if(valid())void refreshChatMessages(target,true);}}
 }
 // A missing profile can be a block, deletion or temporary visibility issue. Never infer which.
@@ -3853,7 +3901,7 @@ async function messagesView(){
  const chatList=document.getElementById("chatlist"),reload=document.getElementById("chat-reload-files");
  reload.onclick=async()=>{if(!valid()||reload.disabled)return;reload.disabled=true;chatMediaCache.clear();chatRenderSignature="";try{await refreshChatMessages(target,true);}finally{if(reload.isConnected)reload.disabled=false;}};
  await refreshChatMessages(target,true);
- if(valid()&&chatList?.isConnected&&document.getElementById("chatlist")===chatList)chatRefreshTimer=setInterval(()=>{if(document.visibilityState!=="hidden")refreshChatMessages(target,true);},8000);
+ if(valid()&&chatList?.isConnected&&document.getElementById("chatlist")===chatList)startGysteChatPoll(target,()=>valid()&&chatList.isConnected&&document.getElementById("chatlist")===chatList);
 }
 function resetVoiceUI(){
  const b=document.getElementById("voice-record"),cancel=document.getElementById("voice-cancel"),preview=document.getElementById("voice-preview");
