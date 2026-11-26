@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r36-preview">
+<meta name="gyste-build" content="2026-11-26-r38-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3950,10 +3950,16 @@ function chatSafetyNotice(person){
  return '<div class="actions"><button type="button" class="secondary" data-tab="safety">🛡 Seguridad y privacidad</button><button type="button" class="secondary" id="chat-safety-feedback">Pedir ayuda o informar</button></div><p class="muted">Si alguien te molesta, puedes bloquearlo. Para pedir ayuda, elige Seguridad y privacidad en Sugerencias. No se envía automáticamente ningún mensaje ni archivo de esta conversación. La atención de moderación está en preparación.</p>'+(!chatContactAvailable(person)?'<p role="status">Este perfil no está disponible. Puedes consultar los mensajes anteriores, pero no enviar nuevos mensajes desde esta pantalla.</p>':'');
 }
 
+function gysteInboxCompare(a,b){
+ const micros=v=>{const ms=Date.parse(v);const frac=String(v).match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/i)?.[1]||"";return Number.isFinite(ms)?ms*1000+Number(frac.padEnd(6,"0").slice(3,6)):0;};
+ const delta=micros(b.created_at)-micros(a.created_at);
+ if(delta)return delta;
+ const x=String(a.id).toLowerCase(),y=String(b.id).toLowerCase();return x===y?0:x<y?1:-1;
+}
 function mergeGysteInboxPage(state,rows,uid,pageSize){
  const unique=new Map(state.rows.map(m=>[m.id,m]));
  for(const m of rows){if(m?.id&&(m.sender_id===uid||m.recipient_id===uid))unique.set(m.id,m);}
- const sorted=[...unique.values()].sort((a,b)=>{const at=Date.parse(a.created_at),bt=Date.parse(b.created_at);return bt-at||String(b.id).localeCompare(String(a.id));});
+ const sorted=[...unique.values()].sort(gysteInboxCompare);
  const peers=new Map();
  for(const m of sorted){const peer=m.sender_id===uid?m.recipient_id:m.sender_id;if(!peer||peer===uid)continue;if(!peers.has(peer))peers.set(peer,{id:peer,last:m,unread:0});if(m.recipient_id===uid&&!m.read_at)peers.get(peer).unread++;}
  const last=rows.at(-1);
@@ -3997,7 +4003,7 @@ async function messagesView(){
     const next=mergeGysteInboxPage(state,rows,uid,GYSTE_INBOX_PAGE);
     if(rows.length&&state.cursor&&next.cursor.id===state.cursor.id&&next.cursor.at===state.cursor.at)throw Error("Cursor repetido");
     const ids=next.peers.map(p=>p.id).filter(id=>!profiles.has(id));
-    if(ids.length){const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);if(!active())return;if(!error)for(const p of data||[])profiles.set(p.user_id,p);}
+    for(let offset=0;offset<ids.length;offset+=50){if(!active())return;const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids.slice(offset,offset+50));if(!active())return;if(!error)for(const p of data||[])profiles.set(p.user_id,p);}
     state=next;render();
    }catch{if(active())status.textContent="No se pudo cargar esta parte de la bandeja. Conservamos las conversaciones encontradas; vuelve a intentarlo.";}
    finally{loading=false;if(active())more.disabled=false;}
