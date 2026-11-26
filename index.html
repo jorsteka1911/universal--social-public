@@ -1763,7 +1763,7 @@ async function safetyView(){
  shell(`<section class="panel"><h2>Seguridad y convivencia</h2><p>Respeta a los demás. No compartas datos personales ni imágenes ajenas sin permiso. Si eres menor, evita publicar tu colegio, domicilio, horarios, teléfono o ubicación. Habla con un adulto de confianza si recibes mensajes incómodos o amenazas. Bloquea y denuncia a quien te moleste.</p><p>Las denuncias se registran para revisión, pero la atención de moderación todavía está en preparación. No esperes una respuesta inmediata. Si existe una amenaza urgente, contacta con los servicios de emergencia.</p><button class="secondary full" id="safety-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><button class="secondary full" data-tab="feedback">Informar de un problema de seguridad</button><h3>Visibilidad de tus contenidos</h3><p>Al publicar, comprueba la audiencia. Las fotos de perfil y portada son públicas. El contenido público puede ser copiado o compartido fuera de Gyste. Los mensajes no tienen cifrado de extremo a extremo.</p>${mod.data?`<button class="primary full" data-tab="moderation">🛡 Panel de moderación</button>`:""}<h3>Privacidad de mensajes</h3><label>Quién puede enviarme mensajes<select id="message-audience" class="field" ${pref.error?"disabled":""}>${[["all","Todos los miembros"],["mutual","Solo personas que se siguen mutuamente"],["none","Nadie"]].map(([v,l])=>`<option value="${v}" ${(pref.data?.message_audience||"mutual")===v?"selected":""}>${l}</option>`).join("")}</select></label><button id="save-message-privacy" class="primary" ${pref.error?"disabled":""}>Guardar privacidad</button><p class="muted">No elimina conversaciones anteriores. ${pref.error?"No se ha podido comprobar tu preferencia actual. Vuelve a cargar esta sección.":""}</p><h3>Usuarios bloqueados</h3>${ids.map(id=>`<div class="userrow"><b>${esc(names[id]||"Miembro")}</b><button class="secondary" data-unblock="${esc(id)}">Desbloquear</button></div>`).join("")||"<p>No tienes usuarios bloqueados.</p>"}</section>`);
  document.getElementById("safety-rules").onclick=showCommunityRules;
  document.getElementById("save-message-privacy").onclick=async e=>{const b=e.currentTarget;if(!valid()||b.disabled||pref.error)return;b.disabled=true;const message_audience=document.getElementById("message-audience").value;let confirmed=false;try{confirmed=await saveVerifiedMessagePrivacy(uid,message_audience,Boolean(pref.data),db);}catch{}if(!valid())return;if(!confirmed){say("No se pudo confirmar la privacidad guardada. Actualiza esta sección antes de reintentar.",true);b.disabled=false;return;}say("Privacidad guardada y comprobada.");await safetyView();};
- app.querySelectorAll("[data-unblock]").forEach(b=>b.onclick=async()=>{if(!valid()||b.disabled||!confirm("¿Desbloquear esta cuenta?"))return;b.disabled=true;const {error}=await db.from("gyste_blocks").delete().eq("blocker_id",uid).eq("blocked_id",b.dataset.unblock);if(!valid())return;if(error){say(error.message,true);b.disabled=false;}else await safetyView();});
+ app.querySelectorAll("[data-unblock]").forEach(b=>b.onclick=async()=>{if(!valid()||b.disabled||!confirm("¿Desbloquear esta cuenta?"))return;b.disabled=true;try{const target=b.dataset.unblock;const {error}=await db.from("gyste_blocks").delete().eq("blocker_id",uid).eq("blocked_id",target);if(error)throw error;if(!valid())return;if(!await verifyBlockState(db,uid,target,false))throw Error("Desbloqueo no confirmado");if(!valid())return;say("Cuenta desbloqueada y comprobada.");await safetyView();}catch{if(valid())say("No se pudo confirmar el desbloqueo. Actualiza Seguridad antes de reintentar.",true);}finally{b.disabled=false;}});
 }
 let moderationEpoch=0;
 const moderationLocks=new Set();
@@ -1811,6 +1811,11 @@ async function moderationView(){
  app.querySelectorAll("[data-restore-post]").forEach(b=>b.onclick=()=>{if(confirm("¿Restaurar la visibilidad según la privacidad original?"))act(b,()=>db.from("gyste_hidden_posts").delete().eq("post_id",b.dataset.restorePost).select("post_id"),"post_id",b.dataset.restorePost,"Publicación restaurada.");});
 }
 const blockLocks=new Set(),reportLocks=new Set();
+async function verifyBlockState(dbClient,uid,target,expected){
+ if(!uid||!target||uid===target||typeof expected!=="boolean")return false;
+ const {data,error}=await dbClient.from("gyste_blocks").select("blocked_id").eq("blocker_id",uid).eq("blocked_id",target).maybeSingle();
+ return !error&&(expected?data?.blocked_id===target:data===null);
+}
 async function blockUser(id,b){
  const uid=me?.id,key=uid+":"+id;if(!uid||!id||id===uid||!b||b.disabled||blockLocks.has(key)||!confirm("¿Bloquear esta cuenta? No podrá enviarte nuevos mensajes ni seguirte."))return;
  const startTab=tab;blockLocks.add(key);b.disabled=true;
@@ -1818,7 +1823,9 @@ async function blockUser(id,b){
   const {error}=await db.from("gyste_blocks").insert({blocker_id:uid,blocked_id:id});
   if(error&&error.code!=="23505")throw error;
   if(me?.id!==uid)return;
-  say("Cuenta bloqueada.");if(tab===startTab){if(tab==="messages")chatUser=null;await renderTab();}
+  if(!await verifyBlockState(db,uid,id,true))throw Error("Bloqueo no confirmado");
+  if(me?.id!==uid)return;
+  say("Cuenta bloqueada y comprobada.");if(tab===startTab){if(tab==="messages")chatUser=null;await renderTab();}
  }catch{if(me?.id===uid&&tab===startTab)say("No se pudo confirmar el bloqueo. Comprueba tu conexión y revisa Seguridad.",true);}
  finally{blockLocks.delete(key);b.disabled=false;}
 }
