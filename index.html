@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r32">
+<meta name="gyste-build" content="2026-11-26-r34">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1399,6 +1399,7 @@ if(tab==="videos")return videosView();
 if(tab==="history")return historyView();
 if(tab==="stories")return storiesView();
 if(tab==="profile")return profileView();
+if(tab==="memberprofile")return memberProfileView();
 if(tab==="saved")return savedView();
 if(tab==="safety")return safetyView();
 if(tab==="moderation")return moderationView();
@@ -2371,6 +2372,7 @@ async function prepareCards(list,{media=true,html=true,split=false}={}){
  if(!html)return "";const rendered=posts.map(p=>postCard(p,postAuthors[p.user_id]||(p.user_id===uid?me:null)));return split?rendered:rendered.join("");
 }
 function bindPostActions(){
+ bindMemberProfiles();
  bindMediaActions();
  const bind=(selector,fn)=>app.querySelectorAll(selector).forEach(b=>b.onclick=()=>fn(b));
  bind("[data-sharepost]",b=>sharePost(b.dataset.sharepost));
@@ -2856,7 +2858,7 @@ function postCard(p,author,mediaOverride=null){
  const hasVideo=original&&postMediaItems(original).some(m=>m.type?.startsWith("video/"));
  return `<article class="post" data-post-card="${esc(target)}">
  ${p.repost_of?`<div class="repost-label">🔁 ${esc(author?.display_name||"Miembro")} republicó esta publicación</div>`:""}
- <div class="posthead"><div class="posthead-left"><span class="face" data-author-id="${esc(original?.user_id||"")}">${avatarContent(sourceAuthor)}</span><div><span class="author">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
+ <div class="posthead"><div class="posthead-left"><button type="button" class="face" data-author-id="${esc(original?.user_id||"")}" data-member-profile="${esc(original?.user_id||"")}" aria-label="Ver perfil del autor">${avatarContent(sourceAuthor)}</button><div><span class="author">${esc(sourceAuthor?.display_name||"Miembro de Gyste")}</span><span class="post-time">${time(original?.created_at||p.created_at)}</span></div></div>
  <details class="post-menu"><summary aria-label="Más opciones">⋯</summary><div class="post-menu-items">
  <button data-savepost="${esc(target)}" aria-pressed="${savedIds.has(target)}">${savedIds.has(target)?"Quitar de guardados":"🔖 Guardar publicación"}</button>
  ${isPublic?`<button data-repost="${esc(source)}">🔁 Republicar en mi perfil</button>`:""}
@@ -3436,16 +3438,40 @@ app.querySelectorAll("[data-explore-topic]").forEach(b=>b.onclick=()=>findPosts(
 await search();
 }
 
+let memberProfileId=null,memberProfileEpoch=0;
+function openMemberProfile(id){
+ if(!me?.id||!id||!confirmNavigationDraft())return;
+ if(id===me.id)return goTab("profile",null,true);
+ memberProfileId=id;goTab("memberprofile",null,true);
+}
+async function memberProfileView(){
+ const uid=me?.id,id=memberProfileId,epoch=++memberProfileEpoch;
+ if(!uid||!id)return;
+ const valid=()=>tab==="memberprofile"&&me?.id===uid&&memberProfileId===id&&epoch===memberProfileEpoch;
+ const {data:p,error}=await db.from("gyste_profiles").select("user_id,display_name,username,bio,avatar_url,cover_url").eq("user_id",id).maybeSingle();
+ if(!valid())return;
+ if(error||!p){shell('<section class="panel"><p>Perfil no disponible.</p><button data-tab="explore" class="secondary">Volver a Explorar</button></section>');return;}
+ const {data:posts,error:postError}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).eq("user_id",id).order("created_at",{ascending:false}).limit(60);
+ if(!valid())return;
+ const cards=postError?"":await prepareCards(posts||[]);
+ if(!valid())return;
+ shell(`<section class="panel profile-section"><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions"><button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button><button class="secondary" data-chat="${esc(id)}">Mensaje</button></div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones visibles para ti.</p>${postError?'<p>No se pudieron cargar las publicaciones.</p>':cards||'<p>No hay publicaciones visibles.</p>'}`);
+ bindPeople();bindPostActions();
+}
+function bindMemberProfiles(){
+ app.querySelectorAll("[data-member-profile]").forEach(b=>b.onclick=()=>openMemberProfile(b.dataset.memberProfile));
+}
 function peopleHTML(list){
 return list.map(p=>`<article class="explore-person">
-<div class="avatar">${avatarContent(p)}</div>
+<button type="button" class="avatar" data-member-profile="${esc(p.user_id)}" aria-label="Ver perfil">${avatarContent(p)}</button>
 <div class="userinfo"><b>${esc(p.display_name||"Miembro")}</b><div class="muted">@${esc(p.username||"usuario")}</div><small>${esc(p.bio||"")}</small></div>
-<div class="explore-person-actions"><button type="button" class="secondary" data-follow="${esc(p.user_id)}" aria-pressed="${following.has(p.user_id)}">${following.has(p.user_id)?"Siguiendo":"Seguir"}</button>
+<div class="explore-person-actions"><button type="button" class="secondary" data-member-profile="${esc(p.user_id)}">Ver perfil</button><button type="button" class="secondary" data-follow="${esc(p.user_id)}" aria-pressed="${following.has(p.user_id)}">${following.has(p.user_id)?"Siguiendo":"Seguir"}</button>
 <button type="button" class="ghost" data-chat="${esc(p.user_id)}">Mensaje</button><button type="button" class="ghost person-block" data-blockuser="${esc(p.user_id)}">Bloquear cuenta</button></div>
 </article>`).join("")||'<p class="muted">No se encontraron personas.</p>';
 }
 
 function bindPeople(){
+ bindMemberProfiles();
 app.querySelectorAll(".person-block").forEach(b=>b.onclick=()=>blockUser(b.dataset.blockuser,b));
 app.querySelectorAll("[data-follow]").forEach(b=>{b.onclick=()=>follow(b.dataset.follow,b);});
 document.querySelectorAll("[data-chat]").forEach(b=>{b.onclick=()=>{if(!confirmNavigationDraft())return;chatUser=b.dataset.chat;goTab("messages",null,true);};});
@@ -3874,7 +3900,8 @@ async function messagesView(page=0){
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
  const canCompose=chatContactAvailable(person);
- shell(`<section class="panel chat-thread"><div class="chat-header"><button type="button" id="back" class="ghost" aria-label="Volver a conversaciones">←</button><span class="face">${avatarContent(person)}</span><div class="chat-person"><h2>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Conversación privada</p></div></div><details class="chat-safety"><summary>Seguridad y opciones</summary><button type="button" id="block-chat" class="secondary">Bloquear usuario</button>${chatSafetyNotice(person)}</details>${!canCompose?'<p role="status">Este perfil no está disponible. Puedes consultar mensajes anteriores, pero no enviar nuevos.</p>':""}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><button type="button" class="secondary" id="chat-reload-files">Actualizar conversación y archivos</button><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><label id="chat-light-photo-option" hidden><input type="checkbox" id="chat-light-photo" ${gysteDataSaver()?"checked":""}> Enviar foto ligera (reduce tamaño y puede reducir calidad)</label><p class="muted">Android e iPhone: JPG y PNG recomendados. HEIC/HEIF se convierten a JPG si el navegador puede abrirlos. Para vídeos, usa MP4 con H.264. En conexión Ligera se intentan optimizar los vídeos cortos compatibles; si no es posible, se conserva el original.</p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
+ shell(`<section class="panel chat-thread"><div class="chat-header"><button type="button" id="back" class="ghost" aria-label="Volver a conversaciones">←</button><button type="button" class="face" id="chat-open-profile" aria-label="Ver perfil" ${person?"":"disabled"}>${avatarContent(person)}</button><div class="chat-person"><h2>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Conversación privada</p></div></div><details class="chat-safety"><summary>Seguridad y opciones</summary><button type="button" id="block-chat" class="secondary">Bloquear usuario</button>${chatSafetyNotice(person)}</details>${!canCompose?'<p role="status">Este perfil no está disponible. Puedes consultar mensajes anteriores, pero no enviar nuevos.</p>':""}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><button type="button" class="secondary" id="chat-reload-files">Actualizar conversación y archivos</button><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><label id="chat-light-photo-option" hidden><input type="checkbox" id="chat-light-photo" ${gysteDataSaver()?"checked":""}> Enviar foto ligera (reduce tamaño y puede reducir calidad)</label><p class="muted">Android e iPhone: JPG y PNG recomendados. HEIC/HEIF se convierten a JPG si el navegador puede abrirlos. Para vídeos, usa MP4 con H.264. En conexión Ligera se intentan optimizar los vídeos cortos compatibles; si no es posible, se conserva el original.</p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
+ document.getElementById("chat-open-profile").onclick=()=>openMemberProfile(requestedChat);
  document.getElementById("back").onclick=()=>{if(!confirmNavigationDraft())return;stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
  if(canCompose){bindVoiceRecorder(target);
  document.getElementById("sendmsg").onsubmit=sendMessage;
