@@ -297,6 +297,36 @@ header{gap:6px;padding:8px 9px}
 .media-gallery.photo-album .album-index{position:absolute;top:7px;right:7px;pointer-events:none;background:#091827dc;color:white;padding:3px 7px;border-radius:20px;font-size:11px}
 @media(max-width:410px){[data-post-card] .reaction-bar{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){[data-post-card] button{transition:none}}
+/* Gyste Chat · conversación limpia y accesible */
+.chat-thread{padding:12px;max-width:650px;margin-inline:auto}
+.chat-header{display:flex;align-items:center;gap:10px;min-width:0}
+.chat-header .chat-person{flex:1;min-width:0}
+.chat-header h2{font-size:17px;margin:0;overflow-wrap:anywhere}
+.chat-header .chat-person p{font-size:11px;margin:3px 0 0}
+.chat-header button{min-height:44px}
+.chat-safety{font-size:12px;margin:8px 0 12px;color:var(--muted)}
+.chat-safety summary{cursor:pointer;padding:8px 0;color:var(--mint)}
+.chat-safety .actions{margin:4px 0;gap:6px}
+#chatlist{background:#0a1d2c;border:1px solid var(--line);border-radius:15px;padding:10px;overscroll-behavior:contain;scrollbar-width:thin}
+.chat-day{text-align:center;font-size:11px;color:var(--muted);padding:8px 0}
+.chat-line{display:flex;align-items:flex-end;gap:6px;margin:6px 0}
+.chat-line.mine{justify-content:flex-end}
+.chat-line .face{width:29px;height:29px;font-size:12px}
+.chat-bubble{min-width:0;max-width:86%;padding:9px 11px 6px;background:#19394d;border-radius:14px 14px 14px 4px;overflow-wrap:anywhere}
+.chat-line.mine .chat-bubble{background:#245653;border-radius:14px 14px 4px 14px}
+.chat-bubble.has-media{width:min(86%,290px)}
+.chat-bubble .bodytext{margin:0;font-size:14px;line-height:1.5}
+.chat-bubble .chat-time{display:block;text-align:right;color:#c1d9dd;font-size:10px;margin-top:5px}
+.chat-bubble .media-frame .media{max-height:260px}
+.chat-thread #sendmsg{margin-top:10px}
+.chat-thread #sendmsg .commentform{align-items:center}
+.chat-thread #sendmsgbtn{min-height:44px}
+.chat-inbox{max-width:650px;margin-inline:auto}
+.chat-inbox .chat-contact{width:100%;display:flex;text-align:left;align-items:center;gap:11px;padding:12px 4px;background:transparent;color:var(--txt);border:0;border-bottom:1px solid var(--line);min-height:66px}
+.chat-contact .chat-contact-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.chat-contact .chat-snippet{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:12px}
+.chat-contact .chat-count{background:var(--mint);color:#082b3a;border-radius:20px;padding:4px 8px;font-weight:800;font-size:11px;white-space:nowrap}
+.chat-contact .chat-last-time{font-size:10px;color:var(--muted);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -2881,7 +2911,18 @@ function chatBody(content){
  const s=String(content||""),match=s.match(/(?:^|\n)📎 Publicación de Gyste: ([^\s]+)$/);if(!match)return esc(s);
  try{const u=new URL(match[1]);const id=u.searchParams.get("post");if(u.origin!==location.origin||!id||!/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id))return esc(s);return esc(s.slice(0,match.index).trim())+`<div><button type="button" class="secondary" data-chat-post="${esc(id)}">▶ Ver publicación compartida</button></div>`;}catch{return esc(s);}
 }
-function chatMarkup(items){return (items||[]).map(m=>`<div class="comment" style="text-align:${m.sender_id===me.id?"right":"left"}"><div class="comment-author" style="justify-content:${m.sender_id===me.id?"flex-end":"flex-start"}"><span class="face">${avatarContent(m.sender_id===me.id?me:chatPeerProfile)}</span></div><div class="bodytext">${chatBody(m.content)}</div>${chatAttachment(m)}<small>${time(m.created_at)}</small></div>`).join("")||'<p class="muted">Inicia la conversación.</p>';}
+function chatDateKey(value){
+ const d=new Date(value);return Number.isNaN(d.getTime())?"":d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
+}
+function chatClock(value){const d=new Date(value);return Number.isNaN(d.getTime())?"":d.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});}
+function chatDayLabel(value){const d=new Date(value);if(Number.isNaN(d.getTime()))return "";return chatDateKey(value)===chatDateKey(new Date())?"Hoy":d.toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"});}
+function chatMarkup(items){
+ let previousDay=null;
+ return (items||[]).map(m=>{
+ const mine=m.sender_id===me.id,day=chatDateKey(m.created_at),separator=day&&day!==previousDay?'<div class="chat-day">'+esc(chatDayLabel(m.created_at))+'</div>':"";previousDay=day;
+ return separator+'<div class="chat-line '+(mine?"mine":"received")+'">'+(!mine?'<span class="face" aria-hidden="true">'+avatarContent(chatPeerProfile)+'</span>':"")+'<div class="chat-bubble '+(m.media_path?"has-media":"")+'"><div class="bodytext">'+chatBody(m.content)+'</div>'+chatAttachment(m)+'<small class="chat-time">'+esc(chatClock(m.created_at))+(mine?(m.read_at?' · Leído':' · Enviado'):"")+'</small></div></div>';
+ }).join("")||'<p class="muted">Inicia la conversación.</p>';
+}
 const chatRefreshLocks=new WeakSet(),chatRefreshQueued=new WeakSet();
 async function refreshChatMessages(target,markRead=false){
  const uid=me?.id,list=document.getElementById("chatlist"),status=document.getElementById("chat-refresh-status");
@@ -2901,9 +2942,9 @@ async function refreshChatMessages(target,markRead=false){
  if(status)status.textContent="";
  if(document.fullscreenElement||list.querySelector(".media-overlay")||Array.from(list.querySelectorAll("video,audio")).some(v=>!v.paused&&!v.ended))return;
  if(signature!==chatRenderSignature){
- const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();
+ const oldTop=list.scrollTop,nearBottom=!chatRenderSignature||list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();
  list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{if(!valid()||!confirmNavigationDraft())return;sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});
- if(nearBottom)list.scrollTop=list.scrollHeight;chatRenderSignature=signature;
+ list.scrollTop=nearBottom?list.scrollHeight:oldTop;chatRenderSignature=signature;
  }
  const unread=ordered.filter(m=>m.recipient_id===uid&&m.sender_id===target&&!m.read_at).map(m=>m.id);
  if(markRead&&unread.length&&valid()&&document.visibilityState!=="hidden"){
@@ -2930,9 +2971,9 @@ async function messagesView(){
   const ids=[...new Set((data||[]).map(m=>m.sender_id===me.id?m.recipient_id:m.sender_id))];let map={};
   if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
   if(!valid())return;
-  shell(`<section class="panel"><h2>Gyste Chat</h2><p class="muted">Mensajería privada entre miembros. Abre un perfil desde Descubrir para iniciar una conversación.</p>${ids.map(id=>{const last=(data||[]).find(m=>m.sender_id===id||m.recipient_id===id);const unread=(data||[]).filter(m=>m.sender_id===id&&m.recipient_id===me.id&&!m.read_at).length;return `<div class="userrow"><span class="face">${avatarContent(map[id])}</span><div class="userinfo"><b>${esc(map[id]?.display_name||"Miembro")}</b>${unread?` <strong aria-label="Mensajes sin leer">(${unread} nuevos)</strong>`:""}<small class="muted" style="display:block">${esc((last?.content||"").slice(0,100))}</small></div><button class="secondary" data-openchat="${esc(id)}">Abrir</button></div>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</section>`);
+  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><div class="chat-inbox-list">${ids.map(id=>{const last=(data||[]).find(m=>m.sender_id===id||m.recipient_id===id);const unread=(data||[]).filter(m=>m.sender_id===id&&m.recipient_id===me.id&&!m.read_at).length;return `<button type="button" class="chat-contact" data-openchat="${esc(id)}"><span class="face">${avatarContent(map[id])}</span><span class="chat-contact-text"><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</button>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div></section>`);
   // Permite iniciar una conversación sin tener mensajes previos.
-  const panel=document.querySelector(".panel");
+  const panel=document.querySelector(".chat-inbox");
   if(panel){
    const finder=document.createElement("div");
    finder.style.marginBottom="18px";
@@ -2967,7 +3008,7 @@ async function messagesView(){
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
  const canCompose=chatContactAvailable(person);
- shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p>${chatSafetyNotice(person)}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
+ shell(`<section class="panel chat-thread"><div class="chat-header"><button type="button" id="back" class="ghost" aria-label="Volver a conversaciones">←</button><span class="face">${avatarContent(person)}</span><div class="chat-person"><h2>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Conversación privada</p></div></div><details class="chat-safety"><summary>Seguridad y opciones</summary><button type="button" id="block-chat" class="secondary">Bloquear usuario</button>${chatSafetyNotice(person)}</details>${!canCompose?'<p role="status">Este perfil no está disponible. Puedes consultar mensajes anteriores, pero no enviar nuevos.</p>':""}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
  document.getElementById("back").onclick=()=>{if(!confirmNavigationDraft())return;stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
  if(canCompose){bindVoiceRecorder(target);
  document.getElementById("sendmsg").onsubmit=sendMessage;
