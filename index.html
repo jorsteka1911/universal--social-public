@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r31-preview">
+<meta name="gyste-build" content="2026-11-26-r32-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2325,6 +2325,47 @@ async function saveVerifiedMessagePrivacy(uid,value,exists,dbClient){
  const read=await dbClient.from("gyste_privacy_settings").select("message_audience").eq("user_id",uid).maybeSingle();
  return !read.error&&read.data?.message_audience===value;
 }
+function gysteDeletionState(result,uid){
+ if(!result||result.error)return "unknown";
+ if(result.data===null)return "none";
+ if(result.data?.user_id!==uid)return "unknown";
+ return ["pending","processing"].includes(result.data.status)?result.data.status:"unknown";
+}
+async function gysteReadDeletion(client,uid){
+ return client.from("gyste_account_deletion_requests").select("user_id,status,requested_at").eq("user_id",uid).maybeSingle();
+}
+async function gysteChangeDeletion(client,uid,action,active){
+ if(!uid||!active()||!["request","cancel"].includes(action))return false;
+ const before=gysteDeletionState(await gysteReadDeletion(client,uid),uid);
+ if(!active()||before!==(action==="request"?"none":"pending"))return false;
+ // INSERT permission is column-specific: server supplies status and date.
+ const table=client.from("gyste_account_deletion_requests");
+ try{if(action==="request")await table.insert({user_id:uid});else await table.delete().eq("user_id",uid).eq("status","pending");}catch{}
+ if(!active())return false;
+ const after=gysteDeletionState(await gysteReadDeletion(client,uid),uid);
+ return active()&&(action==="request"?["pending","processing"].includes(after):after==="none");
+}
+// Do not accept new requests until the privacy operator and erasure process are ready.
+const GYSTE_DELETION_REQUESTS_ENABLED=false;
+async function bindGysteDeletion(uid,valid){
+ const host=document.getElementById("gyste-deletion-panel");if(!host)return;
+ const active=()=>valid()&&host.isConnected;
+ let busy=false;
+ const load=async()=>{
+  let state="unknown";try{state=gysteDeletionState(await gysteReadDeletion(db,uid),uid);}catch{}
+  if(!active())return;
+  const labels={unknown:"No se pudo consultar la solicitud.",none:"No tienes una solicitud registrada.",pending:"Solicitud registrada, pendiente de revisión. No se ha eliminado la cuenta.",processing:"Solicitud en procesamiento. No significa que la cuenta se haya eliminado."};
+  host.replaceChildren();
+  const status=document.createElement("p");status.setAttribute("role","status");status.textContent=labels[state];host.append(status);
+  const info=document.createElement("p");info.className="muted";info.textContent="El borrado integral y el canal de atención siguen en preparación. No se garantiza una fecha de eliminación desde esta pantalla.";host.append(info);
+  const action=state==="none"?"request":state==="pending"?"cancel":null;
+  if(action){
+   const b=document.createElement("button");b.type="button";b.className="secondary full";b.textContent=action==="request"?"Solicitar eliminación de mi cuenta":"Retirar solicitud pendiente";b.disabled=busy||!GYSTE_DELETION_REQUESTS_ENABLED;host.append(b);
+   b.onclick=async()=>{if(!GYSTE_DELETION_REQUESTS_ENABLED||busy||!active()||!confirm(action==="request"?"¿Registrar una solicitud de eliminación de tu cuenta? Esto no borra los datos inmediatamente.":"¿Retirar tu solicitud de eliminación pendiente?"))return;busy=true;b.disabled=true;let ok=false;try{ok=await gysteChangeDeletion(db,uid,action,active);}catch{}finally{busy=false;}if(active()){await load();if(active())say(ok?"Estado de la solicitud comprobado.":"No se pudo confirmar el cambio. Consulta el estado antes de reintentar.",!ok);}};
+  }
+ };
+ await load();
+}
 let safetyViewEpoch=0;
 function messagePrivacyLabel(pref){
  if(!pref||pref.error)return "No se ha podido comprobar quién puede escribirte.";
@@ -2343,8 +2384,9 @@ async function safetyView(){
  if(error){shell(`<p class="error">${esc(error.message)}</p>`);return;}
  const ids=(data||[]).map(x=>x.blocked_id);let names={};if(ids.length){const {data:p}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",ids);(p||[]).forEach(x=>names[x.user_id]=x.display_name);}
  if(!valid())return;
- shell(`<section class="panel safety-center"><div class="safety-intro"><h2>🛡 Centro de seguridad</h2><p>Tu bienestar importa. Controla tus contactos y decide qué compartir.</p></div><div class="safety-checks"><div class="safety-check"><strong>Privacidad de mensajes</strong><p>${esc(messagePrivacyLabel(pref))}</p></div><div class="safety-check"><strong>Bloqueos</strong><p>${ids.length} cuenta(s) bloqueada(s). Puedes gestionar la lista más abajo.</p></div><div class="safety-check"><strong>Ayuda ante el acoso</strong><p>Denuncia la publicación o envía una solicitud privada de ayuda. No se adjuntan conversaciones automáticamente.</p><button type="button" class="secondary full" id="safety-help">Pedir ayuda o informar</button></div></div><p>Respeta a los demás. No compartas datos personales ni imágenes ajenas sin permiso. Si eres menor, evita publicar tu colegio, domicilio, horarios, teléfono o ubicación. Habla con un adulto de confianza si recibes mensajes incómodos o amenazas. Bloquea y denuncia a quien te moleste.</p><p>Las denuncias se registran para revisión, pero la atención de moderación todavía está en preparación. No esperes una respuesta inmediata. Si existe una amenaza urgente, contacta con los servicios de emergencia.</p><button class="secondary full" id="safety-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><button class="secondary full" data-tab="feedback">Informar de un problema de seguridad</button><h3>Visibilidad de tus contenidos</h3><p>Al publicar, comprueba la audiencia. Las fotos de perfil y portada son públicas. El contenido público puede ser copiado o compartido fuera de Gyste. Los mensajes no tienen cifrado de extremo a extremo.</p><details><summary>Administración y datos de mi cuenta</summary><p role="status">${esc(moderationAccountStatus(mod,uid))}</p><label for="safety-account-id">Identificador de mi cuenta</label><input class="field" id="safety-account-id" readonly value="${esc(uid)}"><button type="button" class="secondary full" id="copy-safety-account">Copiar identificador</button><p class="muted">Este identificador sirve para verificar qué cuenta debe recibir permisos. No es una contraseña y no concede permisos por sí mismo. No compartas contraseñas ni códigos de acceso.</p><p id="copy-safety-status" role="status"></p></details>${!mod.error&&mod.data?.user_id===uid?`<button class="primary full" data-tab="moderation">🛡 Panel de moderación</button>`:""}<h3>Privacidad de mensajes</h3><label>Quién puede enviarme mensajes<select id="message-audience" class="field" ${pref.error?"disabled":""}>${[["all","Todos los miembros"],["mutual","Solo personas que se siguen mutuamente"],["none","Nadie"]].map(([v,l])=>`<option value="${v}" ${(pref.data?.message_audience||"mutual")===v?"selected":""}>${l}</option>`).join("")}</select></label><button id="save-message-privacy" class="primary" ${pref.error?"disabled":""}>Guardar privacidad</button><p class="muted">No elimina conversaciones anteriores. ${pref.error?"No se ha podido comprobar tu preferencia actual. Vuelve a cargar esta sección.":""}</p><h3>Usuarios bloqueados</h3>${ids.map(id=>`<div class="userrow"><b>${esc(names[id]||"Miembro")}</b><button class="secondary" data-unblock="${esc(id)}">Desbloquear</button></div>`).join("")||"<p>No tienes usuarios bloqueados.</p>"}</section>`);
+ shell(`<section class="panel safety-center"><div class="safety-intro"><h2>🛡 Centro de seguridad</h2><p>Tu bienestar importa. Controla tus contactos y decide qué compartir.</p></div><div class="safety-checks"><div class="safety-check"><strong>Privacidad de mensajes</strong><p>${esc(messagePrivacyLabel(pref))}</p></div><div class="safety-check"><strong>Bloqueos</strong><p>${ids.length} cuenta(s) bloqueada(s). Puedes gestionar la lista más abajo.</p></div><div class="safety-check"><strong>Ayuda ante el acoso</strong><p>Denuncia la publicación o envía una solicitud privada de ayuda. No se adjuntan conversaciones automáticamente.</p><button type="button" class="secondary full" id="safety-help">Pedir ayuda o informar</button></div></div><p>Respeta a los demás. No compartas datos personales ni imágenes ajenas sin permiso. Si eres menor, evita publicar tu colegio, domicilio, horarios, teléfono o ubicación. Habla con un adulto de confianza si recibes mensajes incómodos o amenazas. Bloquea y denuncia a quien te moleste.</p><p>Las denuncias se registran para revisión, pero la atención de moderación todavía está en preparación. No esperes una respuesta inmediata. Si existe una amenaza urgente, contacta con los servicios de emergencia.</p><button class="secondary full" id="safety-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><button class="secondary full" data-tab="feedback">Informar de un problema de seguridad</button><h3>Visibilidad de tus contenidos</h3><p>Al publicar, comprueba la audiencia. Las fotos de perfil y portada son públicas. El contenido público puede ser copiado o compartido fuera de Gyste. Los mensajes no tienen cifrado de extremo a extremo.</p><details><summary>Administración y datos de mi cuenta</summary><p role="status">${esc(moderationAccountStatus(mod,uid))}</p><label for="safety-account-id">Identificador de mi cuenta</label><input class="field" id="safety-account-id" readonly value="${esc(uid)}"><button type="button" class="secondary full" id="copy-safety-account">Copiar identificador</button><p class="muted">Este identificador sirve para verificar qué cuenta debe recibir permisos. No es una contraseña y no concede permisos por sí mismo. No compartas contraseñas ni códigos de acceso.</p><p id="copy-safety-status" role="status"></p></details><details><summary>Eliminar mi cuenta y mis datos</summary><div id="gyste-deletion-panel"><p role="status">Comprobando estado de la solicitud…</p></div></details>${!mod.error&&mod.data?.user_id===uid?`<button class="primary full" data-tab="moderation">🛡 Panel de moderación</button>`:""}<h3>Privacidad de mensajes</h3><label>Quién puede enviarme mensajes<select id="message-audience" class="field" ${pref.error?"disabled":""}>${[["all","Todos los miembros"],["mutual","Solo personas que se siguen mutuamente"],["none","Nadie"]].map(([v,l])=>`<option value="${v}" ${(pref.data?.message_audience||"mutual")===v?"selected":""}>${l}</option>`).join("")}</select></label><button id="save-message-privacy" class="primary" ${pref.error?"disabled":""}>Guardar privacidad</button><p class="muted">No elimina conversaciones anteriores. ${pref.error?"No se ha podido comprobar tu preferencia actual. Vuelve a cargar esta sección.":""}</p><h3>Usuarios bloqueados</h3>${ids.map(id=>`<div class="userrow"><b>${esc(names[id]||"Miembro")}</b><button class="secondary" data-unblock="${esc(id)}">Desbloquear</button></div>`).join("")||"<p>No tienes usuarios bloqueados.</p>"}</section>`);
  document.getElementById("safety-rules").onclick=showCommunityRules;
+ void bindGysteDeletion(uid,valid);
  document.getElementById("safety-help").onclick=openSafetyFeedback;
  document.getElementById("copy-safety-account").onclick=async()=>{
   if(!valid())return;
@@ -2736,7 +2778,7 @@ const composerHTML=`<section class="panel composer" id="composer" ${contentFirst
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea><div class="row"><button type="button" class="secondary" id="draft-save">Guardar borrador</button><button type="button" class="secondary" id="draft-restore" hidden>Recuperar borrador</button><button type="button" class="ghost" id="draft-discard" hidden>Borrar borrador</button></div><p id="draft-status" class="muted" role="status">Opcional: guarda solo el texto en este navegador. No se publica ni se sincroniza. Evita guardarlo en dispositivos compartidos. Los archivos no se conservan.</p>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
-<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label><div id="post-preview" aria-label="Vista previa local de los archivos"></div><label>Optimización de fotos y vídeos<select id="post-optimize" class="field"><option value="auto">Automática según conexión</option><option value="original">Conservar original</option><option value="light">Ligero · ahorrar datos</option></select></label><p id="post-optimize-status" class="muted" role="status">Las fotos JPG se optimizan en el teléfono. Los vídeos cortos compatibles se pueden reducir en modo Ligero; el original se conserva si la prueba falla.</p>
+<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><p class="muted" id="gyste-audience-summary" role="status"></p><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label><div id="post-preview" aria-label="Vista previa local de los archivos"></div><label>Optimización de fotos y vídeos<select id="post-optimize" class="field"><option value="auto">Automática según conexión</option><option value="original">Conservar original</option><option value="light">Ligero · ahorrar datos</option></select></label><p id="post-optimize-status" class="muted" role="status">Las fotos JPG se optimizan en el teléfono. Los vídeos cortos compatibles se pueden reducir en modo Ligero; el original se conserva si la prueba falla.</p>
 </div>
 <button id="publish" class="primary full">Compartir publicación</button><button class="secondary full" id="open-creator-studio" type="button">✨ Estudio creativo</button>
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
@@ -2810,12 +2852,21 @@ function postCard(p,author,mediaOverride=null){
  <div id="comments-${esc(target)}" class="hidden"><div id="list-${esc(target)}"></div><form class="commentform" data-comment-form="${esc(target)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button><p class="muted" role="status" data-comment-status></p></form></div>
  </article>`;
 }
+function gysteAudienceExplanation(mode,count){
+ if(mode==="public")return "Pública: cualquier persona que tenga acceso a Gyste podría verla. También podría copiarse o compartirse fuera.";
+ if(mode==="friends")return "Amigos: personas que se siguen mutuamente, sujetas a tus bloqueos y a la moderación.";
+ if(mode==="only_me")return "Solo yo: no se muestra a otros miembros.";
+ if(mode==="selected")return count?"Personas específicas: solo las "+count+" cuentas seleccionadas, además de ti, con las restricciones de seguridad aplicables.":"Selecciona al menos una persona autorizada.";
+ if(mode==="except")return count?"Todos excepto: excluyes "+count+" cuenta(s). Otros miembros podrán verla; no es una lista de personas autorizadas.":"Selecciona al menos una cuenta que quieras excluir.";
+ return "Elige una audiencia antes de publicar.";
+}
 let audienceChosen=new Map();
 function bindAudiencePicker(){
  audienceChosen=new Map();const uid=me?.id,mode=document.getElementById("audience"),picker=document.getElementById("audience-picker"),search=document.getElementById("audience-search");let serial=0;
  const editable=()=>me?.id===uid&&mode.isConnected&&!mode.disabled&&!publishLocks.has(uid);
- const draw=()=>{const node=document.getElementById("audience-chosen");node.replaceChildren();for(const [id,name] of audienceChosen){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=name+" ×";b.onclick=()=>{if(!editable())return;audienceChosen.delete(id);draw();};node.append(b);}};
- mode.onchange=()=>{picker.hidden=!["selected","except"].includes(mode.value);};
+ const summary=()=>{const node=document.getElementById("gyste-audience-summary");if(node)node.textContent=gysteAudienceExplanation(mode.value,audienceChosen.size);};
+ const draw=()=>{summary();const node=document.getElementById("audience-chosen");node.replaceChildren();for(const [id,name] of audienceChosen){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=name+" ×";b.onclick=()=>{if(!editable())return;audienceChosen.delete(id);draw();};node.append(b);}};
+ mode.onchange=()=>{picker.hidden=!["selected","except"].includes(mode.value);summary();};summary();
  search.oninput=async()=>{if(!editable())return;const n=++serial,q=search.value.trim().replace(/[%_,]/g,""),out=document.getElementById("audience-results");out.replaceChildren();if(q.length<2)return;const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username").ilike("display_name","%"+q+"%").neq("user_id",me.id).limit(20);if(n!==serial||!out.isConnected||!editable())return;if(error){out.textContent="No se pudo buscar.";return;}for(const p of data||[]){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=(p.display_name||"Miembro")+" @"+(p.username||"");b.onclick=()=>{if(!editable()||audienceChosen.size>=100)return;audienceChosen.set(p.user_id,b.textContent);draw();};out.append(b);}};
 }
 
