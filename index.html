@@ -377,6 +377,14 @@ header{gap:6px;padding:8px 9px}
 .explore-person-actions button{flex:1;min-height:42px;font-size:12px;padding:7px}
 .explore-person-actions [data-follow][aria-pressed=true]{background:#214b4e;color:#a6f2df}
 @media(max-width:340px){.explore-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Ahorro de datos: las fotos de las publicaciones se cargan a petición */
+.media-frame .load-photo{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:112px;color:var(--txt);background:#10283a;border:1px solid var(--line);border-radius:10px;padding:12px}
+.media-frame .load-photo[hidden],.media-frame img[data-photo-src]{display:none!important}
+.data-saver-setting{padding:12px;border:1px solid var(--line);border-radius:13px;margin-bottom:15px}
+.data-saver-setting label{display:flex;gap:10px;align-items:center;font-weight:750}
+.data-saver-setting input{width:21px;height:21px;accent-color:var(--mint)}
+.data-saver-setting p{font-size:12px;color:var(--muted);margin:6px 0}
+#feed .post{content-visibility:auto;contain-intrinsic-size:auto 420px}
 </style>
 </head>
 <body>
@@ -447,7 +455,7 @@ function profileImageUrl(value){
 }
 function profileImageHTML(value){
  const url=profileImageUrl(value);
- return url?`<img class="profile-image" src="${esc(url)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">`:"";
+ return url?`<img class="profile-image" loading="lazy" decoding="async" src="${esc(url)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">`:"";
 }
 function avatarContent(person){return `${esc(initials(person?.display_name))}${profileImageHTML(person?.avatar_url)}`;}
 function ownProfileImagePath(value,uid){
@@ -497,7 +505,7 @@ app.innerHTML=`
 <button data-tab="searchposts">🔎 Buscar publicaciones</button><button data-tab="explore">🔎 Personas</button><button data-tab="business">🏪 Negocios</button>
 <button data-tab="notifications">🔔 Avisos</button>
 <button data-tab="messages">✉ Mensajes</button>
-<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button><button data-tab="appearance">🎨 Personalizar fondo</button><button data-tab="feedback">💡 Sugerencias y mejoras</button><button data-tab="commercial">📈 Promocionar mi negocio</button><button data-tab="apps">📱 Aplicaciones y proyectos</button><button data-tab="about">ℹ Acerca de Gyste</button><button data-tab="help">❔ Cómo usar Gyste</button><button data-tab="install">📲 Instalar Gyste</button>
+<button data-tab="saved">🔖 Guardados</button><button data-tab="safety">🛡 Seguridad</button><button data-tab="appearance">🎨 Apariencia y ahorro de datos</button><button data-tab="feedback">💡 Sugerencias y mejoras</button><button data-tab="commercial">📈 Promocionar mi negocio</button><button data-tab="apps">📱 Aplicaciones y proyectos</button><button data-tab="about">ℹ Acerca de Gyste</button><button data-tab="help">❔ Cómo usar Gyste</button><button data-tab="install">📲 Instalar Gyste</button>
 </div></details>
 </div>
 </header>
@@ -646,10 +654,16 @@ function applyWallpaper(value){
  const v=validWallpaper(value);document.body.classList.toggle("gyste-custom-background",v.kind!=="default");
  document.body.style.setProperty("--gyste-wallpaper",wallpaperCSS(v));
 }
+function gysteDataSaver(uid=me?.id){
+ if(!uid)return false;
+ try{const value=localStorage.getItem("gyste-data-saver:"+uid);if(value==="on")return true;if(value==="off")return false;}catch{}
+ return navigator.connection?.saveData===true;
+}
 function appearanceView(){
  const uid=me.id;let current=readWallpaper(uid),busy=false;
- shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div id="wallpaper-preview" class="wallpaper-preview"><b>Vista previa del fondo</b></div><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false">${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Restablecer fondo original</button><p id="wallpaper-status" role="status"></p></section>`);
+ shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div class="data-saver-setting"><label><input id="data-saver-toggle" type="checkbox" ${gysteDataSaver(uid)?"checked":""}> Ahorrar datos móviles</label><p>Las fotos de las publicaciones se descargan al pulsar Ver foto. Los vídeos no se reproducen automáticamente. No cambia la calidad del archivo original ni la privacidad. Ajuste de esta cuenta en este navegador.</p><p id="data-saver-status" role="status"></p></div><div id="wallpaper-preview" class="wallpaper-preview"><b>Vista previa del fondo</b></div><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false">${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Restablecer fondo original</button><p id="wallpaper-status" role="status"></p></section>`);
  const status=document.getElementById("wallpaper-status"),preview=document.getElementById("wallpaper-preview");
+ const saver=document.getElementById("data-saver-toggle");saver.onchange=()=>{if(me?.id!==uid)return;try{localStorage.setItem("gyste-data-saver:"+uid,saver.checked?"on":"off");document.getElementById("data-saver-status").textContent=saver.checked?"Ahorro activado para las próximas publicaciones.":"Ahorro desactivado.";}catch{saver.checked=gysteDataSaver(uid);document.getElementById("data-saver-status").textContent="No se pudo guardar la preferencia.";} };
  const draw=()=>{preview.style.backgroundImage=wallpaperCSS(current);app.querySelectorAll("[data-wallpaper]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.wallpaper===current.kind)));};
  const save=v=>{if(me?.id!==uid||tab!=="appearance")return;v=validWallpaper(v);try{if(v.kind==="default")localStorage.removeItem(wallpaperKey(uid));else localStorage.setItem(wallpaperKey(uid),JSON.stringify(v));}catch{status.textContent="No se pudo guardar. Libera espacio en el navegador y vuelve a intentarlo.";return;}current=v;applyWallpaper(v);draw();status.textContent="Fondo guardado en este dispositivo.";};
  app.querySelectorAll("[data-wallpaper]").forEach(b=>b.onclick=()=>{if(!busy)save({kind:b.dataset.wallpaper});});
@@ -1895,8 +1909,9 @@ function postMediaHTML(p){
  return `<div class="media-gallery ${items.length>1?"multi":""}${album?" photo-album":""}">${items.map((m,i)=>{
   const url=mediaItemUrl(m,p);if(!url)return '<p class="muted">Archivo no disponible temporalmente.</p>';
   const video=m.type?.startsWith("video/");
-  const element=video?`<video class="media" controls playsinline preload="none" src="${esc(url)}"></video><p class="muted" style="margin:4px 8px;font-size:12px">Pulsa ▶ para cargar y reproducir.</p>`:`<img class="media" loading="lazy" decoding="async" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
-  return `<div class="media-frame ${video?"video-frame":""}">${element}${album?`<span class="album-index" aria-hidden="true">${i+1}/${items.length}</span>`:""}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
+  const deferred=!video&&gysteDataSaver();
+  const element=video?`<video class="media" controls playsinline preload="none" src="${esc(url)}"></video><p class="muted" style="margin:4px 8px;font-size:12px">Pulsa ▶ para cargar y reproducir.</p>`:deferred?`<button type="button" class="load-photo">${gysteIcon("photos")} Ver foto ${i+1} de ${items.length}</button><img class="media" decoding="async" data-photo-src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`:`<img class="media" loading="lazy" decoding="async" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
+  return `<div class="media-frame ${video?"video-frame":""}">${element}${album?`<span class="album-index" aria-hidden="true">${i+1}/${items.length}</span>`:""}<button type="button" class="media-expand" ${deferred?"hidden":""}>⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
  }).join("")}</div>`;
 }
 // Photo failure recovery: keep the original URL (including any signature), never substitute another image.
@@ -1914,9 +1929,10 @@ function bindPhotoRecovery(frame,image,button){
  if(image.complete){if(image.naturalWidth>0)ready();else error();}else{button.disabled=true;}
 }
 function bindMediaActions(){
+ app.querySelectorAll(".load-photo").forEach(load=>{load.onclick=()=>{const frame=load.closest(".media-frame"),img=frame?.querySelector("img[data-photo-src]"),expand=frame?.querySelector(".media-expand");if(!img||!expand)return;const url=img.dataset.photoSrc;load.hidden=true;img.removeAttribute("data-photo-src");expand.hidden=false;img.src=url;bindPhotoRecovery(frame,img,expand);expand.onclick=()=>{if(!expand.disabled)openPhotoViewer(img);};img.onclick=expand.onclick;};});
  app.querySelectorAll(".media-expand").forEach(b=>{
   const frame=b.closest(".media-frame"),original=b.textContent;
-   const image=frame.querySelector("img");if(image){bindPhotoRecovery(frame,image,b);b.onclick=()=>{if(!b.disabled)openPhotoViewer(image);};image.style.cursor="zoom-in";image.onclick=b.onclick;return;}
+   const image=frame.querySelector("img");if(image?.hasAttribute("data-photo-src"))return;if(image){bindPhotoRecovery(frame,image,b);b.onclick=()=>{if(!b.disabled)openPhotoViewer(image);};image.style.cursor="zoom-in";image.onclick=b.onclick;return;}
   const refresh=()=>{b.textContent=(document.fullscreenElement===frame||frame.classList.contains("media-overlay"))?"✕ Salir de pantalla completa":original;};
   frame.addEventListener("fullscreenchange",refresh);
   b.onclick=async()=>{
@@ -2281,7 +2297,7 @@ const valid=()=>epoch===feedViewEpoch&&tab==="feed"&&session&&JSON.stringify([me
 const page=sharedPostId?0:Number.isSafeInteger(requestedPage)&&requestedPage>=0?requestedPage:feedPageState.key===viewKey?feedPageState.page:0;
 feedPageState={key:viewKey,page};
 const general=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine",news=general&&(homeFilter==="all"||pageFollows().has("cuba"));
-if(news&&valid()){
+if(general&&valid()){
  shell(`<section class="panel"><h2>Inicio</h2><p role="status">Cargando publicaciones de la comunidad…</p><button class="secondary" data-tab="pages">Páginas y noticias</button></section>${filtersHTML()}`);
 }
 const showError=()=>{
@@ -2961,7 +2977,7 @@ function chatAttachment(m){
  if(!url)return '<p class="muted">Archivo no disponible. Actualiza la conversación.</p>';
  if(m.media_type?.startsWith("audio/"))return `<audio controls preload="none" style="width:100%;max-width:100%" src="${esc(url)}"></audio>`;
  const video=m.media_type?.startsWith("video/");
- return `<div class="media-frame" style="max-width:100%;margin:8px 0;text-align:center">${video?`<video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video>`:`<img class="media" loading="lazy" alt="Fotografía privada" src="${esc(url)}">`}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
+ return `<div class="media-frame" style="max-width:100%;margin:8px 0;text-align:center">${video?`<video class="media" controls playsinline preload="none" src="${esc(url)}"></video>`:`<img class="media" loading="lazy" decoding="async" alt="Fotografía privada" src="${esc(url)}">`}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
 }
 function chatBody(content){
  const s=String(content||""),match=s.match(/(?:^|\n)📎 Publicación de Gyste: ([^\s]+)$/);if(!match)return esc(s);
@@ -3199,8 +3215,8 @@ document.getElementById("retry").onclick=start;
 // Renueva la vista del feed al volver a la app si los enlaces firmados están cerca de expirar.
 document.addEventListener("visibilitychange",()=>{
 if(document.visibilityState==="visible"&&session&&me&&tab==="feed"){
-const expiring=[...mediaUrlCache.values()].some(x=>x.expiresAt<Date.now()+5*60*1000);
-if(expiring)feedView();
+const expiring=[...mediaUrlCache.values()].some(x=>x.expiresAt<Date.now()+60000);
+if(expiring){const state=navigationDraftState();const viewing=Boolean(document.fullscreenElement||document.querySelector("dialog[open],.media-overlay"))||Array.from(app.querySelectorAll("video,audio")).some(m=>!m.paused&&!m.ended);if(!state.busy&&!state.text&&!state.files&&!viewing)feedView();}
 }
 });
 
