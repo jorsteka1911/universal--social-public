@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r20">
+<meta name="gyste-build" content="2026-11-26-r21">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -612,7 +612,7 @@ app.innerHTML=`
 </header>
 <main class="wrap">
 <nav class="desktop-nav" aria-label="Navegación">${navButton("feed","Inicio","⌂")}${navButton("spaces","Espacios","✧")}${navButton("reels","Reels","▶")}${navButton("videos","Vídeos","▶")}${navButton("learn","Aprender","📚")}${navButton("history","Historia","📷")}${navButton("series","Frutinovelas","🎬")}${navButton("explore","Personas","⌕")}${navButton("messages","Mensajes","✉")}${navButton("notifications","Avisos","♧")}${navButton("profile","Mi perfil","○")}</nav>
-<div id="gyste-connection" class="gyste-connection" role="status" hidden>Sin conexión a Internet detectada. No cierres esta pantalla si tienes archivos o texto pendientes.</div><div id="notice" role="status" class="notice ${noticeError?"error":""}">${esc(notice)}</div>
+<div id="gyste-connection" class="gyste-connection" role="status" hidden>Sin conexión a Internet detectada. Los archivos guardados se recuperan desde Pendientes.</div><button type="button" class="secondary full" data-tab="pending" id="pending-link" hidden>Archivos pendientes</button><div id="notice" role="status" class="notice ${noticeError?"error":""}">${esc(notice)}</div>
 ${content}
 </main>
 <nav class="mobile-nav" aria-label="Navegación principal">
@@ -621,8 +621,9 @@ ${navButton("reels","Reels","▶")}
 <button type="button" id="compose-btn" aria-label="Crear publicación"><b class="create-icon" aria-hidden="true">+</b>Crear</button>
 ${navButton("messages","Mensajes","✉")}
 ${navButton("profile","Perfil","○")}
-</nav><dialog id="quick-menu-dialog" class="gyste-menu-dialog" aria-labelledby="quick-menu-title"><div class="gyste-menu-head"><h2 id="quick-menu-title">Tu Gyste</h2><button type="button" id="quick-menu-close" class="secondary" aria-label="Cerrar menú">✕</button></div><div class="gyste-menu-scroll" tabindex="0" aria-label="Secciones de Gyste"><section><h3>Conectar</h3><div class="gyste-menu-grid"><button type="button" data-tab="explore"><span aria-hidden="true">⌕</span><span>Personas</span></button><button type="button" data-tab="messages"><span aria-hidden="true">✉</span><span>Mensajes</span></button><button type="button" data-tab="notifications"><span aria-hidden="true">🔔</span><span>Avisos</span></button><button type="button" data-tab="spaces"><span aria-hidden="true">✧</span><span>Comunidades</span></button></div></section><section><h3>Crear y descubrir</h3><div class="gyste-menu-grid"><button type="button" data-tab="studio"><span aria-hidden="true">✨</span><span>Estudio creativo</span></button><button type="button" data-tab="reels"><span aria-hidden="true">▶</span><span>Reels</span></button><button type="button" data-tab="videos"><span aria-hidden="true">🎥</span><span>Vídeos</span></button><button type="button" data-tab="stories"><span aria-hidden="true">⏳</span><span>Historias</span></button><button type="button" data-tab="saved"><span aria-hidden="true">🔖</span><span>Guardados</span></button><button type="button" data-tab="searchposts"><span aria-hidden="true">⌕</span><span>Buscar publicaciones</span></button><button type="button" data-tab="challenges"><span aria-hidden="true">🏆</span><span>Retos y talentos</span></button></div></section><section><h3>Aprender y disfrutar</h3><div class="gyste-menu-grid"><button type="button" data-tab="learn"><span aria-hidden="true">📚</span><span>Aprender</span></button><button type="button" data-tab="pages"><span aria-hidden="true">📰</span><span>Páginas y noticias</span></button><button type="button" data-tab="history"><span aria-hidden="true">📷</span><span>Historia documental</span></button><button type="button" data-tab="series"><span aria-hidden="true">🎬</span><span>Frutinovelas</span></button></div></section><section><h3>Negocios y proyectos</h3><div class="gyste-menu-grid"><button type="button" data-tab="business"><span aria-hidden="true">🏪</span><span>Negocios</span></button><button type="button" data-tab="commercial"><span aria-hidden="true">📈</span><span>Promocionar mi negocio</span></button><button type="button" data-tab="apps"><span aria-hidden="true">📱</span><span>Aplicaciones y proyectos</span></button></div></section><section><h3>Tu cuenta y ayuda</h3><div class="gyste-menu-grid"><button type="button" data-tab="appearance"><span aria-hidden="true">🎨</span><span>Apariencia y ahorro de datos</span></button><button type="button" data-tab="safety"><span aria-hidden="true">🛡</span><span>Seguridad</span></button><button type="button" data-tab="feedback"><span aria-hidden="true">💡</span><span>Sugerencias y mejoras</span></button><button type="button" data-tab="help"><span aria-hidden="true">❔</span><span>Cómo usar Gyste</span></button><button type="button" data-tab="install"><span aria-hidden="true">📲</span><span>Instalar Gyste</span></button><button type="button" data-tab="about"><span aria-hidden="true">ℹ</span><span>Acerca de Gyste</span></button></div></section></div></dialog>`;
+</nav><dialog id="quick-menu-dialog" class="gyste-menu-dialog" aria-labelledby="quick-menu-title"><div class="gyste-menu-head"><h2 id="quick-menu-title">Tu Gyste</h2><button type="button" id="quick-menu-close" class="secondary" aria-label="Cerrar menú">✕</button></div><div class="gyste-menu-scroll" tabindex="0" aria-label="Secciones de Gyste"><section><h3>Conectar</h3><div class="gyste-menu-grid"><button type="button" data-tab="explore"><span aria-hidden="true">⌕</span><span>Personas</span></button><button type="button" data-tab="messages"><span aria-hidden="true">✉</span><span>Mensajes</span></button><button type="button" data-tab="notifications"><span aria-hidden="true">🔔</span><span>Avisos</span></button><button type="button" data-tab="spaces"><span aria-hidden="true">✧</span><span>Comunidades</span></button></div></section><section><h3>Crear y descubrir</h3><div class="gyste-menu-grid"><button type="button" data-tab="studio"><span aria-hidden="true">✨</span><span>Estudio creativo</span></button><button type="button" data-tab="reels"><span aria-hidden="true">▶</span><span>Reels</span></button><button type="button" data-tab="videos"><span aria-hidden="true">🎥</span><span>Vídeos</span></button><button type="button" data-tab="stories"><span aria-hidden="true">⏳</span><span>Historias</span></button><button type="button" data-tab="saved"><span aria-hidden="true">🔖</span><span>Guardados</span></button><button type="button" data-tab="searchposts"><span aria-hidden="true">⌕</span><span>Buscar publicaciones</span></button><button type="button" data-tab="challenges"><span aria-hidden="true">🏆</span><span>Retos y talentos</span></button></div></section><section><h3>Aprender y disfrutar</h3><div class="gyste-menu-grid"><button type="button" data-tab="learn"><span aria-hidden="true">📚</span><span>Aprender</span></button><button type="button" data-tab="pages"><span aria-hidden="true">📰</span><span>Páginas y noticias</span></button><button type="button" data-tab="history"><span aria-hidden="true">📷</span><span>Historia documental</span></button><button type="button" data-tab="series"><span aria-hidden="true">🎬</span><span>Frutinovelas</span></button></div></section><section><h3>Negocios y proyectos</h3><div class="gyste-menu-grid"><button type="button" data-tab="business"><span aria-hidden="true">🏪</span><span>Negocios</span></button><button type="button" data-tab="commercial"><span aria-hidden="true">📈</span><span>Promocionar mi negocio</span></button><button type="button" data-tab="apps"><span aria-hidden="true">📱</span><span>Aplicaciones y proyectos</span></button></div></section><section><h3>Tu cuenta y ayuda</h3><div class="gyste-menu-grid"><button type="button" data-tab="pending"><span aria-hidden="true">📤</span><span>Archivos pendientes</span></button><button type="button" data-tab="appearance"><span aria-hidden="true">🎨</span><span>Apariencia y ahorro de datos</span></button><button type="button" data-tab="safety"><span aria-hidden="true">🛡</span><span>Seguridad</span></button><button type="button" data-tab="feedback"><span aria-hidden="true">💡</span><span>Sugerencias y mejoras</span></button><button type="button" data-tab="help"><span aria-hidden="true">❔</span><span>Cómo usar Gyste</span></button><button type="button" data-tab="install"><span aria-hidden="true">📲</span><span>Instalar Gyste</span></button><button type="button" data-tab="about"><span aria-hidden="true">ℹ</span><span>Acerca de Gyste</span></button></div></section></div></dialog>`;
 bindNavigation();
+void paintPending();
 paintGysteConnection();
 paintUnreadBadges();void refreshUnreadBadges();
 }
@@ -630,7 +631,7 @@ paintUnreadBadges();void refreshUnreadBadges();
 function businessDraftChanged(form){if(!form?.dataset.initial)return false;return JSON.stringify(Array.from(form.querySelectorAll("input,select,textarea")).map(f=>f.value))!==form.dataset.initial;}
 function navigationDraftState(){
  const post=document.getElementById("posttext"),media=document.getElementById("media"),msg=document.getElementById("msg"),chatfile=document.getElementById("chatfile"),reel=document.getElementById("reel-upload-status");
- const busy=!!me?.id&&(publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id)||feedbackSendLocks.has(me.id)||document.getElementById("business-form")?.dataset.busy==="true"||Boolean(document.getElementById("reel-generate")?.disabled));
+ const busy=!!me?.id&&(pendingBusy.size>0||publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id)||feedbackSendLocks.has(me.id)||document.getElementById("business-form")?.dataset.busy==="true"||Boolean(document.getElementById("reel-generate")?.disabled));
  const changedProfile=tab==="profile"&&["display","username","bio"].some(id=>{const f=document.getElementById(id);return f&&f.value!==f.defaultValue;});
  const creatorDraft=tab==="studio"&&["creator-topic","creator-script","creator-caption","reel-scene-text","creator-ai-prompt","creator-ai-import"].some(id=>document.getElementById(id)?.value.trim());
  const text=!!(creatorDraft||changedProfile||businessDraftChanged(document.getElementById("business-form"))||document.getElementById("feedback-body")?.value.trim()||post?.value.trim()||msg?.value.trim()||Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim()));
@@ -1249,6 +1250,7 @@ else following=new Set();
 
 async function renderTab(){
 if(!session)return authView();
+if(tab==="pending")return pendingView();
 if(tab==="feed")return feedView();
 if(tab==="spaces")return spacesView();
 if(tab==="explore")return exploreView();
@@ -2675,7 +2677,7 @@ function loadGysteTus(){
  });
  return gysteTusLoading;
 }
-async function gysteResumableTransfer({client,endpoint,key,uid,bucket,path,file,state,active,progress,load}){
+async function gysteResumableTransfer({client,endpoint,key,uid,bucket,path,file,state,active,progress,load,checkpoint=async()=>{}}){
  if(!active())throw Error("Pantalla cerrada");
  const Tus=await load();
  if(!active())throw Error("Pantalla cerrada");
@@ -2690,7 +2692,8 @@ async function gysteResumableTransfer({client,endpoint,key,uid,bucket,path,file,
    retryDelays:[0,2000,5000,10000,20000],
    headers:{authorization:"Bearer "+token,apikey:key},
    metadata:{bucketName:bucket,objectName:path,contentType:file.type,cacheControl:"3600"},
-   onBeforeRequest:async req=>{req.setHeader("authorization","Bearer "+await session());},
+   onBeforeRequest:async req=>{if(new URL(req.getURL(),endpoint).origin!==new URL(endpoint).origin)throw Error("Dirección no válida");req.setHeader("authorization","Bearer "+await session());},
+   onAfterResponse:async(req,res)=>{if(req.getMethod()==="POST"&&res.getStatus()>=200&&res.getStatus()<300){const loc=res.getHeader("Location");if(loc){const url=new URL(loc,endpoint).href;if(new URL(url).origin!==new URL(endpoint).origin)throw Error("Dirección no válida");state.url=url;await checkpoint();}}},
    onProgress:(sent,total)=>{remember();if(active())progress(Math.min(100,Math.floor(100*sent/Math.max(1,total))));},
    onError:error=>{remember();reject(error);},
    onSuccess:()=>{state.url=null;resolve();}
@@ -2698,10 +2701,101 @@ async function gysteResumableTransfer({client,endpoint,key,uid,bucket,path,file,
   try{upload.start();}catch(error){remember();reject(error);}
  });
 }
-function uploadGysteMedia(uid,bucket,path,file,state,active,progress){
+function uploadGysteMedia(uid,bucket,path,file,state,active,progress,checkpoint){
  const endpoint=URL_DB.replace(".supabase.co",".storage.supabase.co")+"/storage/v1/upload/resumable";
- return gysteResumableTransfer({client:db,endpoint,key:KEY_DB,uid,bucket,path,file,state,active,progress,load:loadGysteTus});
+ return gysteResumableTransfer({client:db,endpoint,key:KEY_DB,uid,bucket,path,file,state,active,progress,load:loadGysteTus,checkpoint});
 }
+
+async function runPending(job,ops){
+ if(job.uid!==ops.uid||!ops.active())throw Error("Cuenta cambiada");
+ if(!await ops.confirm(job)){
+  for(let i=0;i<job.files.length;i++){
+   if(!ops.active())throw Error("Cuenta cambiada");
+   if(job.transfers[i].done)continue;
+   await ops.upload(job,i,()=>ops.save(job));
+   job.transfers[i].done=true;job.transfers[i].url=null;await ops.save(job);
+  }
+  if(!ops.active())throw Error("Cuenta cambiada");
+  try{await ops.insert(job)}catch(e){if(!await ops.confirm(job))throw e}
+  if(!await ops.confirm(job))throw Error("Envío no confirmado");
+ }
+ if(!ops.active())throw Error("Cuenta cambiada");
+ await ops.audience(job);await ops.remove(job.id);
+}
+let pendingDB=null;
+const pendingBusy=new Set();
+function openPending(){
+ if(!window.indexedDB)return Promise.reject(Error("Almacenamiento no disponible"));
+ if(!pendingDB)pendingDB=new Promise((ok,no)=>{const q=indexedDB.open("gyste-pending-v1",1);q.onupgradeneeded=()=>{q.result.createObjectStore("jobs",{keyPath:"id"}).createIndex("uid","uid");};q.onsuccess=()=>ok(q.result);q.onerror=()=>{pendingDB=null;no(q.error);};q.onblocked=()=>{pendingDB=null;no(Error("Almacenamiento bloqueado"));};});
+ return pendingDB;
+}
+async function pendingTx(mode,fn){
+ const d=await openPending();return new Promise((ok,no)=>{const tx=d.transaction("jobs",mode);let value;const q=fn(tx.objectStore("jobs"));q.onsuccess=()=>{value=q.result;};tx.oncomplete=()=>ok(value);tx.onabort=()=>no(tx.error||Error("Copia no guardada"));tx.onerror=()=>no(tx.error);});
+}
+const pendingGet=id=>pendingTx("readonly",s=>s.get(id)),pendingList=uid=>pendingTx("readonly",s=>s.index("uid").getAll(uid)),pendingSave=j=>pendingTx("readwrite",s=>s.put(j)),pendingRemove=id=>pendingTx("readwrite",s=>s.delete(id));
+const pendingAccount=uid=>me?.id===uid&&session?.user?.id===uid;
+async function pendingLock(id,fn){
+ if(pendingBusy.has(id))throw Error("Envío en curso");
+ pendingBusy.add(id);
+ try{if(navigator.locks?.request)return await navigator.locks.request("gyste-pending-"+id,{ifAvailable:true},lock=>{if(!lock)throw Error("Abierto en otra pestaña");return fn();});return await fn();}
+ finally{pendingBusy.delete(id);void paintPending();}
+}
+async function paintPending(){
+ const b=document.getElementById("pending-link"),uid=me?.id;if(!b||!uid)return;
+ try{const jobs=await pendingList(uid);if(b.isConnected&&pendingAccount(uid)){b.hidden=!jobs.length;b.textContent="📤 Archivos pendientes ("+jobs.length+")";}}catch{}
+}
+async function processPending(job,progress,viewActive,existing=false){
+ const uid=job.uid,active=()=>pendingAccount(uid)&&viewActive();
+ return pendingLock(job.id,async()=>{
+  if(!active())throw Error("Cuenta cambiada");
+  const old=await pendingGet(job.id);
+  if(old){if(old.uid!==uid)throw Error("Cuenta incorrecta");job=old;}
+  else{if(existing)throw Error("Copia ya retirada");await pendingSave(job);}
+  void paintPending();
+  const confirm=j=>j.kind==="post"?confirmPublishedPost(uid,j.id):checkSentMessage(uid,j.row.recipient_id,j.id,j.row.media_path,j.row.media_type);
+  await runPending(job,{uid,active,confirm,save:pendingSave,remove:pendingRemove,
+   upload:async(j,i,checkpoint)=>{
+    const t=j.transfers[i],f=j.files[i];
+    if(!active()||!t.path.startsWith(uid+"/")||!MEDIA_TYPES.includes(f.type)||!f.size)throw Error("Archivo no válido");
+    if(t.started){try{const {data,error}=await db.storage.from(j.bucket).list(uid,{search:t.path.split("/").pop(),limit:10});if(!error&&(data||[]).some(x=>x.name===t.path.split("/").pop()&&Number(x.metadata?.size)===f.size))return;}catch{}}
+    t.started=true;await checkpoint();
+    await uploadGysteMedia(uid,j.bucket,t.path,f,t,active,p=>progress("Archivo "+(i+1)+"/"+j.files.length+" · "+p+" %"),checkpoint);
+   },
+   insert:async j=>{if(!active())throw Error("Cuenta cambiada");progress("Confirmando envío…");const {error}=await db.from(j.kind==="post"?"posts":"gyste_messages").insert(j.row);if(error)throw error;},
+   audience:async j=>{if(!active())throw Error("Cuenta cambiada");if(j.kind!=="post"||!["selected","except"].includes(j.row.audience))return;
+    const read=()=>db.from("gyste_post_audience").select("member_ids").eq("post_id",j.id).eq("owner_id",uid).maybeSingle();
+    const matches=d=>d&&JSON.stringify([...(d.member_ids||[])].sort())===JSON.stringify([...j.members].sort());
+    const previous=await read();if(previous.error)throw previous.error;if(previous.data){if(!matches(previous.data))throw Error("Audiencia diferente");return;}
+    const {error}=await db.from("gyste_post_audience").insert({post_id:j.id,owner_id:uid,member_ids:j.members});if(error){const check=await read();if(check.error||!matches(check.data))throw error;}
+   }});
+ });
+}
+async function pendingView(){
+ const uid=me?.id;if(!uid)return;
+ shell('<section class="panel"><h2>Archivos pendientes</h2><p class="muted">Cierra y vuelve a abrir Gyste para recuperar las copias guardadas en este dispositivo. Solo se reanuda cuando tú lo decides. Si caduca la transferencia, puede comenzar desde cero. No borres los datos del navegador. En dispositivos compartidos, evita guardar archivos privados.</p><p id="pending-status" role="status"></p><div id="pending-list"></div><button type="button" class="secondary" id="pending-refresh">Actualizar lista</button></section>');
+ const host=document.getElementById("pending-list"),status=document.getElementById("pending-status"),refresh=document.getElementById("pending-refresh");
+ const active=()=>pendingAccount(uid)&&tab==="pending"&&host.isConnected;
+ refresh.onclick=()=>{if(active()&&!pendingBusy.size)void pendingView();};
+ try{
+  const jobs=await pendingList(uid);if(!active())return;
+  if(!jobs.length){host.textContent="No tienes archivos pendientes en este dispositivo.";return;}
+  for(const job of jobs.sort((a,b)=>a.created-b.created)){
+   const card=document.createElement("article");card.className="post";
+   const title=document.createElement("h3");title.textContent=job.kind==="chat"?"Mensaje privado pendiente":"Publicación pendiente";
+   const meta=document.createElement("p");meta.className="muted";meta.textContent=job.files.length+" archivo(s) · "+(job.files.reduce((n,f)=>n+f.size,0)/1048576).toFixed(1)+" MB · "+job.transfers.filter(t=>t.done).length+" completos";
+   const names=document.createElement("p");names.textContent=job.files.map(f=>f.name||"Archivo").join(", ").slice(0,400);
+   const info=document.createElement("p");info.className="muted";info.textContent=job.kind==="chat"?"Destinatario original conservado.":"Audiencia original: "+({public:"Público",friends:"Amigos",selected:"Personas elegidas",except:"Amigos excepto seleccionados",only_me:"Solo yo"}[job.row.audience]||"Privada");
+   const resume=document.createElement("button");resume.type="button";resume.className="primary";resume.textContent="Reanudar";
+   const discard=document.createElement("button");discard.type="button";discard.className="secondary";discard.textContent="Quitar copia local";
+   const feedback=document.createElement("p");feedback.setAttribute("role","status");
+   card.append(title,meta,names,info,resume,discard,feedback);host.append(card);
+   const removeCard=message=>{if(active()){card.remove();status.textContent=message;if(!host.children.length)host.textContent="No tienes archivos pendientes en este dispositivo.";}};
+   resume.onclick=async()=>{if(!active())return;resume.disabled=discard.disabled=true;feedback.textContent="Comprobando conexión…";try{await processPending(job,p=>{if(active())feedback.textContent=p;},active,true);removeCard("Envío confirmado.");}catch{if(active())feedback.textContent="No se confirmó el envío. Actualiza la lista o comprueba Internet y vuelve a intentarlo.";}finally{resume.disabled=discard.disabled=false;}};
+   discard.onclick=async()=>{if(!active()||!confirm("¿Quitar la copia local? No se deshacen envíos ya registrados."))return;resume.disabled=discard.disabled=true;try{await pendingLock(job.id,async()=>{if(!active())throw Error("Cuenta cambiada");const current=await pendingGet(job.id);if(current?.uid===uid)await pendingRemove(job.id);});removeCard("Copia local eliminada.");}catch{if(active())feedback.textContent="No se pudo quitar la copia.";}finally{resume.disabled=discard.disabled=false;}};
+  }
+ }catch{if(active())status.textContent="No se pudo acceder al almacenamiento local.";}
+}
+
 const pendingPostTransfers=new WeakMap();
 const publishLocks=new Set();
 async function confirmPublishedPost(uid,id){
@@ -2739,6 +2833,20 @@ async function publish(options={}){
   draft.transfers=prepared.map(file=>({path:uid+"/"+postId+"-"+crypto.randomUUID()+"."+({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type],url:null}));
   }
   const prepared=draft.prepared;
+  if(prepared.length){
+   const items=draft.transfers.map((t,i)=>({path:t.path,type:prepared[i].type})),first=items[0];
+   const url=items.length>1?MEDIA_MANIFEST+JSON.stringify(items):audience==="public"?db.storage.from(BUCKET).getPublicUrl(first.path).data.publicUrl:null;
+   const row={id:postId,content:text,user_id:uid,audience,media_url:url,media_type:first.type,media_path:first.path};
+   if(spacesReady)row.space_id=space;
+   const job={id:postId,uid,kind:"post",bucket,files:prepared,transfers:draft.transfers,members,row,created:Date.now()};
+   b.textContent="Guardando copia local…";
+   await processPending(job,p=>{if(active())b.textContent=p;},active);
+   postCommitted=true;pendingPostTransfers.delete(mediaInput);
+   if(me?.id===uid&&readPostDraft(uid).trim()===text)writePostDraft(uid,"");
+   if(batch)return {ok:true};
+   if(active()){sharedPostId=null;say("Publicación compartida.");try{resetFeedPage();await feedView();}catch{say("Publicación guardada. Actualiza Inicio para verla.");}}
+   return {ok:true};
+  }
   for(let i=uploaded.length;i<prepared.length;i++){
    if(!active())throw Error("Sección cerrada");
    const file=prepared[i],state=draft.transfers[i],path=state.path;
@@ -2766,7 +2874,7 @@ async function publish(options={}){
   try{resetFeedPage();await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
   // Se conservan los archivos confirmados y las URL temporales para reintentar el mismo borrador sin duplicarlos.
-  if(active())say(videoPreparationError?"Este teléfono no puede abrir uno de los vídeos seleccionados. Usa MP4 con H.264 y AAC. No se ha publicado nada.":preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"Subida interrumpida. Conservamos tu selección y el progreso disponible. Pulsa Compartir otra vez cuando vuelva Internet, sin cambiar los archivos ni salir.",true);
+  if(active())say(videoPreparationError?"Este teléfono no puede abrir uno de los vídeos seleccionados. Usa MP4 con H.264 y AAC. No se ha publicado nada.":preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo confirmar el envío. Si se guardó la copia, aparecerá en Archivos pendientes. Si no aparece, conserva esta pantalla y vuelve a intentarlo.",true);
   if(batch)return {ok:postCommitted,warning:postCommitted};
    }finally{publishLocks.delete(uid);controls.forEach((c,i)=>c.disabled=previous[i]);if(b.isConnected&&!batch){b.disabled=false;b.textContent="Compartir publicación";}}
 }
@@ -3526,7 +3634,14 @@ async function sendMessage(e){
  chatPendingSends.set(form,draft);
  }
  fileType=draft.fileType;
- if(draft.insertAttempted){committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);}
+ if(file&&(fileType.startsWith("image/")||fileType.startsWith("video/"))){
+   stage="copia local y subida";
+   const job={id:draft.id,uid,kind:"chat",bucket:CHAT_BUCKET,files:[draft.payload],transfers:[{path:draft.path,url:null}],members:[],created:Date.now(),row:{id:draft.id,sender_id:uid,recipient_id:target,content:content||(fileType.startsWith("video/")?"🎬 Vídeo":"📷 Fotografía"),media_path:draft.path,media_type:fileType}};
+   if(status)status.textContent="Guardando copia local…";
+   await processPending(job,p=>{if(active()){if(status)status.textContent=p;button.textContent="Subiendo…";}},active);
+   committed=true;
+ }
+ if(!committed&&draft.insertAttempted){committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);}
  if(!committed){
  if(!active())return;
  if(file&&!draft.uploaded){
@@ -3547,7 +3662,7 @@ async function sendMessage(e){
  }
  if(committed){chatPendingSends.delete(form);if(active()){input.value="";fileInput.value="";clearVoiceDraft();resetVoiceUI();const fs=document.getElementById("chatfile-status");if(fs)fs.textContent="";const fileSend=document.getElementById("send-chat-file");if(fileSend)fileSend.hidden=true;const lightOption=document.getElementById("chat-light-photo-option");if(lightOption)lightOption.hidden=true;clearChatFilePreview();if(status){status.dataset.success="true";status.textContent=file?"Archivo enviado y registrado.":"Mensaje enviado y registrado.";}try{await refreshChatMessages(target,true);}catch{}}}
  }catch(error){
- if(active()&&status){status.removeAttribute("data-success");status.textContent=error?.code==="42501"?"No se pudo enviar por las preferencias de privacidad o los permisos. Conservamos tu borrador.":"No se pudo completar la etapa de "+stage+". Conservamos tu borrador y el progreso disponible mientras sigas en esta conversación. Cuando vuelva Internet, pulsa Enviar sin cambiar el archivo.";}
+ if(active()&&status){status.removeAttribute("data-success");status.textContent=error?.code==="42501"?"No se pudo enviar por las preferencias de privacidad o los permisos. Conservamos tu borrador.":"No se pudo completar la etapa de "+stage+". Si se guardó la copia, estará en Archivos pendientes. Si no aparece, conserva esta pantalla y vuelve a pulsar Enviar.";}
  // No eliminar archivos tras una respuesta incierta: podrían pertenecer a un mensaje ya registrado.
  }finally{chatSendLocks.delete(key);controls.forEach((c,i)=>c.disabled=previous[i]);button.textContent="Enviar";if(committed&&active())input.focus();}
 }
