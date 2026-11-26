@@ -640,7 +640,7 @@ app.innerHTML=`
 <input id="password" class="field" type="password" minlength="6" autocomplete="current-password" placeholder="Contraseña"><label style="display:flex;gap:8px;align-items:center;margin:6px 0 12px"><input id="show-login-password" type="checkbox"> Mostrar contraseña</label>
 <button class="primary full" id="login">Entrar</button>
 <button class="secondary full" id="forgot">¿Olvidaste tu contraseña?</button>
-<details id="signup-details" style="margin-top:18px"><summary>¿Todavía no tienes cuenta? Registrarme</summary><p class="muted">1. Escribe tu correo y una contraseña propia de al menos 8 caracteres arriba. 2. Lee y acepta las normas. 3. Pulsa Crear cuenta. Si recibes un correo de confirmación, abre el enlace y vuelve a Gyste. Revisa también Spam.</p><p class="muted">Piloto para personas adultas. La protección específica de menores y la moderación siguen en preparación.</p><button type="button" class="secondary full" id="signup-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><label style="display:flex;align-items:flex-start;gap:10px;margin:12px 0"><input type="checkbox" id="signup-accept"><span>He leído las normas de convivencia y la información provisional de privacidad, y entiendo cómo se comparte el contenido.</span></label><button class="primary full" id="signup">Crear cuenta</button></details><p class="muted" style="font-size:12px">Gyste está en fase beta. Evita compartir datos personales o fotografías ajenas sin autorización.</p>
+<details id="signup-details" style="margin-top:18px"><summary>¿Todavía no tienes cuenta? Registrarme</summary><p class="muted">1. Escribe tu correo y una contraseña propia de al menos 8 caracteres arriba. 2. Repite la contraseña abajo. 3. Lee y acepta las normas y pulsa Crear cuenta. Si recibes un correo de confirmación, abre el enlace y vuelve a Gyste. Revisa también Spam.</p><p class="muted">Piloto para personas adultas. La protección específica de menores y la moderación siguen en preparación.</p><label for="signup-confirm">Repite tu contraseña</label><input id="signup-confirm" class="field" type="password" minlength="8" autocomplete="new-password" placeholder="Repite la contraseña"><p class="muted">Usa una contraseña exclusiva para Gyste. La confirmación solo se utiliza al crear la cuenta.</p><button type="button" class="secondary full" id="signup-rules">Leer normas de convivencia</button><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><label style="display:flex;align-items:flex-start;gap:10px;margin:12px 0"><input type="checkbox" id="signup-accept"><span>He leído las normas de convivencia y la información provisional de privacidad, y entiendo cómo se comparte el contenido.</span></label><button class="primary full" id="signup">Crear cuenta</button></details><p class="muted" style="font-size:12px">Gyste está en fase beta. Evita compartir datos personales o fotografías ajenas sin autorización.</p>
 <p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><details open style="margin-top:16px"><summary>📲 Instalar Gyste en mi teléfono</summary><button type="button" class="primary full" id="guest-install" hidden>Instalar Gyste</button><p id="guest-install-status" role="status" class="muted"></p><p><strong>Android:</strong> 1. Abre Gyste en Chrome (no dentro de WhatsApp). 2. Toca los tres puntos de Chrome. 3. Elige Instalar aplicación o Añadir a pantalla de inicio. 4. Abre el icono Gyste desde tu pantalla principal.</p><p><strong>iPhone:</strong> abre Gyste en Safari, toca Compartir y Añadir a pantalla de inicio.</p><label for="guest-share-link">Enlace oficial para compartir con personas adultas del piloto</label><input id="guest-share-link" class="field" readonly value="https://gyste2025.vercel.app/"><button type="button" class="secondary full" id="guest-copy-link">Copiar enlace de Gyste</button><p id="guest-copy-status" role="status" class="muted"></p><p class="muted">Versión web beta; aún no disponible en Google Play. Requiere Internet.</p></details>
 </section>`;
 document.getElementById("guest-install").onclick=e=>requestGuestInstall(e.currentTarget);
@@ -650,9 +650,10 @@ document.getElementById("login").onclick=login;
 document.getElementById("forgot").onclick=sendPasswordReset;
 document.getElementById("signup").onclick=signup;
 document.getElementById("signup-rules").onclick=showCommunityRules;
-document.getElementById("show-login-password").onchange=e=>{document.getElementById("password").type=e.target.checked?"text":"password";};
+document.getElementById("show-login-password").onchange=e=>{const type=e.target.checked?"text":"password";document.getElementById("password").type=type;document.getElementById("signup-confirm").type=type;};
 document.getElementById("password").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();const registration=document.getElementById("signup-details").open;if(registration){if(document.getElementById("signup-accept").checked)signup();else say("Lee y acepta las normas antes de crear tu cuenta.",true);}else login();}};
-document.getElementById("signup-details").addEventListener("toggle",e=>{const field=document.getElementById("password");field.autocomplete=e.currentTarget.open?"new-password":"current-password";});
+document.getElementById("signup-details").addEventListener("toggle",e=>{const field=document.getElementById("password");field.autocomplete=e.currentTarget.open?"new-password":"current-password";if(!e.currentTarget.open)document.getElementById("signup-confirm").value="";});
+document.getElementById("signup-confirm").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();signup();}};
 }
 function showCommunityRules(){
  const d=document.createElement("dialog");
@@ -677,7 +678,7 @@ document.getElementById("savepassword").onclick=saveNewPassword;
 let authBusy=false;
 function beginAuthAction(button,label){
  if(authBusy||!button||button.disabled)return null;
- authBusy=true;const ids=["login","signup","forgot","email","password","signup-accept"],nodes=ids.map(id=>document.getElementById(id)).filter(Boolean),states=nodes.map(n=>n.disabled),oldLabel=button.textContent;
+ authBusy=true;const ids=["login","signup","forgot","email","password","signup-confirm","signup-accept"],nodes=ids.map(id=>document.getElementById(id)).filter(Boolean),states=nodes.map(n=>n.disabled),oldLabel=button.textContent;
  nodes.forEach(n=>n.disabled=true);button.textContent=label;
  return ()=>{authBusy=false;nodes.forEach((n,i)=>n.disabled=states[i]);button.textContent=oldLabel;};
 }
@@ -764,11 +765,14 @@ async function signup(){
   const button=document.getElementById("signup");
   if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
   if(password.length<8)return say("Para crear una cuenta, elige una contraseña de al menos 8 caracteres.",true);
+  const confirmation=document.getElementById("signup-confirm");
+  if(!confirmation||confirmation.value!==password)return say("Las contraseñas no coinciden. Repite la contraseña antes de crear tu cuenta.",true);
   if(!document.getElementById("signup-accept")?.checked)return say("Lee las normas de convivencia y la información de privacidad antes de registrarte.",true);
   const finish=beginAuthAction(button,"Creando cuenta…");if(!finish)return;
   try{
     const {data,error}=await db.auth.signUp({email,password});
     if(error)throw error;
+    confirmation.value="";
     // Supabase puede devolver identidades vacías cuando el correo ya existe,
     // para evitar revelar información de cuentas a terceros.
     if(data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
