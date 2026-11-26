@@ -413,6 +413,18 @@ ${navButton("profile","Perfil","○")}
 bindNavigation();
 }
 
+function navigationDraftState(){
+ const post=document.getElementById("posttext"),media=document.getElementById("media"),msg=document.getElementById("msg"),chatfile=document.getElementById("chatfile"),reel=document.getElementById("reel-upload-status");
+ const busy=!!me?.id&&(publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true");
+ const text=!!(post?.value.trim()||msg?.value.trim()||Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim()));
+ const files=!!(media?.files?.length||chatfile?.files?.length||voiceDraft||voiceCapture||Number(reel?.dataset.pending||0)>0);
+ return {busy,text,files};
+}
+function confirmNavigationDraft(){
+ const state=navigationDraftState();
+ if(state.busy){say("Hay un envío en curso. Espera a que termine antes de cambiar de sección.",true);return false;}
+ return !state.text&&!state.files||confirm(state.files?"Tienes archivos, una grabación o texto sin enviar. Si sales de esta pantalla se perderán los cambios no guardados. ¿Continuar?":"Tienes texto sin enviar. Si sales de esta pantalla se perderán los cambios no guardados. ¿Continuar?");
+}
 function bindNavigation(){
 app.querySelectorAll("[data-tab]").forEach(b=>{b.onclick=()=>goTab(b.dataset.tab);});
 const create=document.getElementById("compose-btn");if(create)create.onclick=goCompose;
@@ -425,12 +437,14 @@ bindEditorialComments();
 bindCaribbeanBulletins();
 bindCubaBrief();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
+if(!confirmNavigationDraft())return;
 resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
 }
 
 function bindSpaceButtons(){
 app.querySelectorAll("[data-space]").forEach(b=>b.onclick=()=>{
+if(!confirmNavigationDraft())return;
 resetFeedPage();sharedPostId=null;selectedSpaceId=b.dataset.space;homeFilter="all";tab="feed";notice="";renderTab();window.scrollTo({top:0,behavior:"smooth"});
 });
 }
@@ -468,7 +482,8 @@ function timingSummary(){
  if(lines.length===1)lines.push("Todavía no hay mediciones. Abre Inicio, Vídeos o Reels y vuelve a Ayuda.");
  return lines.join("\n");
 }
-function goTab(next,pageId=null){
+function goTab(next,pageId=null,guarded=false){
+if(!guarded&&!confirmNavigationDraft())return;
 if(next==="pages"){activeEditorialPage=pageId;pageSearch="";}
 const timingStart=performance.now(),timingSerial=++gysteTimingSerial;
 if(next!=="stories")stopStoryTimer();
@@ -485,6 +500,7 @@ function revealPostComposer(focusText=false){
 }
 async function goCompose(){
  if(tab==="feed"&&document.getElementById("composer")){revealPostComposer(true);return;}
+ if(!confirmNavigationDraft())return;
  sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
  if(tab==="feed")revealPostComposer(true);
 }
@@ -1381,6 +1397,7 @@ function bindPageNavigation(){
 function pageShelf(mode){const f=pageFollows(),pages=mode==="following"?GYSTE_PAGES.filter(p=>f.has(p[0])):[...GYSTE_PAGES.filter(p=>["cuba","cuba-ciudadana","nio","14ymedio","eltoque"].includes(p[0])),...GYSTE_PAGES.filter(p=>!["cuba","cuba-ciudadana","nio","14ymedio","eltoque"].includes(p[0]))].slice(0,5);return `<section class="panel"><div class="section-heading"><h2>${mode==="following"?"Tus páginas":"Páginas recomendadas"}</h2><button class="text-link" data-tab="pages">Ver todas</button></div><div style="display:flex;gap:10px;overflow-x:auto">${pages.map(p=>`<div style="flex:0 0 min(85%,280px)">${pageCard(p)}</div>`).join("")||"<p>Elige páginas que te interesen.</p>"}</div><p class="muted">Fuentes de consulta, no noticias en directo.</p></section>`;}
 function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=>b.onclick=()=>{const uid=me?.id,id=b.dataset.pageFollow;if(!uid||!GYSTE_PAGES.some(p=>p[0]===id))return;const f=pageFollows();f.has(id)?f.delete(id):f.add(id);try{localStorage.setItem(pageKey(uid),JSON.stringify([...f]));}catch{return say("No se pudo guardar el seguimiento.",true);}if(tab==="pages")pagesView();else{app.querySelectorAll("[data-page-follow]").forEach(btn=>{if(btn.dataset.pageFollow!==id)return;btn.textContent=f.has(id)?"Siguiendo":"Seguir";btn.setAttribute("aria-pressed",String(f.has(id)));if(tab==="feed"&&homeFilter==="following"&&!f.has(id))btn.closest("article")?.remove();});}});}
 async function goReelCompose(initialFile=null,initialCaption=""){
+ if(!confirmNavigationDraft())return;
  sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
  if(tab!=="feed")return;
  revealPostComposer();
@@ -1396,7 +1413,7 @@ async function goReelCompose(initialFile=null,initialCaption=""){
  const cleanup=()=>{if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl="";}};
  const observer=new MutationObserver(()=>{if(!input.isConnected){cleanup();observer.disconnect();}});observer.observe(app,{childList:true,subtree:true});
  const isVideo=f=>!!f&&["video/mp4","video/webm"].includes(f.type)&&f.size>0&&f.size<=MAX_POST_BYTES;
- const redraw=()=>{list.replaceChildren();status.textContent=queue.length+" vídeo(s) seleccionados. Puedes añadir más.";button.disabled=busy||!queue.length;button.textContent=busy?"Publicando…":queue.length>1?"Compartir "+queue.length+" Reels":"Compartir Reel";input.disabled=busy;
+ const redraw=()=>{feedback.dataset.pending=String(queue.length);feedback.dataset.busy=String(busy);list.replaceChildren();status.textContent=queue.length+" vídeo(s) seleccionados. Puedes añadir más.";button.disabled=busy||!queue.length;button.textContent=busy?"Publicando…":queue.length>1?"Compartir "+queue.length+" Reels":"Compartir Reel";input.disabled=busy;
  if(previewFile!==queue[0]){cleanup();previewFile=queue[0];preview.removeAttribute("src");preview.hidden=!previewFile;if(previewFile){objectUrl=URL.createObjectURL(previewFile);preview.src=objectUrl;}}
  queue.forEach((f,i)=>{const row=document.createElement("div");row.className="row";const name=document.createElement("span");name.textContent=(i+1)+". "+f.name+" · "+(f.size/1048576).toFixed(1)+" MB";const remove=document.createElement("button");remove.type="button";remove.className="secondary";remove.textContent="Quitar";remove.disabled=busy;remove.onclick=()=>{queue.splice(i,1);redraw();};row.append(name,remove);list.append(row);});};
  input.onchange=()=>{let rejected=0;for(const f of Array.from(input.files||[])){if(!isVideo(f)||queue.length>=MAX_POST_FILES){rejected++;continue;}if(!queue.some(x=>x.name===f.name&&x.size===f.size&&x.lastModified===f.lastModified))queue.push(f);}input.value="";redraw();feedback.textContent=rejected?"Algunos archivos no se añadieron: máximo 10 vídeos MP4/WebM de 50 MB cada uno.":"";};
@@ -2143,7 +2160,7 @@ async function loadHomeCircle(valid){
   const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username,avatar_url").in("user_id",ids);
   if(!active())return;if(error)throw error;
   const profiles=new Map((data||[]).map(p=>[p.user_id,p]));
-  for(const id of ids){const person=profiles.get(id);if(!person||!following.has(id))continue;const label=person.display_name||person.username||"Miembro";item(person,label,()=>{if(!active())return;chatUser=id;goTab("messages");},"Enviar mensaje a "+label);}
+  for(const id of ids){const person=profiles.get(id);if(!person||!following.has(id))continue;const label=person.display_name||person.username||"Miembro";item(person,label,()=>{if(!active()||!confirmNavigationDraft())return;chatUser=id;goTab("messages",null,true);},"Enviar mensaje a "+label);}
   status.textContent=host.children.length>1?"Toca una persona para conversar. Se muestran hasta 24 perfiles que sigues.":"No hay perfiles visibles en tu círculo.";
  }catch{if(active())status.textContent="No se pudo cargar tu círculo. Puedes seguir usando Inicio.";}
 }
@@ -2211,7 +2228,7 @@ const quickCompose=document.getElementById("quick-compose");if(quickCompose)quic
 const closeComposer=document.getElementById("composer-close");if(closeComposer)closeComposer.onclick=()=>{if(publishLocks.has(me?.id))return;document.getElementById("composer").hidden=true;quickCompose?.setAttribute("aria-expanded","false");quickCompose?.focus({preventScroll:true});quickCompose?.scrollIntoView({block:"center"});};
 const quickMedia=document.getElementById("quick-media");if(quickMedia)quickMedia.onclick=()=>{const media=document.getElementById("media");if(media&&!media.disabled){revealPostComposer();media.click();}};
 const quickStudio=document.getElementById("quick-studio");if(quickStudio)quickStudio.onclick=()=>document.getElementById("open-creator-studio")?.click();
- document.getElementById("open-creator-studio").onclick=()=>{const t=document.getElementById("posttext"),f=document.getElementById("media");if((t.value.trim()||f.files.length)&&!confirm("Abrir el estudio dejará atrás este borrador y sus archivos. ¿Continuar?"))return;goTab("studio");};
+ document.getElementById("open-creator-studio").onclick=()=>goTab("studio");
  bindAudiencePicker();
  bindPostDraft();
  document.getElementById("media").onchange=e=>{
@@ -2222,12 +2239,10 @@ const quickStudio=document.getElementById("quick-studio");if(quickStudio)quickSt
 bindPostActions();
 if(contentFirst)void loadHomeCircle(valid);
 app.querySelectorAll("[data-feed-page]").forEach(b=>b.onclick=async()=>{
- if(!valid()||b.disabled||publishLocks.has(me?.id))return;
+ if(!valid()||b.disabled)return;
  const next=page+(b.dataset.feedPage==="next"?1:-1);
  if(next<0||(next>page&&!hasNext))return;
- const draft=document.getElementById("posttext"),media=document.getElementById("media");
- const commentDraft=Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim());
- if((draft?.value.trim()||media?.files?.length||commentDraft)&&!confirm("Cambiar de página cerrará los borradores sin guardar. ¿Continuar?"))return;
+ if(!confirmNavigationDraft())return;
  b.disabled=true;await feedView(next);
  if(tab==="feed"&&feedPageState.key===viewKey&&feedPageState.page===next)document.getElementById("community-feed-heading")?.scrollIntoView({block:"start"});
 });
@@ -2863,7 +2878,7 @@ async function refreshChatMessages(target,markRead=false){
  if(document.fullscreenElement||list.querySelector(".media-overlay")||Array.from(list.querySelectorAll("video,audio")).some(v=>!v.paused&&!v.ended))return;
  if(signature!==chatRenderSignature){
  const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();
- list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{if(!valid())return;sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});
+ list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{if(!valid()||!confirmNavigationDraft())return;sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});
  if(nearBottom)list.scrollTop=list.scrollHeight;chatRenderSignature=signature;
  }
  const unread=ordered.filter(m=>m.recipient_id===uid&&m.sender_id===target&&!m.read_at).map(m=>m.id);
@@ -2929,7 +2944,7 @@ async function messagesView(){
  chatPeerProfile=person;
  const canCompose=chatContactAvailable(person);
  shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p>${chatSafetyNotice(person)}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
- document.getElementById("back").onclick=()=>{stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
+ document.getElementById("back").onclick=()=>{if(!confirmNavigationDraft())return;stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
  if(canCompose){bindVoiceRecorder(target);
  document.getElementById("sendmsg").onsubmit=sendMessage;
  document.getElementById("chatfile").onchange=()=>{stopVoiceCapture();resetVoiceUI();updateChatFileUI();};}
