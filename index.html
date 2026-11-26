@@ -414,6 +414,19 @@ header{gap:6px;padding:8px 9px}
 .appearance-save-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px}
 .appearance-save-row button{min-height:44px}
 @media(max-width:340px){.wallpaper-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Avisos y mensajes sin leer: contadores y bandeja visual */
+.icon-btn[data-tab="notifications"],nav button[data-tab="messages"],nav button[data-tab="notifications"]{position:relative}
+.unread-count{position:absolute;top:0;right:0;background:#ffbd80;color:#182632;font-size:10px;line-height:17px;min-width:17px;padding:0 4px;border:1px solid var(--bg);border-radius:20px;font-weight:800;pointer-events:none}
+.unread-count[hidden]{display:none}
+.notice-inbox{max-width:650px;margin-inline:auto}
+.notice-inbox [data-notice-filter][aria-pressed=true]{background:var(--mint);color:#082b3a}
+.notice-inbox .notice-day{font-size:12px;color:var(--muted);padding:12px 0 5px}
+.notice-item{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px;padding:12px 10px;margin:5px 0;border:1px solid var(--line);border-radius:12px}
+.notice-item.unread{background:#193d50;border-left:3px solid var(--mint)}
+.notice-item .notice-symbol{color:var(--mint);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#10283a}
+.notice-item .notice-copy{overflow-wrap:anywhere;line-height:1.45}
+.notice-item .notice-meta{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;color:var(--muted);font-size:11px}
+.notice-item button{min-height:40px;padding:7px 9px;font-size:12px}
 </style>
 </head>
 <body>
@@ -512,7 +525,7 @@ bookmark:'<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/>',
 send:'<path d="m22 2-7 20-4-9-9-4 20-7zM22 2 11 13"/>',
 repost:'<path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3"/>'
 };return paths[name]?'<svg class="gyste-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+paths[name]+'</svg>':"";}
-function navButton(dest,label,symbol){return `<button data-tab="${dest}" class="${tab===dest?"active":""}" aria-label="${label}" ${tab===dest?'aria-current="page"':''}><b aria-hidden="true">${gysteIcon(dest)||symbol}</b>${label}</button>`;}
+function navButton(dest,label,symbol){return `<button data-tab="${dest}" class="${tab===dest?"active":""}" aria-label="${label}" ${tab===dest?'aria-current="page"':''}><b aria-hidden="true">${gysteIcon(dest)||symbol}</b>${label}${["messages","notifications"].includes(dest)?unreadBadge(dest):""}</button>`;}
 
 function shell(content){
 clearPostPreviews();
@@ -524,7 +537,7 @@ app.innerHTML=`
 <button class="brand-button" data-tab="feed" aria-label="Ir al inicio de Gyste"><span class="brand-mark">G</span><span class="brand-copy">GYSTE<small>Un proyecto de JORSTEKA</small></span></button>
 <div class="top-actions">
 <button class="icon-btn ${tab==="explore"?"selected":""}" data-tab="explore" aria-label="Explorar personas y contenidos" title="Explorar">${gysteIcon("explore")}</button>
-<button class="icon-btn ${tab==="notifications"?"selected":""}" data-tab="notifications" aria-label="Notificaciones" title="Notificaciones">${gysteIcon("notifications")}</button>
+<button class="icon-btn ${tab==="notifications"?"selected":""}" data-tab="notifications" aria-label="Notificaciones" title="Notificaciones">${gysteIcon("notifications")}${unreadBadge("notifications")}</button>
 <button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
 <details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">${gysteIcon("menu")}</summary>
 <div class="menu-dropdown">
@@ -551,6 +564,7 @@ ${navButton("messages","Mensajes","✉")}
 ${navButton("profile","Perfil","○")}
 </nav>`;
 bindNavigation();
+paintUnreadBadges();void refreshUnreadBadges();
 }
 
 function navigationDraftState(){
@@ -884,6 +898,7 @@ async function copyGuestLink(){
  catch{field.focus();field.select();status.textContent="Mantén pulsado el enlace y elige Copiar.";}
 }
 function authView(){
+resetUnreadBadges();
 resetFeedPage();
 cubaNewsFilter={uid:null,query:"",topic:""};
 editorialCloud=null;
@@ -2922,6 +2937,34 @@ async function saveProfile(){
  }
 }
 
+let unreadState={uid:null,stamp:0,serial:0,loading:false,messages:null,notifications:null};
+function resetUnreadBadges(){unreadState={uid:null,stamp:0,serial:0,loading:false,messages:null,notifications:null};}
+function unreadLabel(count){return Number.isSafeInteger(count)&&count>0?(count>99?"99+":String(count)):"";}
+function unreadBadge(kind){return '<span class="unread-count" data-unread-kind="'+kind+'" aria-hidden="true" hidden></span>';}
+function paintUnreadBadges(){
+ const uid=me?.id;
+ app.querySelectorAll("[data-unread-kind]").forEach(node=>{const kind=node.dataset.unreadKind,count=uid&&unreadState.uid===uid?unreadState[kind]:null,label=unreadLabel(count);node.textContent=label;node.hidden=!label;const b=node.closest("button");if(b)b.setAttribute("aria-label",(kind==="messages"?"Mensajes":"Notificaciones")+(label?" · "+count+" sin leer":""));});
+}
+async function refreshUnreadBadges(force=false){
+ const uid=me?.id;if(!uid||session?.user?.id!==uid||document.hidden)return;
+ if(unreadState.uid!==uid)unreadState={uid,stamp:0,serial:0,loading:false,messages:null,notifications:null};
+ const state=unreadState,now=Date.now(),interval=gysteDataSaver(uid)?120000:60000;
+ if(!force&&(state.loading||now-state.stamp<interval))return;
+ const serial=++state.serial;state.loading=true;state.stamp=now;
+ try{
+ const results=await Promise.allSettled([
+ db.from("gyste_messages").select("id",{count:"exact",head:true}).eq("recipient_id",uid).is("read_at",null),
+ db.from("gyste_notifications").select("id",{count:"exact",head:true}).eq("user_id",uid).eq("is_read",false)
+ ]);
+ if(unreadState!==state||state.serial!==serial||me?.id!==uid||session?.user?.id!==uid)return;
+ ["messages","notifications"].forEach((kind,i)=>{const r=results[i];state[kind]=r.status==="fulfilled"&&!r.value.error&&Number.isSafeInteger(r.value.count)&&r.value.count>=0?r.value.count:null;});
+ paintUnreadBadges();
+ }finally{if(unreadState===state&&state.serial===serial)state.loading=false;}
+}
+function notificationMarkup(rows,busy){
+ let day=null;
+ return rows.map((n,i)=>{const key=chatDateKey(n.created_at),separator=key&&key!==day?'<div class="notice-day">'+esc(chatDayLabel(n.created_at))+'</div>':"";day=key;return separator+'<article class="notice-item '+(n.is_read?"":"unread")+'"><span class="notice-symbol">'+gysteIcon("notifications")+'</span><div class="notice-copy">'+esc(n.message)+'<div class="notice-meta"><span>'+esc(chatClock(n.created_at))+' · '+(n.is_read?"Leído":"Nuevo")+'</span>'+(!n.is_read?'<button type="button" class="secondary" data-read-index="'+i+'" '+(busy?"disabled":"")+'>Marcar leído</button>':"")+'</div></div></article>';}).join("")||'<p class="muted">No hay avisos en esta selección.</p>';
+}
 let notificationEpoch=0,notificationFilter="all";
 const notificationLocks=new Set();
 function visibleNotifications(rows,filter){return filter==="unread"?rows.filter(n=>!n.is_read):rows;}
@@ -2942,7 +2985,7 @@ async function notificationView(){
  const {data,error}=await db.from("gyste_notifications").select("id,message,is_read,created_at").eq("user_id",uid).order("created_at",{ascending:false}).order("id",{ascending:false}).limit(60);
  if(!valid())return;if(error)throw error;
  const rows=data||[];
- shell('<section class="panel"><h2>Notificaciones</h2><p class="muted">Últimos 60 avisos. Tú decides cuándo marcarlos como leídos.</p><div class="actions"><button class="secondary" data-notice-filter="all">Todos</button><button class="secondary" data-notice-filter="unread">Sin leer</button><button class="secondary" id="refresh-notices">Actualizar</button></div><p id="notice-count" role="status"></p><button class="primary full" id="read-notices">Marcar avisos mostrados como leídos</button><p class="muted" id="notice-result" role="status"></p><div id="notice-list"></div></section>');
+ shell('<section class="panel notice-inbox"><h2>Notificaciones</h2><p class="muted">Últimos 60 avisos. Tú decides cuándo marcarlos como leídos.</p><div class="actions"><button class="secondary" data-notice-filter="all">Todos</button><button class="secondary" data-notice-filter="unread">Sin leer</button><button class="secondary" id="refresh-notices">Actualizar</button></div><p id="notice-count" role="status"></p><button class="primary full" id="read-notices">Marcar avisos mostrados como leídos</button><p class="muted" id="notice-result" role="status"></p><div id="notice-list"></div></section>');
  const box=document.getElementById("notice-list"),bulk=document.getElementById("read-notices"),status=document.getElementById("notice-result");
  let busy=false;
  const draw=()=>{
@@ -2951,12 +2994,12 @@ async function notificationView(){
  document.getElementById("notice-count").textContent=unread+" sin leer entre los últimos "+rows.length+" avisos.";
  app.querySelectorAll("[data-notice-filter]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.noticeFilter===notificationFilter)));
  bulk.disabled=busy||!displayed.some(n=>!n.is_read);
- box.innerHTML=displayed.map((n,i)=>`<div class="userrow"><div class="userinfo">${esc(n.message)}<small class="muted">${time(n.created_at)}</small></div>${n.is_read?'<span class="muted">Leído</span>':`<button class="secondary" data-read-index="${i}" ${busy?"disabled":""}>Marcar leído</button>`}</div>`).join("")||'<p class="muted">No hay avisos en esta selección.</p>';
+ box.innerHTML=notificationMarkup(displayed,busy);
  box.querySelectorAll("[data-read-index]").forEach(b=>b.onclick=()=>mark([displayed[Number(b.dataset.readIndex)].id]));
  };
  const mark=async(ids)=>{
  if(busy||!valid()||!ids.length)return;busy=true;status.textContent="Guardando…";draw();
- try{const confirmed=await markNotificationRows(uid,ids);if(!valid())return;if(!confirmed)throw Error("No confirmado");rows.forEach(n=>{if(ids.includes(n.id))n.is_read=true;});status.textContent="Avisos actualizados.";}
+ try{const confirmed=await markNotificationRows(uid,ids);if(!valid())return;if(!confirmed)throw Error("No confirmado");rows.forEach(n=>{if(ids.includes(n.id))n.is_read=true;});status.textContent="Avisos actualizados.";void refreshUnreadBadges(true);}
  catch{if(valid())status.textContent="No se pudo confirmar el cambio. Actualiza los avisos y vuelve a intentarlo.";}
  finally{busy=false;if(valid())draw();}
  };
@@ -3061,7 +3104,7 @@ async function refreshChatMessages(target,markRead=false){
  const unread=ordered.filter(m=>m.recipient_id===uid&&m.sender_id===target&&!m.read_at).map(m=>m.id);
  if(markRead&&unread.length&&valid()&&document.visibilityState!=="hidden"){
  const {error:readError}=await db.from("gyste_messages").update({read_at:new Date().toISOString()}).eq("recipient_id",uid).eq("sender_id",target).in("id",unread).is("read_at",null);
- if(readError&&valid()&&status)status.textContent="No se pudieron confirmar los avisos de lectura.";
+ if(readError&&valid()&&status)status.textContent="No se pudieron confirmar los avisos de lectura.";else if(!readError&&valid())void refreshUnreadBadges(true);
  }
  }catch{if(valid()&&status)status.textContent="No se pudieron actualizar los mensajes. Se volverá a intentar.";}
  finally{chatRefreshLocks.delete(list);if(chatRefreshQueued.has(list)){chatRefreshQueued.delete(list);if(valid())void refreshChatMessages(target,true);}}
@@ -3262,7 +3305,8 @@ if(expiring){const state=navigationDraftState();const viewing=Boolean(document.f
 
 document.addEventListener("play",e=>{if(e.target instanceof HTMLMediaElement)document.querySelectorAll("video,audio").forEach(m=>{if(m!==e.target&&!m.paused)m.pause();});},true);
 for(const event of ["play","playing","waiting","stalled","pause","ended","error","emptied","seeking"])document.addEventListener(event,observeVideoTiming,true);
-document.addEventListener("visibilitychange",()=>{if(document.hidden)gysteMediaTimings=new WeakMap();});
+document.addEventListener("visibilitychange",()=>{if(document.hidden)gysteMediaTimings=new WeakMap();else void refreshUnreadBadges();});
+setInterval(()=>{if(!document.hidden)void refreshUnreadBadges();},60000);
 window.addEventListener("pagehide",stopVoiceCapture);
 start();
 // Register independently of authentication; no reload and no cached application data.
