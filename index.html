@@ -794,20 +794,33 @@ if(error)return say("No se pudo cerrar sesión: "+error.message,true);
 session=null;me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=null;homeFilter="all";authView();
 }
 
+// Start independent reads together, but never render them before server identity validation.
+let bootEpoch=0;
+function beginBootReads(client,uid,readFollowing,readSpaces){
+ const auth=Promise.resolve().then(()=>client.auth.getUser());
+ const preload=Promise.all([
+ Promise.resolve().then(()=>client.from("gyste_profiles").select("*").eq("user_id",uid).maybeSingle()),
+ Promise.resolve().then(()=>readFollowing(uid)),
+ Promise.resolve().then(()=>readSpaces())
+ ]).then(value=>({value}),()=>({value:null}));
+ return {auth,preload};
+}
 async function boot(){
-const {data:{user},error}=await db.auth.getUser();
+const expectedUid=session?.user?.id,epoch=++bootEpoch;
+if(!expectedUid){me=null;return authView();}
+const current=()=>epoch===bootEpoch&&session?.user?.id===expectedUid;
+const reads=beginBootReads(db,expectedUid,readFollowing,readSpaces);
+const {data:{user},error}=await reads.auth;
+if(!current())return;
 if(error||!user){session=null;me=null;return authView();}
-if(session?.user?.id!==user.id)return;
+if(user.id!==expectedUid)return;
 me={id:user.id,email:user.email};
-const active=()=>session?.user?.id===user.id&&me?.id===user.id;
-// Optional editorial bookmarks must not delay or block authentication and the initial feed.
+const active=()=>current()&&me?.id===user.id;
 const editorialSync=syncEditorial(user.id).catch(()=>false);
-const [profileResult,followingResult,spacesResult]=await Promise.all([
- db.from("gyste_profiles").select("*").eq("user_id",user.id).maybeSingle(),
- readFollowing(user.id),
- readSpaces()
-]);
+const loaded=await reads.preload;
 if(!active())return;
+if(!loaded.value)return authViewWithError("No se pudo completar la carga inicial. Comprueba tu conexión y vuelve a entrar.");
+const [profileResult,followingResult,spacesResult]=loaded.value;
 let {data:p,error:profileError}=profileResult;
 if(profileError)return authViewWithError("No se pudo cargar tu perfil: "+profileError.message);
 if(!p){
