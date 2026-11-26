@@ -1416,6 +1416,32 @@ function creatorStudioView(){
  download.onclick=()=>{if(!file||!url)return;const a=document.createElement("a");a.href=url;a.download=file.name;document.body.append(a);a.click();a.remove();};
  transfer.onclick=async()=>{if(!file||job||me?.id!==uid)return;const selected=file,caption=renderedCaption;transfer.disabled=true;await goReelCompose(selected,caption);};
 }
+// Display actual media events, not merely a request to start playback.
+function bindReelPlayback(video,button,status,active){
+ let pending=false,failed=false;
+ const write=(label,message,disabled=false)=>{if(!active())return;button.textContent=label;status.textContent=message;button.disabled=disabled;};
+ const error=()=>{failed=true;write("▶ Reproducir","No se pudo reproducir el archivo. Pulsa Recargar vídeo.",true);};
+ const ready=()=>{if(!failed&&video.paused&&!video.ended&&!pending)write("▶ Reproducir",Number.isFinite(video.duration)&&video.duration>0?"Duración: "+Math.ceil(video.duration)+" s · Pulsa Reproducir":"Pulsa Reproducir");};
+ const buffering=()=>{if(!failed&&!video.paused&&!video.ended)write("⏸ Pausar","Cargando vídeo…");};
+ video.addEventListener("loadedmetadata",ready);
+ video.addEventListener("play",buffering);
+ video.addEventListener("waiting",buffering);
+ video.addEventListener("stalled",buffering);
+ video.addEventListener("playing",()=>{if(!failed&&!video.paused&&!video.ended)write("⏸ Pausar","Reproduciendo");});
+ video.addEventListener("pause",()=>{if(!failed&&!video.ended)write("▶ Reproducir","Vídeo pausado");});
+ video.addEventListener("ended",()=>{if(!failed)write("↻ Repetir","Vídeo terminado");});
+ video.addEventListener("error",error);
+ if(video.error)error();else if(video.readyState>=1)ready();
+ button.onclick=async()=>{
+  if(!active()||failed)return;
+  if(!video.paused&&!video.ended){video.pause();return;}
+  if(pending)return;
+  pending=true;
+  try{if(video.ended)video.currentTime=0;write("▶ Reproducir","Iniciando vídeo…");await video.play();}
+  catch{if(!failed&&video.paused)write("▶ Reproducir","No se pudo iniciar. Prueba los controles del vídeo o Recargar vídeo.");}
+  finally{pending=false;}
+ };
+}
 function reelSwipeDirection(dx,dy){return Math.abs(dy)>=65&&Math.abs(dy)>Math.abs(dx)*1.5?(dy<0?1:-1):0;}
 let reelViewEpoch=0,reelVideoKey="",reelFilter="all",reelLimit=150;
 async function reelsView(){
@@ -1439,7 +1465,7 @@ async function reelsView(){
  stage.innerHTML=`<div class="actions"><button class="primary" id="reelplay" ${url?"":"disabled"}>▶ Reproducir</button><button class="secondary" id="reelretry">Recargar vídeo</button>${url?'<button class="secondary" id="reel-full">⛶ Ampliar</button>':""}</div><p id="reelstatus" role="status">${url?"Cargando vídeo…":"No se pudo obtener el vídeo. Revisa tu acceso o vuelve a intentarlo."}</p>${url?`<video id="reelvideo" controls playsinline preload="metadata" style="display:block;width:100%;height:clamp(150px,47dvh,440px);touch-action:pan-x pinch-zoom;object-fit:contain;background:#05090e;border-radius:12px" src="${esc(url)}"></video>`:""}<div class="actions"><button class="secondary" data-savepost="${esc(x.p.id)}" data-reel-save aria-pressed="${savedIds.has(x.p.id)}">${savedIds.has(x.p.id)?"✓ Reel guardado":"🔖 Guardar Reel"}</button></div><p id="reel-save-status" role="status" aria-live="polite"></p>${postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===uid?me:null),"")}`;
  const v=document.getElementById("reelvideo"),play=document.getElementById("reelplay"),status=document.getElementById("reelstatus");
  document.getElementById("reelretry").onclick=()=>{if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);return draw();};
- if(v){let touchStart=null;v.addEventListener("touchstart",e=>{touchStart=e.touches.length===1?{x:e.touches[0].clientX,y:e.touches[0].clientY}:null;},{passive:true});v.addEventListener("touchcancel",()=>{touchStart=null;});v.addEventListener("touchend",e=>{const t=e.changedTouches[0],start=touchStart;touchStart=null;if(!start||!t||!active())return;const d=reelSwipeDirection(t.clientX-start.x,t.clientY-start.y);if(d&&index+d>=0&&index+d<entries.length){index+=d;draw();}},{passive:true});const full=document.getElementById("reel-full");full.onclick=async()=>{try{if(v.requestFullscreen)await v.requestFullscreen();else if(v.webkitEnterFullscreen)v.webkitEnterFullscreen();else status.textContent="Usa el control de pantalla completa del vídeo.";}catch{status.textContent="Usa el control de pantalla completa del vídeo.";}};const ready=()=>{if(active()){play.disabled=false;status.textContent=Number.isFinite(v.duration)?"Duración: "+Math.ceil(v.duration)+" s · Pulsa Reproducir":"Pulsa Reproducir";}};v.addEventListener("loadedmetadata",ready);if(v.readyState>=1)ready();v.addEventListener("play",()=>{if(active()){play.textContent="⏸ Pausar";status.textContent="Reproduciendo";}});v.addEventListener("pause",()=>{if(active()){play.textContent="▶ Reproducir";status.textContent="Vídeo pausado";}});v.addEventListener("ended",()=>{if(active()){play.textContent="↻ Repetir";status.textContent="Vídeo terminado";}});v.addEventListener("error",()=>{if(active()){play.disabled=true;status.textContent="No se pudo reproducir el archivo. Pulsa Recargar vídeo.";}});play.onclick=async()=>{if(!v.paused){v.pause();return;}try{if(v.ended)v.currentTime=0;await v.play();}catch{if(active())status.textContent="No se pudo iniciar. Prueba los controles del vídeo o Recargar vídeo.";}};}
+ if(v){let touchStart=null;v.addEventListener("touchstart",e=>{touchStart=e.touches.length===1?{x:e.touches[0].clientX,y:e.touches[0].clientY}:null;},{passive:true});v.addEventListener("touchcancel",()=>{touchStart=null;});v.addEventListener("touchend",e=>{const t=e.changedTouches[0],start=touchStart;touchStart=null;if(!start||!t||!active())return;const d=reelSwipeDirection(t.clientX-start.x,t.clientY-start.y);if(d&&index+d>=0&&index+d<entries.length){index+=d;draw();}},{passive:true});const full=document.getElementById("reel-full");full.onclick=async()=>{try{if(v.requestFullscreen)await v.requestFullscreen();else if(v.webkitEnterFullscreen)v.webkitEnterFullscreen();else status.textContent="Usa el control de pantalla completa del vídeo.";}catch{status.textContent="Usa el control de pantalla completa del vídeo.";}};bindReelPlayback(v,play,status,active);}
  bindPostActions();
  }
  prev.onclick=()=>{if(index>0){index--;return draw();}};next.onclick=()=>{if(index<entries.length-1){index++;return draw();}};document.getElementById("reelpublish").onclick=goReelCompose;await draw();
