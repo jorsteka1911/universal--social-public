@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r38-preview">
+<meta name="gyste-build" content="2026-11-26-r39-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3050,7 +3050,7 @@ async function runPending(job,ops){
   if(!await ops.confirm(job))throw Error("Envío no confirmado");
  }
  if(!ops.active())throw Error("Cuenta cambiada");
- await ops.audience(job);await ops.remove(job.id);
+ await ops.audience(job);if(!ops.active())throw Error("Cuenta cambiada");await ops.remove(job.id);
 }
 let pendingDB=null;
 const pendingBusy=new Set();
@@ -3094,7 +3094,7 @@ async function processPending(job,progress,viewActive,existing=false){
   else{if(existing)throw Error("Copia ya retirada");await pendingSave(job);}
   void paintPending();
   if(navigator.onLine===false)throw Error("Sin conexión; copia guardada");
-  const confirm=j=>j.kind==="post"?(GYSTE_ATOMIC_AUDIENCE_ENABLED&&gysteLimitedAudience(j.row.audience)?gysteConfirmAtomic(uid,j.row,j.members):confirmPublishedPost(uid,j.id)):checkSentMessage(uid,j.row.recipient_id,j.id,j.row.media_path,j.row.media_type);
+  const confirm=j=>j.kind==="post"?(GYSTE_ATOMIC_AUDIENCE_ENABLED&&gysteLimitedAudience(j.row.audience)?gysteConfirmAtomic(uid,j.row,j.members):confirmPublishedPost(uid,j.id)):checkSentMessage(uid,j.row.recipient_id,j.id,j.row.media_path,j.row.media_type,j.row.content);
   await runPending(job,{uid,active,confirm,save:pendingSave,remove:pendingRemove,
    upload:async(j,i,checkpoint)=>{
     const t=j.transfers[i],f=j.files[i];
@@ -4087,11 +4087,22 @@ function bindVoiceRecorder(target){
  }catch(e){if(stream)stream.getTracks().forEach(t=>t.stop());resetVoiceUI();preview.textContent="No se pudo acceder al micrófono. Revisa los permisos.";}
  };
 }
+function gysteChatDraftDecision(draft,next){
+ if(!draft||draft.uid!==next.uid||draft.target!==next.target)return "new";
+ const attempted=Boolean(draft.insertAttempted||draft.transferAttempted||draft.uploaded);
+ if(draft.content!==next.content||draft.file!==next.file)return attempted?"confirm-new":"new";
+ if(draft.light!==next.light&&!attempted)return "new";
+ return "reuse";
+}
+function gysteConfirmedChatRow(data,expected){
+ return !!data&&data.id===expected.id&&data.sender_id===expected.uid&&data.recipient_id===expected.target&&(data.media_path??null)===expected.path&&(data.media_type??null)===expected.type&&data.content===expected.content;
+}
 const chatSendLocks=new Set(),chatPendingSends=new WeakMap();
-async function checkSentMessage(uid,target,id,path=null,type=null){
+async function checkSentMessage(uid,target,id,path=null,type=null,content){
  try{
- const {data,error}=await db.from("gyste_messages").select("id,sender_id,recipient_id,media_path,media_type").eq("id",id).eq("sender_id",uid).eq("recipient_id",target).maybeSingle();
- return !error&&data?.id===id&&data.sender_id===uid&&data.recipient_id===target&&(data.media_path??null)===path&&(data.media_type??null)===type;
+ if(!pendingAccount(uid)||typeof content!=="string")return false;
+ const {data,error}=await db.from("gyste_messages").select("id,sender_id,recipient_id,media_path,media_type,content").eq("id",id).eq("sender_id",uid).eq("recipient_id",target).maybeSingle();
+ return !error&&pendingAccount(uid)&&gysteConfirmedChatRow(data,{uid,target,id,path,type,content});
  }catch{return false;}
 }
 async function sendMessage(e){
@@ -4108,7 +4119,9 @@ async function sendMessage(e){
  let draft=chatPendingSends.get(form);
  let committed=false,stage="preparación";
  try{
- if(!draft||draft.uid!==uid||draft.target!==target||draft.content!==content||draft.file!==file||(!draft.insertAttempted&&draft.light!==light)){
+ const decision=gysteChatDraftDecision(draft,{uid,target,content,file,light});
+ if(decision==="confirm-new"&&!confirm("El envío anterior podría seguir pendiente o haberse registrado. ¿Crear un envío nuevo? Revisa la conversación y Archivos pendientes para evitar duplicados."))return;
+ if(decision!=="reuse"){
  stage="preparación de la fotografía";let payload=file;if((force||light)&&file){if(status)status.textContent=force?"Convirtiendo fotografía a JPG…":"Preparando foto ligera…";try{payload=await gysteOptimizePhoto(file,light?"light":"original",force);}catch{if(active()&&status)status.textContent=force?"Este teléfono no pudo convertir la foto. Guárdala como JPG o PNG y vuelve a seleccionarla. No se ha enviado.":"No se pudo reducir la foto. Desmarca Foto ligera para enviar el original.";return;}if(!active())return;if(!payload.size||payload.size>MAX_POST_BYTES){if(status)status.textContent="La foto preparada supera el límite de 50 MB.";return;}}
  if(payload&&chatFileType(payload).startsWith("video/")){stage="comprobación del vídeo";if(status)status.textContent="Comprobando vídeo en este teléfono…";const result=await probeLocalVideo(payload);if(!active())return;if(result==="unsupported"){if(status)status.textContent="Este teléfono no puede abrir el vídeo. Usa MP4 con H.264 y AAC. Conservamos tu selección.";return;}payload=await gysteOptimizeVideo(payload,gysteMediaMode(uid),active,p=>{if(active()&&status)status.textContent=p;});if(!active())return;}
  fileType=chatFileType(payload);
@@ -4117,17 +4130,20 @@ async function sendMessage(e){
  chatPendingSends.set(form,draft);
  }
  fileType=draft.fileType;
+ const sentContent=draft.content||(fileType.startsWith("audio/")?"🎙 Mensaje de voz":fileType.startsWith("video/")?"🎬 Vídeo":"📷 Fotografía");
  if(file&&(fileType.startsWith("image/")||fileType.startsWith("video/"))){
+   draft.transferAttempted=true;
    stage="copia local y subida";
-   const job={id:draft.id,uid,kind:"chat",bucket:CHAT_BUCKET,files:[draft.payload],transfers:[{path:draft.path,url:null}],members:[],created:Date.now(),row:{id:draft.id,sender_id:uid,recipient_id:target,content:content||(fileType.startsWith("video/")?"🎬 Vídeo":"📷 Fotografía"),media_path:draft.path,media_type:fileType}};
+   const job={id:draft.id,uid,kind:"chat",bucket:CHAT_BUCKET,files:[draft.payload],transfers:[{path:draft.path,url:null}],members:[],created:Date.now(),row:{id:draft.id,sender_id:uid,recipient_id:target,content:sentContent,media_path:draft.path,media_type:fileType}};
    if(status)status.textContent="Guardando copia local"+gysteMediaSavings([file],[draft.payload])+"…";
    await processPending(job,p=>{if(active()){if(status)status.textContent=p;button.textContent="Subiendo…";}},active);
    committed=true;
  }
- if(!committed&&draft.insertAttempted){committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);}
+ if(!committed&&draft.insertAttempted){committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null,sentContent);}
  if(!committed){
  if(!active())return;
  if(file&&!draft.uploaded){
+ draft.transferAttempted=true;
  stage="subida del archivo";if(active()&&status)status.textContent="Subiendo archivo… No cierres esta conversación.";
  if(fileType.startsWith("image/")||fileType.startsWith("video/")){
   await uploadGysteMedia(uid,CHAT_BUCKET,draft.path,draft.payload,draft.transfer,active,p=>{if(status)status.textContent="Subiendo archivo · "+p+" %";button.textContent=p+" %";});
@@ -4137,11 +4153,11 @@ async function sendMessage(e){
  if(!active())return;
  stage="registro del mensaje";button.textContent="Enviando…";if(active()&&status)status.textContent="Registrando mensaje…";draft.insertAttempted=true;
  try{
- const {error}=await db.from("gyste_messages").insert({id:draft.id,sender_id:uid,recipient_id:target,content:content||(fileType.startsWith("audio/")?"🎙 Mensaje de voz":fileType.startsWith("video/")?"🎬 Vídeo":"📷 Fotografía"),media_path:draft.path,media_type:fileType||null});
+ const {error}=await db.from("gyste_messages").insert({id:draft.id,sender_id:uid,recipient_id:target,content:sentContent,media_path:draft.path,media_type:fileType||null});
  if(error)throw error;
- stage="confirmación del mensaje";committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);
+ stage="confirmación del mensaje";committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null,sentContent);
  if(!committed)throw Error("Mensaje no confirmado");
- }catch(error){if(me?.id===uid)committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);if(!committed)throw error;}
+ }catch(error){if(me?.id===uid)committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null,sentContent);if(!committed)throw error;}
  }
  if(committed){chatPendingSends.delete(form);if(active()){input.value="";fileInput.value="";clearVoiceDraft();resetVoiceUI();const fs=document.getElementById("chatfile-status");if(fs)fs.textContent="";const fileSend=document.getElementById("send-chat-file");if(fileSend)fileSend.hidden=true;const lightOption=document.getElementById("chat-light-photo-option");if(lightOption)lightOption.hidden=true;clearChatFilePreview();if(status){status.dataset.success="true";status.textContent=file?"Archivo enviado y registrado.":"Mensaje enviado y registrado.";}try{await refreshChatMessages(target,true);}catch{}}}
  }catch(error){
