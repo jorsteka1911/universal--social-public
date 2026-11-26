@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r33">
+<meta name="gyste-build" content="2026-11-26-r34">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1148,12 +1148,22 @@ document.getElementById("savepassword").onclick=saveNewPassword;
 document.getElementById("confirmnewpassword").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();saveNewPassword();}};
 }
 
+function gysteAuthIssue(error){
+ const code=String(error?.code||"").toLowerCase(),status=Number(error?.status);
+ if(["over_email_send_rate_limit","over_request_rate_limit","over_sms_send_rate_limit"].includes(code)||status===429)return "rate";
+ if(code==="email_address_invalid")return "email";
+ if(code==="weak_password")return "password";
+ if(code==="signup_disabled")return "closed";
+ if(error?.name==="AuthRetryableFetchError"||error?.name==="TimeoutError"||error?.name==="AbortError"||status>=500)return "temporary";
+ return "other";
+}
 let authBusy=false;
 function beginAuthAction(button,label){
  if(authBusy||!button||button.disabled)return null;
- authBusy=true;const ids=["login","signup","forgot","email","password","signup-confirm","signup-accept"],nodes=ids.map(id=>document.getElementById(id)).filter(Boolean),states=nodes.map(n=>n.disabled),oldLabel=button.textContent;
- nodes.forEach(n=>n.disabled=true);button.textContent=label;
- return ()=>{authBusy=false;nodes.forEach((n,i)=>n.disabled=states[i]);button.textContent=oldLabel;};
+ authBusy=true;const ids=["login","signup","forgot","email","password","signup-confirm","signup-accept","signup-adult","show-login-password"],nodes=ids.map(id=>document.getElementById(id)).filter(Boolean),states=nodes.map(n=>n.disabled),oldLabel=button.textContent;
+ nodes.forEach(n=>n.disabled=true);button.textContent=label;button.setAttribute("aria-busy","true");
+ let finished=false;
+ return ()=>{if(finished)return;finished=true;authBusy=false;nodes.forEach((n,i)=>n.disabled=states[i]);button.textContent=oldLabel;button.removeAttribute("aria-busy");};
 }
 async function sendPasswordReset(){
 const email=document.getElementById("email").value.trim().toLowerCase();
@@ -1163,7 +1173,7 @@ try{
 const {error}=await db.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
 if(error)throw error;
 say("Si existe una cuenta asociada a ese correo, recibirás un enlace de recuperación. Revisa también spam y ábrelo en este navegador.");
-}catch(e){say("No se pudo enviar el correo de recuperación. Comprueba la configuración de URL de Supabase e inténtalo de nuevo.",true);}
+}catch(e){gysteFault("acceso",e);const issue=gysteAuthIssue(e);say(issue==="rate"?"Se alcanzó el límite de solicitudes de correo. Espera y revisa tu bandeja de entrada y spam.": "No se pudo confirmar el envío del correo de recuperación. Revisa tu conexión y tu bandeja antes de solicitar otro enlace.",true);}
 finally{finish();}
 }
 
@@ -1210,6 +1220,12 @@ try{
 function authMessage(error, mode){
   const raw=String(error?.message||"").toLowerCase();
   const code=String(error?.code||"").toLowerCase();
+  const issue=gysteAuthIssue(error);
+  if(issue==="rate")return "Demasiados intentos o correos enviados. Espera antes de reintentar; revisa también tu bandeja y spam.";
+  if(issue==="email")return "Comprueba que el correo electrónico esté bien escrito.";
+  if(issue==="password")return "Elige una contraseña más segura y exclusiva para Gyste.";
+  if(issue==="closed")return "El registro está temporalmente cerrado. Si ya tienes cuenta, puedes intentar entrar.";
+  if(issue==="temporary")return "El servicio de acceso no responde correctamente. Comprueba Internet y espera antes de reintentar. Si estabas registrándote, revisa primero tu correo.";
   if(raw.includes("invalid login credentials")||raw.includes("invalid_credentials")||code==="invalid_credentials")
     return "El correo o la contraseña no son correctos. Comprueba los datos e inténtalo de nuevo.";
   if(raw.includes("email not confirmed")||code==="email_not_confirmed")
@@ -1233,6 +1249,7 @@ async function login(){
   const email=document.getElementById("email").value.trim().toLowerCase();
   const password=document.getElementById("password").value;
   const button=document.getElementById("login");
+  if(navigator.onLine===false)return say("No tienes conexión. Intenta entrar cuando vuelva Internet.",true);
   if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
   if(!password)return say("Escribe tu contraseña.",true);
   const finish=beginAuthAction(button,"Entrando…");if(!finish)return;
@@ -1253,6 +1270,7 @@ async function signup(){
   const email=document.getElementById("email").value.trim().toLowerCase();
   const password=document.getElementById("password").value;
   const button=document.getElementById("signup");
+  if(navigator.onLine===false)return say("No tienes conexión. Conserva esta pantalla y vuelve a intentar el registro cuando regrese Internet.",true);
   if(!validEmail(email))return say("Escribe un correo electrónico válido.",true);
   if(password.length<8)return say("Para crear una cuenta, elige una contraseña de al menos 8 caracteres.",true);
   const confirmation=document.getElementById("signup-confirm");
