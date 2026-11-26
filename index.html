@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r27">
+<meta name="gyste-build" content="2026-11-26-r28-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -15,7 +15,7 @@
 <!-- Gyste: proyecto impulsado por JORSTEKA (jorsteka1911). Derechos reservados sobre las aportaciones originales protegibles; componentes de terceros sujetos a sus propias licencias. -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://fmmsfyenevlordrupzdw.supabase.co" crossorigin>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
 <style>
 :root{--bg:#091827;--panel:#122d49;--line:#244866;--mint:#36c7b2;--txt:#f3f6f9;--muted:#aab8c5;--red:#ff7c88}
 *{box-sizing:border-box}
@@ -496,10 +496,11 @@ button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var
 .gyste-update-panel summary{cursor:pointer;padding:8px 0;color:var(--mint);font-weight:750}
 .gyste-update-panel button{min-height:44px;margin:4px 0}
 .assist-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.assist-actions button{font-size:12px;min-height:36px;padding:6px 9px}.assist-alert{border:1px solid #c99843;padding:8px;border-radius:8px}.assist-dialog{width:min(92vw,520px);max-height:85dvh;overflow:auto;background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:14px;padding:16px}.assist-dialog button{margin:5px}.assist-large .bodytext,.assist-large .panel p,.assist-large .field{font-size:19px;line-height:1.55}.assist-xl .bodytext,.assist-xl .panel p,.assist-xl .field{font-size:23px;line-height:1.55}.assist-large button,.assist-xl button{min-height:44px}.assist-contrast{--txt:#fff!important;--muted:#fff!important;--bg:#000!important;--panel:#111!important;--line:#aaa!important;--mint:#7fffe8!important}.assist-contrast .panel,.assist-contrast .post,.assist-contrast .chat-bubble{background:#111!important;color:#fff!important;border-color:#aaa!important}.assist-motion *{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}.assist-tools{overflow-wrap:anywhere}
+.gyste-start{width:min(92%,420px);margin:clamp(32px,9vh,100px) auto;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}.gyste-start-brand{display:flex;align-items:center;gap:14px}.gyste-start-brand h1{margin:0;color:var(--mint);font-size:2rem}.gyste-start a{color:var(--mint);display:inline-block;padding:8px 0}.gyste-start-skeleton{display:grid;gap:12px;margin:20px 0}.gyste-start-skeleton span{display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px;height:42px}.gyste-start-skeleton span:last-child{background:#206358;width:70%}
 </style>
 </head>
 <body>
-<div id="app" aria-live="polite"><p class="muted">Iniciando Gyste…</p></div>
+<div id="app" aria-live="polite"><section class="gyste-start" aria-label="Bienvenida a Gyste"><div class="gyste-start-brand"><img src="/gyste-icon-192.svg" width="56" height="56" alt=""><h1>Gyste</h1></div><p>Conecta. Aprende. Crea.</p><p id="gyste-start-status" role="status">Preparando tu acceso de forma segura…</p><div class="gyste-start-skeleton" aria-hidden="true"><span></span><span></span><span></span></div><p class="muted">Si tu conexión es lenta, la carga puede tardar un poco.</p><a href="/presentacion.html">Conoce Gyste</a><noscript><p>Activa JavaScript para acceder a Gyste.</p></noscript></section></div>
 <script>
 "use strict";
 
@@ -3905,14 +3906,42 @@ async function sendMessage(e){
  // No eliminar archivos tras una respuesta incierta: podrían pertenecer a un mensaje ya registrado.
  }finally{chatSendLocks.delete(key);controls.forEach((c,i)=>c.disabled=previous[i]);button.textContent="Enviar";if(committed&&active())input.focus();}
 }
-async function start(){
-const timingStart=performance.now();
-try{
-if(!window.supabase||typeof window.supabase.createClient!=="function"){
-app.innerHTML='<section class="auth"><h1>Gyste</h1><p class="error">No se pudo cargar el servicio de conexión. Comprueba Internet y vuelve a intentarlo.</p><button class="primary full" id="retry">Reintentar</button></section>';
-document.getElementById("retry").onclick=start;
-return;
+function createGysteSDKLoader({readSDK,makeScript,attach,setTimer,clearTimer}){
+ let pending=null;
+ return function load(){
+  if(typeof readSDK()?.createClient==="function")return Promise.resolve(readSDK());
+  if(pending)return pending;
+  pending=new Promise((resolve,reject)=>{
+   const script=makeScript();
+   let settled=false,timer;
+   const finish=(error)=>{
+    if(settled)return;settled=true;clearTimer(timer);script.onload=script.onerror=null;
+    if(error){script.remove();reject(error);}else resolve(readSDK());
+   };
+   script.onload=()=>finish(typeof readSDK()?.createClient==="function"?null:Error("El servicio de conexión no está disponible."));
+   script.onerror=()=>finish(Error("No se pudo descargar el servicio de conexión."));
+   timer=setTimer(()=>finish(Error("La descarga está tardando demasiado. Comprueba Internet.")),15000);
+   try{attach(script);}catch{finish(Error("No se pudo iniciar la descarga."));}
+  }).catch(error=>{pending=null;throw error;});
+  return pending;
+ };
 }
+const loadGysteSDK=createGysteSDKLoader({
+ readSDK:()=>window.supabase,
+ makeScript:()=>{const script=document.createElement("script");script.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";script.async=true;return script;},
+ attach:script=>document.head.append(script),
+ setTimer:(fn,ms)=>setTimeout(fn,ms),
+ clearTimer:id=>clearTimeout(id)
+});
+let gysteStarting=false;
+async function start(){
+if(gysteStarting)return;
+gysteStarting=true;
+const timingStart=performance.now();
+const retry=document.getElementById("retry");if(retry){retry.disabled=true;retry.textContent="Conectando…";}
+try{
+await loadGysteSDK();
+const status=document.getElementById("gyste-start-status");if(status)status.textContent="Comprobando tu sesión…";
 if(!db)db=window.supabase.createClient(URL_DB,KEY_DB,{
   auth:{
     persistSession:true,
@@ -3945,7 +3974,7 @@ if(session&&me)recordGysteTiming("startup",timingStart);
 }catch(e){
 app.innerHTML=`<section class="auth"><h1>Gyste</h1><p class="error">${esc(e?.message||"No se pudo iniciar Gyste. Comprueba Internet.")}</p><button class="primary full" id="retry">Reintentar</button></section>`;
 document.getElementById("retry").onclick=start;
-}
+}finally{gysteStarting=false;}
 }
 
 // Renueva la vista del feed al volver a la app si los enlaces firmados están cerca de expirar.
