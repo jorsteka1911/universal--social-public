@@ -170,7 +170,7 @@ body{padding-bottom:0}
 .quick-menu{position:relative}.quick-menu summary{list-style:none;cursor:pointer}.quick-menu summary::-webkit-details-marker{display:none}
 .quick-menu[open] summary{outline:2px solid var(--mint)}
 .menu-dropdown{position:absolute;right:0;top:47px;width:172px;padding:8px;background:#10283a;border:1px solid var(--line);border-radius:13px;box-shadow:0 12px 30px #0008;z-index:30}
-.menu-dropdown button{width:100%;display:block;background:transparent;color:var(--txt);border:0;text-align:left;padding:11px 8px;border-radius:8px}
+.menu-dropdown{max-height:calc(100vh - 112px);max-height:calc(100dvh - 112px);overflow-y:auto;overscroll-behavior-y:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:thin}.menu-dropdown button{width:100%;display:block;background:transparent;color:var(--txt);border:0;text-align:left;padding:11px 8px;border-radius:8px}
 .menu-dropdown button:active,.menu-dropdown button:hover{background:#1d4760}
 #app{width:100%;max-width:none;padding:0}
 
@@ -2683,6 +2683,14 @@ function stopChatRefresh(){if(chatRefreshTimer){clearInterval(chatRefreshTimer);
 const CHAT_BUCKET="gyste-chat-media";
 const CHAT_AUDIO_TYPES=["audio/webm","audio/mp4","audio/ogg","audio/mpeg","audio/wav"];
 const chatFileType=f=>String(f?.type||"").split(";")[0].toLowerCase();
+function chatFileSelection(f){
+ if(!f)return {ok:false,message:"No has seleccionado ningún archivo."};
+ const type=chatFileType(f);
+ if(![...MEDIA_TYPES,...CHAT_AUDIO_TYPES].includes(type))return {ok:false,message:"Formato no admitido. Elige una foto JPG, PNG o WebP, un vídeo MP4 o WebM, o un audio compatible."};
+ if(!f.size||f.size>MAX_POST_BYTES)return {ok:false,message:"El archivo está vacío o supera los 50 MB."};
+ return {ok:true,message:f.name+" · "+(f.size/1048576).toFixed(1)+" MB · Listo para enviar."};
+}
+
 let voiceCapture=null,voiceDraft=null,voiceDraftUrl=null;
 function clearVoiceDraft(){voiceDraft=null;if(voiceDraftUrl)URL.revokeObjectURL(voiceDraftUrl);voiceDraftUrl=null;}
 function stopVoiceCapture(){if(voiceCapture){const v=voiceCapture;voiceCapture=null;v.cancelled=true;clearTimeout(v.timer);if(v.rec.state!=="inactive")v.rec.stop();v.stream.getTracks().forEach(t=>t.stop());}clearVoiceDraft();}
@@ -2791,11 +2799,11 @@ async function messagesView(){
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
  const canCompose=chatContactAvailable(person);
- shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p>${chatSafetyNotice(person)}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
+ shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p>${chatSafetyNotice(person)}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
  document.getElementById("back").onclick=()=>{stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
  if(canCompose){bindVoiceRecorder(target);
  document.getElementById("sendmsg").onsubmit=sendMessage;
- document.getElementById("chatfile").onchange=e=>{stopVoiceCapture();resetVoiceUI();const f=e.target.files[0];document.getElementById("chatfile-status").textContent=f?f.name+" · "+(f.size/1048576).toFixed(1)+" MB":"";};}
+ document.getElementById("chatfile").onchange=e=>{stopVoiceCapture();resetVoiceUI();const f=e.target.files[0],result=chatFileSelection(f),send=document.getElementById("send-chat-file");document.getElementById("chatfile-status").textContent=result.message;send.hidden=!result.ok;};}
  document.getElementById("block-chat").onclick=e=>blockUser(target,e.currentTarget);
  const chatList=document.getElementById("chatlist");
  await refreshChatMessages(target,true);
@@ -2832,10 +2840,10 @@ function bindVoiceRecorder(target){
  };
 }
 const chatSendLocks=new Set(),chatPendingSends=new WeakMap();
-async function checkSentMessage(uid,target,id){
+async function checkSentMessage(uid,target,id,path=null,type=null){
  try{
- const {data,error}=await db.from("gyste_messages").select("id,sender_id,recipient_id").eq("id",id).eq("sender_id",uid).eq("recipient_id",target).maybeSingle();
- return !error&&data?.id===id&&data.sender_id===uid&&data.recipient_id===target;
+ const {data,error}=await db.from("gyste_messages").select("id,sender_id,recipient_id,media_path,media_type").eq("id",id).eq("sender_id",uid).eq("recipient_id",target).maybeSingle();
+ return !error&&data?.id===id&&data.sender_id===uid&&data.recipient_id===target&&(data.media_path??null)===path&&(data.media_type??null)===type;
  }catch{return false;}
 }
 async function sendMessage(e){
@@ -2844,36 +2852,39 @@ async function sendMessage(e){
  const input=document.getElementById("msg"),button=document.getElementById("sendmsgbtn"),fileInput=document.getElementById("chatfile"),status=document.getElementById("chatstatus");
  if(!input||!button||!fileInput||button.disabled)return;
  const content=input.value.trim(),file=voiceDraft||fileInput.files?.[0],fileType=chatFileType(file);
- if(!content&&!file)return;
+ if(!content&&!file){if(status)status.textContent="Escribe un mensaje o selecciona una fotografía antes de enviar.";return;}
  if(content.length>5000||file&&(![...MEDIA_TYPES,...CHAT_AUDIO_TYPES].includes(fileType)||!file.size||file.size>MAX_POST_BYTES)){if(status)status.textContent="Revisa el texto o el formato y tamaño del archivo (máximo 50 MB).";return;}
  const active=()=>me?.id===uid&&tab==="messages"&&chatUser===target&&form.isConnected&&document.getElementById("sendmsg")===form;
- const controls=[input,button,fileInput,document.getElementById("voice-record"),document.getElementById("voice-cancel")].filter(Boolean),previous=controls.map(c=>c.disabled);
+ const controls=[input,button,fileInput,document.getElementById("send-chat-file"),document.getElementById("voice-record"),document.getElementById("voice-cancel")].filter(Boolean),previous=controls.map(c=>c.disabled);
  chatSendLocks.add(key);controls.forEach(c=>c.disabled=true);button.textContent=file?"Subiendo…":"Enviando…";if(status)status.textContent="";
  let draft=chatPendingSends.get(form);
- let committed=false;
+ let committed=false,stage="preparación";
  try{
  if(!draft||draft.uid!==uid||draft.target!==target||draft.content!==content||draft.file!==file){
  const id=crypto.randomUUID(),ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","audio/webm":"webm","audio/mp4":"m4a","audio/ogg":"ogg","audio/mpeg":"mp3","audio/wav":"wav"})[fileType];
  draft={uid,target,content,file,id,path:file?uid+"/"+id+"."+ext:null,uploaded:false,insertAttempted:false};
  chatPendingSends.set(form,draft);
  }
- if(draft.insertAttempted){committed=await checkSentMessage(uid,target,draft.id);}
+ if(draft.insertAttempted){committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);}
  if(!committed){
  if(!active())return;
  if(file&&!draft.uploaded){
+ stage="subida del archivo";if(active()&&status)status.textContent="Subiendo archivo… No cierres esta conversación.";
  const {error}=await db.storage.from(CHAT_BUCKET).upload(draft.path,file,{upsert:false,contentType:fileType});
  if(error)throw error;draft.uploaded=true;
  }
  if(!active())return;
- button.textContent="Enviando…";draft.insertAttempted=true;
+ stage="registro del mensaje";button.textContent="Enviando…";if(active()&&status)status.textContent="Registrando mensaje…";draft.insertAttempted=true;
  try{
  const {error}=await db.from("gyste_messages").insert({id:draft.id,sender_id:uid,recipient_id:target,content:content||(fileType.startsWith("audio/")?"🎙 Mensaje de voz":fileType.startsWith("video/")?"🎬 Vídeo":"📷 Fotografía"),media_path:draft.path,media_type:fileType||null});
- if(error)throw error;committed=true;
- }catch(error){if(me?.id===uid)committed=await checkSentMessage(uid,target,draft.id);if(!committed)throw error;}
+ if(error)throw error;
+ stage="confirmación del mensaje";committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);
+ if(!committed)throw Error("Mensaje no confirmado");
+ }catch(error){if(me?.id===uid)committed=await checkSentMessage(uid,target,draft.id,draft.path,fileType||null);if(!committed)throw error;}
  }
- if(committed){chatPendingSends.delete(form);if(active()){input.value="";fileInput.value="";clearVoiceDraft();resetVoiceUI();const fs=document.getElementById("chatfile-status");if(fs)fs.textContent="";if(status)status.textContent="Mensaje enviado.";try{await refreshChatMessages(target,true);}catch{}}}
+ if(committed){chatPendingSends.delete(form);if(active()){input.value="";fileInput.value="";clearVoiceDraft();resetVoiceUI();const fs=document.getElementById("chatfile-status");if(fs)fs.textContent="";const fileSend=document.getElementById("send-chat-file");if(fileSend)fileSend.hidden=true;if(status)status.textContent=file?"Archivo registrado y comprobado.":"Mensaje enviado y comprobado.";try{await refreshChatMessages(target,true);}catch{}}}
  }catch(error){
- if(active()&&status)status.textContent=error?.code==="42501"?"No se pudo enviar por las preferencias de privacidad o los permisos. Conservamos tu borrador.":"No se pudo confirmar el envío. Conservamos tu borrador mientras sigas en esta conversación. Revisa los mensajes o vuelve a pulsar Enviar.";
+ if(active()&&status)status.textContent=error?.code==="42501"?"No se pudo enviar por las preferencias de privacidad o los permisos. Conservamos tu borrador.":"No se pudo completar la etapa de "+stage+". Conservamos tu borrador mientras sigas en esta conversación. Revisa los mensajes o vuelve a pulsar Enviar.";
  // No eliminar archivos tras una respuesta incierta: podrían pertenecer a un mensaje ya registrado.
  }finally{chatSendLocks.delete(key);controls.forEach((c,i)=>c.disabled=previous[i]);button.textContent="Enviar";if(committed&&active())input.focus();}
 }
