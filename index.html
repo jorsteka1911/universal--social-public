@@ -266,6 +266,17 @@ header{gap:6px;padding:8px 9px}
 #chatfile-preview button{min-height:42px}
 #chatstatus{overflow-wrap:anywhere}
 #chatstatus[data-success="true"]{color:var(--mint)}
+/* Editor compacto de publicaciones */
+#composer[hidden]{display:none!important}
+#composer{scroll-margin-top:76px}
+.composer-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.composer-heading .feed-hero{margin:0}
+#composer-close{flex-shrink:0;min-height:40px;padding:8px 12px}
+#post-preview{display:flex;gap:8px;overflow-x:auto;margin:8px 0;scroll-snap-type:x proximity}
+#post-preview:empty{display:none}
+#post-preview>div{flex:0 0 100px;min-width:0;scroll-snap-align:start}
+#post-preview img,#post-preview video{width:100px;height:100px;border-radius:12px;object-fit:cover;background:#081722}
+#post-preview small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
 </style>
 </head>
 <body>
@@ -364,6 +375,7 @@ menu:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="1
 function navButton(dest,label,symbol){return `<button data-tab="${dest}" class="${tab===dest?"active":""}" aria-label="${label}" ${tab===dest?'aria-current="page"':''}><b aria-hidden="true">${gysteIcon(dest)||symbol}</b>${label}</button>`;}
 
 function shell(content){
+clearPostPreviews();
 clearChatFilePreview();
 if(tab!=="messages"){stopChatRefresh();stopVoiceCapture();chatMediaCache.clear();}
 if(tab!=="stories")stopStoryTimer();
@@ -465,9 +477,16 @@ if(next==="feed"){resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFil
 if(next!=="messages")chatUser=null;
 tab=next;notice="";noticeError=false;const requested=next,uid=me?.id;if(session&&me)shell('<section class="panel"><p role="status">Cargando sección…</p></section>');Promise.resolve(renderTab()).then(()=>{if(tab===requested&&me?.id===uid&&session&&timingSerial===gysteTimingSerial)recordGysteTiming(requested,timingStart);}).catch(()=>{if(tab===requested&&me?.id===uid&&session)shell('<section class="panel"><p class="error">No se pudo cargar esta sección. Comprueba tu conexión.</p><button class="secondary" data-tab="'+esc(requested)+'">Reintentar</button></section>');});window.scrollTo({top:0,behavior:"auto"});
 }
+function revealPostComposer(focusText=false){
+ const panel=document.getElementById("composer");if(!panel)return false;
+ panel.hidden=false;document.getElementById("quick-compose")?.setAttribute("aria-expanded","true");
+ if(focusText){const input=document.getElementById("posttext");input?.focus({preventScroll:true});}
+ panel.scrollIntoView({behavior:"auto",block:"start"});return true;
+}
 async function goCompose(){
-sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
-const input=document.getElementById("posttext");if(input){input.focus();input.scrollIntoView({behavior:"smooth",block:"center"});}
+ if(tab==="feed"&&document.getElementById("composer")){revealPostComposer(true);return;}
+ sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
+ if(tab==="feed")revealPostComposer(true);
 }
 
 function readSpaces(){
@@ -1364,6 +1383,7 @@ function bindPageFollows(){app.querySelectorAll("[data-page-follow]").forEach(b=
 async function goReelCompose(initialFile=null,initialCaption=""){
  sharedPostId=null;selectedSpaceId=null;homeFilter="all";tab="feed";await renderTab();
  if(tab!=="feed")return;
+ revealPostComposer();
  const input=document.getElementById("media"),button=document.getElementById("publish"),audience=document.getElementById("audience"),status=document.getElementById("media-selection");
  if(!input||!button||!audience||!status)return;
  input.accept="video/mp4,video/webm";input.multiple=true;audience.value="only_me";audience.onchange?.();
@@ -2019,7 +2039,7 @@ async function videosView(){
  if(layout==="list")bindPostActions();
  app.querySelectorAll("[data-video-layout]").forEach(b=>b.onclick=()=>{if(videoLayout===b.dataset.videoLayout)return;videoLayout=b.dataset.videoLayout;videosView();});
  app.querySelectorAll("[data-vfilter]").forEach(b=>b.onclick=()=>{videoFilter=b.dataset.vfilter;videoLimit=60;verticalVideoKey="";videosView();});
- document.getElementById("new-video").onclick=async()=>{tab="feed";homeFilter="all";selectedSpaceId=null;sharedPostId=null;await feedView();document.getElementById("composer")?.scrollIntoView({behavior:"smooth"});};
+ document.getElementById("new-video").onclick=async()=>{tab="feed";homeFilter="all";selectedSpaceId=null;sharedPostId=null;await feedView();revealPostComposer();};
  const more=document.getElementById("more-videos");if(more)more.onclick=()=>{videoLimit=Math.min(300,videoLimit+60);videosView();};
  await firstVideoReady;
 }
@@ -2068,6 +2088,7 @@ function readPostDraft(uid){try{return (localStorage.getItem(draftKey(uid))||"")
 function writePostDraft(uid,value){try{if(value.trim())localStorage.setItem(draftKey(uid),value.slice(0,5000));else localStorage.removeItem(draftKey(uid));return true;}catch{return false;}}
 function addComposerTag(tag){
  const f=document.getElementById("posttext");if(!f||tab!=="feed")return;
+ revealPostComposer();
  if(f.value.trim()&&!confirm("¿Añadir esta etiqueta al texto que ya tienes escrito?"))return;
  if(!f.value.includes(tag.trim()))f.value=(tag+f.value).slice(0,5000);
  f.dispatchEvent(new Event("input",{bubbles:true}));f.focus();
@@ -2082,6 +2103,18 @@ function bindPostDraft(){
  input.oninput=()=>{if(active)persist();};
  restore.onclick=()=>{if(me?.id!==uid)return;const old=readPostDraft(uid);if(!old)return;if(input.value.trim()&&input.value!==old&&!confirm("¿Sustituir el texto actual por el borrador guardado?"))return;input.value=old;const audience=document.getElementById("audience");audience.value="only_me";audience.dispatchEvent(new Event("change"));active=true;restore.hidden=true;status.textContent="Borrador recuperado. Audiencia ajustada a Solo yo; revisa a quién quieres mostrarlo. Vuelve a seleccionar los archivos si los necesitas.";input.focus();};
  discard.onclick=()=>{if(!confirm("¿Borrar el borrador guardado en este dispositivo? El texto abierto no se borrará."))return;active=false;if(writePostDraft(uid,"")){restore.hidden=true;discard.hidden=true;status.textContent="Borrador guardado eliminado.";}else status.textContent="No se pudo eliminar el borrador.";};
+}
+let postPreviewUrls=[];
+function clearPostPreviews(){for(const url of postPreviewUrls)URL.revokeObjectURL(url);postPreviewUrls=[];}
+function renderPostPreviews(files){
+ clearPostPreviews();const host=document.getElementById("post-preview");if(!host)return;
+ host.replaceChildren();
+ for(const f of files.slice(0,MAX_POST_FILES)){
+  if(!MEDIA_TYPES.includes(f.type)||!f.size||f.size>MAX_POST_BYTES)continue;
+  const tile=document.createElement("div"),media=document.createElement(f.type.startsWith("video/")?"video":"img"),url=URL.createObjectURL(f),name=document.createElement("small");
+  postPreviewUrls.push(url);media.src=url;if(media.tagName==="VIDEO"){media.preload="metadata";media.muted=true;media.playsInline=true;}else media.alt="Vista previa de "+f.name;
+  name.textContent=f.name;tile.append(media,name);host.append(tile);
+ }
 }
 function homeFollowedPagesHTML(){
 const ids=pageFollows(),items=GYSTE_PAGES.filter(p=>ids.has(p[0]));
@@ -2151,19 +2184,20 @@ const intro=sharedPostId?"Abre Inicio para ver el resto de publicaciones.":activ
 const selectOptions=`<option value="">Mi estado personal</option>${spaces.map(s=>`<option value="${esc(s.id)}" ${selectedSpaceId===s.id?"selected":""}>${esc(s.emoji||"✦")} ${esc(s.name)}</option>`).join("")}`;
 const contentFirst=!sharedPostId&&!selectedSpaceId&&homeFilter!=="mine";
 const communityCards=Array.isArray(cards)?cards:[];
-const composerHTML=`<section class="panel composer" id="composer">
-<div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>
+const composerHTML=`<section class="panel composer" id="composer" ${contentFirst?"hidden":""}>
+<div class="composer-heading"><div class="feed-hero"><div class="face">${avatarContent(me)}</div><div><div class="feed-hero-title">¿Qué quieres compartir?</div><div class="feed-hero-sub">Tu voz y tus conocimientos tienen un lugar aquí.</div></div></div>${contentFirst?`<button type="button" class="ghost" id="composer-close" aria-label="Ocultar editor">Cerrar</button>`:""}</div>
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea><div class="row"><button type="button" class="secondary" id="draft-save">Guardar borrador</button><button type="button" class="secondary" id="draft-restore" hidden>Recuperar borrador</button><button type="button" class="ghost" id="draft-discard" hidden>Borrar borrador</button></div><p id="draft-status" class="muted" role="status">Opcional: guarda solo el texto en este navegador. No se publica ni se sincroniza. Evita guardarlo en dispositivos compartidos. Los archivos no se conservan.</p>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
-<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label>
+<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label><div id="post-preview" aria-label="Vista previa local de los archivos"></div>
 </div>
 <button id="publish" class="primary full">Compartir publicación</button><button class="secondary full" id="open-creator-studio" type="button">✨ Estudio creativo</button>
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-${contentFirst?`<section class="panel home-launch" aria-label="Crear y descubrir"><div class="home-launch-top"><button class="face" style="border:0" data-tab="profile" aria-label="Mi perfil">${avatarContent(me)}</button><button class="home-prompt" type="button" id="quick-compose">¿Qué quieres compartir hoy?</button></div><div class="home-action-row"><button type="button" id="quick-media">${gysteIcon("photos")}Fotos</button><button type="button" data-tab="videos">${gysteIcon("videos")}Vídeos</button><button type="button" data-tab="reels">${gysteIcon("reels")}Reels</button><button type="button" id="quick-studio">${gysteIcon("studio")}Estudio</button></div></section>`:""}
+${contentFirst?`<section class="panel home-launch" aria-label="Crear y descubrir"><div class="home-launch-top"><button class="face" style="border:0" data-tab="profile" aria-label="Mi perfil">${avatarContent(me)}</button><button class="home-prompt" type="button" id="quick-compose" aria-controls="composer" aria-expanded="false">¿Qué quieres compartir hoy?</button></div><div class="home-action-row"><button type="button" id="quick-media">${gysteIcon("photos")}Fotos</button><button type="button" data-tab="videos">${gysteIcon("videos")}Vídeos</button><button type="button" data-tab="reels">${gysteIcon("reels")}Reels</button><button type="button" id="quick-studio">${gysteIcon("studio")}Estudio</button></div></section>`:""}
+${contentFirst?composerHTML:""}
 ${contentFirst?homeCircleHTML():""}
 ${contentFirst?homeFollowedPagesHTML():""}
 ${contentFirst?`<div class="home-links" aria-label="Tu comunidad"><button class="secondary" data-tab="pages">📰 Páginas y noticias</button><button class="secondary" data-tab="spaces">✧ Espacios</button><button class="secondary" data-tab="stories">⏳ Historias</button><button class="secondary" data-tab="explore">Personas</button></div>`:""}
@@ -2171,17 +2205,18 @@ ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">←
 ${!contentFirst?composerHTML:""}
 <div class="section-heading" id="community-feed-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones en esta página</span></div>
 <div id="feed">${communityCards[0]||""}${contentFirst&&page===0?editorialFeed(homeFilter,null,1):""}${communityCards.slice(1).join("")}${!communityCards.length?`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`:""}${!sharedPostId&&(page>0||hasNext)?feedPageHTML(page,hasNext):""}${contentFirst&&page===0&&(homeFilter==="all"||pageFollows().has("cuba"))?cubaBriefHTML():""}${contentFirst&&page===0&&(homeFilter==="all"||pageFollows().has("cuba")||pageFollows().has("caribe-tiempo"))?caribbeanBulletinsHTML():""}${contentFirst&&page===0?pageShelf(homeFilter):""}</div>
-${contentFirst?composerHTML:""}
 ${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${contentFirst?`<details class="home-more"><summary>Más herramientas y espacios</summary>${extraHTML}</details>`:extraHTML}`);
 document.getElementById("publish").onclick=publish;
-const quickCompose=document.getElementById("quick-compose");if(quickCompose)quickCompose.onclick=()=>{const input=document.getElementById("posttext");if(input){input.scrollIntoView({behavior:"smooth",block:"center"});input.focus({preventScroll:true});}};
-const quickMedia=document.getElementById("quick-media");if(quickMedia)quickMedia.onclick=()=>{const media=document.getElementById("media");if(media){media.scrollIntoView({behavior:"auto",block:"center"});media.click();}};
+const quickCompose=document.getElementById("quick-compose");if(quickCompose)quickCompose.onclick=()=>revealPostComposer(true);
+const closeComposer=document.getElementById("composer-close");if(closeComposer)closeComposer.onclick=()=>{if(publishLocks.has(me?.id))return;document.getElementById("composer").hidden=true;quickCompose?.setAttribute("aria-expanded","false");quickCompose?.focus({preventScroll:true});quickCompose?.scrollIntoView({block:"center"});};
+const quickMedia=document.getElementById("quick-media");if(quickMedia)quickMedia.onclick=()=>{const media=document.getElementById("media");if(media&&!media.disabled){revealPostComposer();media.click();}};
 const quickStudio=document.getElementById("quick-studio");if(quickStudio)quickStudio.onclick=()=>document.getElementById("open-creator-studio")?.click();
  document.getElementById("open-creator-studio").onclick=()=>{const t=document.getElementById("posttext"),f=document.getElementById("media");if((t.value.trim()||f.files.length)&&!confirm("Abrir el estudio dejará atrás este borrador y sus archivos. ¿Continuar?"))return;goTab("studio");};
  bindAudiencePicker();
  bindPostDraft();
  document.getElementById("media").onchange=e=>{
  const files=Array.from(e.target.files||[]),bytes=files.reduce((n,f)=>n+f.size,0);
+ renderPostPreviews(bytes<=MAX_POST_BYTES&&files.length<=MAX_POST_FILES?files:[]);
  document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":""):"Puedes seleccionar varias fotos de una vez.";
  };
 bindPostActions();
