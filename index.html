@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r22">
+<meta name="gyste-build" content="2026-11-26-r23">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -690,7 +690,7 @@ function observeVideoTiming(e){
  if(!["feed","videos","reels","messages","stories","profile","saved"].includes(tab)){gysteMediaTimings.delete(video);return;}
  const result=mediaTimingEvent(e.type,gysteMediaTimings.get(video),performance.now(),tab);
  if(result.state)gysteMediaTimings.set(video,result.state);else gysteMediaTimings.delete(video);
- if(result.sample&&video.isConnected)gysteTimings=addTiming(gysteTimings,result.sample.key,result.sample.ms);
+ if(result.sample&&video.isConnected){gysteTimings=addTiming(gysteTimings,result.sample.key,result.sample.ms);gysteRecordLinkSample(result.sample);}
 }
 function timingSummary(){
  const lines=["Mediciones locales de esta página (máximo 20):"];
@@ -767,6 +767,41 @@ function applyWallpaper(value){
  document.body.style.setProperty("--gyste-wallpaper",wallpaperCSS(v));
  if(v.kind==="default")document.body.style.removeProperty("--mint");else document.body.style.setProperty("--mint",wallpaperAccent(v));
 }
+
+function gysteLearnConnection(samples,sample,now){
+ const recent=samples.filter(x=>now-x.at<=120000);
+ if(sample&&((sample.key.endsWith("Start")&&sample.ms>=5000)||(sample.key.endsWith("Buffer")&&sample.ms>=2500)))recent.push({at:now});
+ return recent.slice(-8);
+}
+function gysteLearnedSlow(samples,now){return samples.filter(x=>now-x.at<=120000).length>=2;}
+function gysteResumeTime(position,duration){return Number.isFinite(position)&&Number.isFinite(duration)&&position>0&&duration>0?Math.min(position,Math.max(0,duration-.25)):0;}
+let gysteLinkSamples=[],gysteLinkUid=null,gysteLinkTimer=0;
+function gysteObservedSlow(uid=me?.id){
+ return !!uid&&uid===gysteLinkUid&&gysteLearnedSlow(gysteLinkSamples,Date.now());
+}
+function gysteRecordLinkSample(sample){
+ const uid=me?.id;if(!uid)return;
+ if(gysteLinkUid!==uid){gysteLinkSamples=[];gysteLinkUid=uid;}
+ const before=gysteObservedSlow(uid);
+ gysteLinkSamples=gysteLearnConnection(gysteLinkSamples,sample,Date.now());
+ if(before!==gysteObservedSlow(uid))paintGysteConnection();
+ clearTimeout(gysteLinkTimer);
+ if(gysteLinkSamples.length)gysteLinkTimer=setTimeout(()=>{gysteLinkSamples=gysteLearnConnection(gysteLinkSamples,null,Date.now());paintGysteConnection();},121000);
+}
+function gystePlaybackPosition(video){
+ return video&&!video.ended&&Number.isFinite(video.currentTime)?Math.max(0,video.currentTime):0;
+}
+function gysteRestorePosition(video,position,active){
+ if(!video||!position)return;
+ const seek=()=>{if(!active()||!video.isConnected)return;const t=gysteResumeTime(position,video.duration);if(t>0)try{video.currentTime=t;}catch{}};
+ if(video.readyState>=1)seek();else video.addEventListener("loadedmetadata",seek,{once:true});
+}
+function gysteReloadVideo(video,position,active){
+ if(!active()||navigator.onLine===false)return false;
+ video.pause();video.load();gysteRestorePosition(video,position,active);
+ return true;
+}
+
 function gysteConnectionPreference(uid=me?.id){
  if(!uid)return "auto";
  try{const v=localStorage.getItem("gyste-data-saver:"+uid);if(v==="on"||v==="off")return v;}catch{}
@@ -782,16 +817,16 @@ function gysteConnectionInfo(){return navigator.connection||navigator.mozConnect
 function gysteDataSaver(uid=me?.id){
  if(!uid)return false;
  const pref=gysteConnectionPreference(uid);
- return pref==="on"||pref==="auto"&&["slow","offline"].includes(classifyGysteConnection(navigator.onLine,gysteConnectionInfo()));
+ return pref==="on"||pref==="auto"&&(["slow","offline"].includes(classifyGysteConnection(navigator.onLine,gysteConnectionInfo()))||gysteObservedSlow(uid));
 }
 function gysteConnectionDescription(uid=me?.id){
  const state=classifyGysteConnection(navigator.onLine,gysteConnectionInfo());
  const label={offline:"Sin conexión detectada",slow:"Conexión limitada o ahorro del sistema activo",normal:"Conexión aparentemente normal",unknown:"Calidad de conexión no disponible"}[state];
- return label+" · "+(gysteDataSaver(uid)?"Modo ligero activo":"Modo normal activo");
+ return label+(gysteObservedSlow(uid)?" · Pausas de vídeo detectadas":"")+" · "+(gysteDataSaver(uid)?"Modo ligero activo":"Modo normal activo");
 }
 function appearanceView(){
  const uid=me.id;let current=readWallpaper(uid),pending=current,busy=false;
- shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div class="data-saver-setting"><h3>Conexión inteligente Gyste</h3><label>Modo de conexión<select id="data-saver-toggle" class="field"><option value="auto" ${gysteConnectionPreference(uid)==="auto"?"selected":""}>Automático</option><option value="off" ${gysteConnectionPreference(uid)==="off"?"selected":""}>Normal</option><option value="on" ${gysteConnectionPreference(uid)==="on"?"selected":""}>Ligero · ahorrar datos</option></select></label><p id="gyste-connection-detail" role="status">${esc(gysteConnectionDescription(uid))}</p><p>El modo ligero carga fotos de publicaciones bajo demanda y reduce algunas consultas y precargas. En automático se adapta cuando el navegador informa de conexiones limitadas. Si no informa de la calidad (por ejemplo, en algunos iPhone), puedes elegir Ligero manualmente. No aumenta la señal. También adapta las nuevas fotos JPG antes de subirlas. En modo Ligero intenta reducir vídeos cortos compatibles; si no puede comprobarlos, conserva el original. Normal conserva los archivos originales compatibles. Los ajustes se aplican a las próximas cargas y se guardan en este navegador.</p><p id="data-saver-status" role="status"></p></div><h3>Vista previa de tu Gyste</h3><div id="wallpaper-preview" class="wallpaper-preview"><div class="appearance-demo" aria-hidden="true"><div class="appearance-demo-head"><span class="demo-logo">G</span> GYSTE</div><div class="appearance-demo-post"><b>Tu comunidad</b><p style="margin:6px 0">Comparte algo que te inspire.</p><span style="color:var(--preview-accent)">♡ &nbsp; Comentar &nbsp; · &nbsp; Guardar</span></div><span class="appearance-demo-action">Crear publicación</span></div></div><p class="appearance-demo-caption">Muestra ilustrativa de los colores. Las publicaciones reales conservan su contenido.</p><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false"><span class="theme-swatch" style="background:${THEME_ACCENTS[k]}" aria-hidden="true"></span>${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Elegir fondo original</button><div class="appearance-save-row"><button type="button" class="primary" id="wallpaper-apply" disabled>Guardar estilo</button><button type="button" class="secondary" id="wallpaper-cancel" disabled>Cancelar cambio</button></div><p id="wallpaper-status" role="status" aria-live="polite"></p></section>`);
+ shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div class="data-saver-setting"><h3>Conexión inteligente Gyste</h3><label>Modo de conexión<select id="data-saver-toggle" class="field"><option value="auto" ${gysteConnectionPreference(uid)==="auto"?"selected":""}>Automático</option><option value="off" ${gysteConnectionPreference(uid)==="off"?"selected":""}>Normal</option><option value="on" ${gysteConnectionPreference(uid)==="on"?"selected":""}>Ligero · ahorrar datos</option></select></label><p id="gyste-connection-detail" role="status">${esc(gysteConnectionDescription(uid))}</p><p>El modo ligero carga fotos de publicaciones bajo demanda y reduce algunas consultas y precargas. En automático se adapta cuando el navegador informa de conexiones limitadas o cuando detecta dos arranques lentos o pausas prolongadas de vídeo en dos minutos. Las mediciones son locales, no se envían a ningún servicio. Si no informa de la calidad (por ejemplo, en algunos iPhone), puedes elegir Ligero manualmente. No aumenta la señal. También adapta las nuevas fotos JPG antes de subirlas. En modo Ligero intenta reducir vídeos cortos compatibles; si no puede comprobarlos, conserva el original. Normal conserva los archivos originales compatibles. Los ajustes se aplican a las próximas cargas y se guardan en este navegador.</p><p id="data-saver-status" role="status"></p></div><h3>Vista previa de tu Gyste</h3><div id="wallpaper-preview" class="wallpaper-preview"><div class="appearance-demo" aria-hidden="true"><div class="appearance-demo-head"><span class="demo-logo">G</span> GYSTE</div><div class="appearance-demo-post"><b>Tu comunidad</b><p style="margin:6px 0">Comparte algo que te inspire.</p><span style="color:var(--preview-accent)">♡ &nbsp; Comentar &nbsp; · &nbsp; Guardar</span></div><span class="appearance-demo-action">Crear publicación</span></div></div><p class="appearance-demo-caption">Muestra ilustrativa de los colores. Las publicaciones reales conservan su contenido.</p><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false"><span class="theme-swatch" style="background:${THEME_ACCENTS[k]}" aria-hidden="true"></span>${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Elegir fondo original</button><div class="appearance-save-row"><button type="button" class="primary" id="wallpaper-apply" disabled>Guardar estilo</button><button type="button" class="secondary" id="wallpaper-cancel" disabled>Cancelar cambio</button></div><p id="wallpaper-status" role="status" aria-live="polite"></p></section>`);
  const status=document.getElementById("wallpaper-status"),preview=document.getElementById("wallpaper-preview");
  const saver=document.getElementById("data-saver-toggle");saver.onchange=()=>{if(me?.id!==uid)return;try{if(!["auto","on","off"].includes(saver.value))return;localStorage.setItem("gyste-data-saver:"+uid,saver.value);document.getElementById("data-saver-status").textContent="Preferencia guardada. Se aplicará a las próximas cargas.";paintGysteConnection();}catch{saver.value=gysteConnectionPreference(uid);document.getElementById("data-saver-status").textContent="No se pudo guardar la preferencia.";} };
  const apply=document.getElementById("wallpaper-apply"),cancel=document.getElementById("wallpaper-cancel");
@@ -811,7 +846,7 @@ function appearanceView(){
  draw();
 }
 const GYSTE_BUILD=document.querySelector('meta[name="gyste-build"]')?.content||"desconocida";
-function paintGysteConnection(){const node=document.getElementById("gyste-connection"),detail=document.getElementById("gyste-connection-detail");if(node){const offline=navigator.onLine===false,light=gysteDataSaver();node.hidden=!offline&&!light;node.textContent=offline?"Sin conexión detectada. No cierres esta pantalla si tienes archivos o texto pendientes.":"Conexión inteligente · modo ligero activo. Puedes cambiarlo en Apariencia y ahorro de datos.";}if(detail)detail.textContent=gysteConnectionDescription();}
+function paintGysteConnection(){const node=document.getElementById("gyste-connection"),detail=document.getElementById("gyste-connection-detail");if(node){const offline=navigator.onLine===false,light=gysteDataSaver();node.hidden=!offline&&!light;node.textContent=offline?"Sin conexión detectada. Recupera los archivos guardados desde Archivos pendientes cuando vuelva Internet. Conserva los borradores aún no guardados.":"Conexión inteligente · modo ligero activo. Se adapta a la conexión y las pausas de reproducción. Puedes cambiarlo en Apariencia y ahorro de datos.";}if(detail)detail.textContent=gysteConnectionDescription();}
 window.addEventListener("offline",paintGysteConnection);window.addEventListener("online",paintGysteConnection);gysteConnectionInfo()?.addEventListener?.("change",paintGysteConnection);
 function classifyGysteBuild(current,remote){if(!/^\d{4}-\d{2}-\d{2}-r\d+$/.test(remote||""))return "unknown";return current===remote?"same":"different";}
 function gysteUpdateHTML(){return '<details class="gyste-update-panel"><summary>Versión y actualización de Gyste</summary><p class="muted">Versión abierta: '+esc(GYSTE_BUILD)+'</p><p class="muted">La comprobación compara esta pantalla con la página publicada. Consume una descarga de la página, sin enviar mensajes ni archivos. Recargar puede cerrar borradores no guardados.</p><button type="button" class="secondary full" id="gyste-check-build">Comprobar versión publicada</button><button type="button" class="secondary full" id="gyste-reload-build">Recargar Gyste</button><p id="gyste-build-status" role="status" aria-live="polite"></p></details>';}
@@ -1898,7 +1933,7 @@ function bindReelPlayback(video,button,status,active){
  const write=(label,message,disabled=false)=>{if(!active())return;button.textContent=label;status.textContent=message;button.disabled=disabled;};
  const error=()=>{failed=true;write("▶ Reproducir",videoErrorHint(video.error?.code)+" Pulsa Recargar vídeo.",true);};
  const ready=()=>{if(!failed&&video.paused&&!video.ended&&!pending)write("▶ Reproducir",Number.isFinite(video.duration)&&video.duration>0?"Duración: "+Math.ceil(video.duration)+" s · Pulsa Reproducir":"Pulsa Reproducir");};
- const buffering=()=>{if(!failed&&!video.paused&&!video.ended)write("⏸ Pausar","Cargando vídeo…");};
+ const buffering=()=>{if(!failed&&!video.paused&&!video.ended)write("⏸ Pausar",navigator.onLine===false?"Sin conexión. Espera a que vuelva Internet o recarga el vídeo.":"Cargando vídeo… Gyste ajusta las próximas cargas si detecta pausas repetidas.");};
  video.addEventListener("loadedmetadata",ready);
  video.addEventListener("play",buffering);
  video.addEventListener("waiting",buffering);
@@ -1932,7 +1967,7 @@ async function reelsView(){
  const entries=items.flatMap(p=>postMediaItems(p).map((m,i)=>({p,m,key:p.id+":"+i})).filter(x=>x.m.type?.startsWith("video/")));
  shell(`<section class="panel reel-panel"><div class="reel-heading"><h2>▶ Reels</h2><button class="primary" id="reelpublish">+ Publicar</button></div><div class="actions"><button class="secondary" data-reel-filter="all" aria-pressed="${filter==="all"}">Todos</button><button class="secondary" data-reel-filter="following" aria-pressed="${filter==="following"}">Siguiendo</button><button class="secondary" data-reel-filter="mine" aria-pressed="${filter==="mine"}">Mis Reels</button></div><details><summary>Elegir un Reel de la lista</summary><label>Ir a un Reel<select class="field" id="reel-picker" ${entries.length?"":"disabled"}>${entries.map((x,i)=>`<option value="${i}">Reel ${i+1} · ${esc(x.p.content?.trim().slice(0,40)||time(x.p.created_at))}${x.p.audience==="only_me"?" · Solo yo":""}</option>`).join("")}</select></label></details><div class="reel-navigation"><button class="secondary" id="reelprev">↑ Anterior</button><span id="reelcount" role="status"></span><button class="secondary" id="reelnext">Siguiente ↓</button></div><div id="reel-gesture" class="reel-gesture">↑ Desliza aquí para cambiar de Reel ↓</div><div id="reelstage"></div><details class="reel-tools"><summary>Más opciones y herramientas</summary><button class="secondary full" data-tab="studio">✨ Crear mi propio Reel</button><button class="secondary full" data-tab="saved">🔖 Mis publicaciones guardadas</button><button class="secondary full" data-tab="videos">Biblioteca de vídeos</button></details>${(data||[]).length===reelLimit?'<button class="secondary full" id="reel-more">Cargar más Reels</button>':""}</section>`);
  const stage=document.getElementById("reelstage"),count=document.getElementById("reelcount"),prev=document.getElementById("reelprev"),next=document.getElementById("reelnext");let index=Math.max(0,entries.findIndex(x=>x.key===reelVideoKey)),serial=0;const picker=document.getElementById("reel-picker");picker.onchange=()=>{const selected=Number(picker.value);if(Number.isInteger(selected)&&selected>=0&&selected<entries.length&&confirmNavigationDraft()){index=selected;draw();}else picker.value=String(index);};app.querySelectorAll("[data-reel-filter]").forEach(button=>button.onclick=()=>{if(button.dataset.reelFilter!==reelFilter&&confirmNavigationDraft()){reelFilter=button.dataset.reelFilter;reelLimit=REEL_BATCH;reelVideoKey="";reelsView();}});const more=document.getElementById("reel-more");if(more)more.onclick=()=>{if(reelLimit>=900){more.disabled=true;more.textContent="Límite de esta vista alcanzado";return;}if(!confirmNavigationDraft())return;reelLimit=Math.min(900,reelLimit+REEL_BATCH);reelsView();};
- async function draw(){
+ async function draw(resumeAt=0){
  const n=++serial,active=()=>valid()&&n===serial&&stage.isConnected;
  stage.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load();});prev.disabled=index<=0;next.disabled=index>=entries.length-1;count.textContent=entries.length?"Reel "+(index+1)+" de "+entries.length:"0 Reels";
  picker.value=String(index);const x=entries[index];if(!x){stage.innerHTML='<p>No hay Reels disponibles en esta selección. Publica un vídeo propio para empezar.</p>';return;}
@@ -1941,7 +1976,8 @@ async function reelsView(){
  if(!active())return;
  stage.innerHTML=`<div class="reel-player-controls"><button class="primary" id="reelplay" ${url?"":"disabled"}>▶ Reproducir</button><button class="secondary" id="reelretry">Recargar vídeo</button>${url?'<button class="secondary" id="reel-full">⛶ Ampliar</button>':""}</div><p id="reelstatus" role="status">${url?"Pulsa Reproducir para comenzar.":"No se pudo obtener el vídeo. Revisa tu acceso o vuelve a intentarlo."}</p>${url?`<video id="reelvideo" controls playsinline preload="${gysteDataSaver()?"none":"metadata"}" style="display:block;width:100%;height:clamp(150px,47dvh,440px);touch-action:pan-x pinch-zoom;object-fit:contain;background:#05090e;border-radius:12px" src="${esc(url)}"></video>`:""}<div class="actions"><button class="secondary" data-savepost="${esc(x.p.id)}" data-reel-save aria-pressed="${savedIds.has(x.p.id)}">${savedIds.has(x.p.id)?"✓ Reel guardado":"🔖 Guardar Reel"}</button></div><p id="reel-save-status" role="status" aria-live="polite"></p>${postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===uid?me:null),"")}`;
  const v=document.getElementById("reelvideo"),play=document.getElementById("reelplay"),status=document.getElementById("reelstatus");
- document.getElementById("reelretry").onclick=()=>{if(!confirmNavigationDraft())return;if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);return draw();};
+ document.getElementById("reelretry").onclick=()=>{if(navigator.onLine===false){status.textContent="Sin conexión. Pulsa Recargar vídeo cuando vuelva Internet.";return;}if(!confirmNavigationDraft())return;const position=gystePlaybackPosition(v);if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);return draw(position);};
+ gysteRestorePosition(v,resumeAt,active);
  if(v){let touchStart=null;v.addEventListener("touchstart",e=>{touchStart=e.touches.length===1?{x:e.touches[0].clientX,y:e.touches[0].clientY}:null;},{passive:true});v.addEventListener("touchcancel",()=>{touchStart=null;});v.addEventListener("touchend",e=>{const t=e.changedTouches[0],start=touchStart;touchStart=null;if(!start||!t||!active())return;const d=reelSwipeDirection(t.clientX-start.x,t.clientY-start.y);if(d&&index+d>=0&&index+d<entries.length&&confirmNavigationDraft()){index+=d;draw();}},{passive:true});const full=document.getElementById("reel-full");full.onclick=async()=>{try{if(v.requestFullscreen)await v.requestFullscreen();else if(v.webkitEnterFullscreen)v.webkitEnterFullscreen();else status.textContent="Usa el control de pantalla completa del vídeo.";}catch{status.textContent="Usa el control de pantalla completa del vídeo.";}};bindReelPlayback(v,play,status,active);}
  bindPostActions();
  }
@@ -2489,11 +2525,17 @@ async function probeLocalVideo(file){
 }
 function bindVideoRecovery(frame,video){
  if(video.dataset.recoveryBound)return;video.dataset.recoveryBound="1";
- const status=document.createElement("p"),retry=document.createElement("button");status.className="muted";status.setAttribute("role","status");status.hidden=true;retry.type="button";retry.className="secondary";retry.textContent="Reintentar vídeo";retry.hidden=true;frame.append(status,retry);
- const fail=()=>{status.textContent=videoErrorHint(video.error?.code);status.hidden=false;retry.hidden=false;};
- const ready=()=>{status.hidden=true;retry.hidden=true;};
+ const status=document.createElement("p"),retry=document.createElement("button");status.className="muted";status.setAttribute("role","status");status.hidden=true;retry.type="button";retry.className="secondary";retry.textContent="Reintentar desde aquí";retry.hidden=true;frame.append(status,retry);
+ let last=0,waitTimer=0;
+ const clear=()=>clearTimeout(waitTimer);
+ const ready=()=>{clear();status.hidden=true;retry.hidden=true;};
+ const fail=()=>{clear();last=Math.max(last,gystePlaybackPosition(video));status.textContent=navigator.onLine===false?"Sin conexión. Cuando vuelva Internet, reintenta desde aquí.":videoErrorHint(video.error?.code);status.hidden=false;retry.hidden=false;};
+ const waiting=()=>{if(video.paused||video.ended||!video.isConnected)return;clear();waitTimer=setTimeout(()=>{if(!video.isConnected||video.paused||video.ended||video.readyState>=3)return;last=gystePlaybackPosition(video);status.textContent=navigator.onLine===false?"Sin conexión. Tu posición se conserva en esta pantalla.":"La conexión está tardando. Puedes esperar o reintentar desde aquí.";status.hidden=false;retry.hidden=false;},5000);};
  video.addEventListener("error",fail);video.addEventListener("playing",ready);video.addEventListener("loadedmetadata",ready);
- retry.onclick=()=>{if(!video.isConnected)return;const url=video.getAttribute("src");if(!url)return;status.textContent="Recargando vídeo…";retry.hidden=true;try{video.pause();video.load();const p=video.play();if(p?.catch)p.catch(()=>{if(!video.error){status.textContent="Pulsa reproducir para intentarlo de nuevo.";retry.hidden=false;}});}catch{fail();}};
+ video.addEventListener("timeupdate",()=>{if(!video.seeking&&!video.ended)last=gystePlaybackPosition(video);});
+ video.addEventListener("waiting",waiting);video.addEventListener("stalled",waiting);
+ video.addEventListener("pause",clear);video.addEventListener("ended",()=>{last=0;ready();});
+ retry.onclick=()=>{if(!video.isConnected)return;if(navigator.onLine===false){status.textContent="Todavía no hay conexión. Reintenta cuando vuelva Internet.";return;}if(!video.getAttribute("src"))return;const pos=last||gystePlaybackPosition(video);status.textContent="Recargando vídeo desde tu posición…";retry.hidden=true;try{gysteReloadVideo(video,pos,()=>video.isConnected);status.textContent="Pulsa reproducir para continuar."; }catch{fail();}};
  if(video.error)fail();
 }
 
@@ -2831,6 +2873,7 @@ async function processPending(job,progress,viewActive,existing=false){
   if(old){if(old.uid!==uid)throw Error("Cuenta incorrecta");job=old;}
   else{if(existing)throw Error("Copia ya retirada");await pendingSave(job);}
   void paintPending();
+  if(navigator.onLine===false)throw Error("Sin conexión; copia guardada");
   const confirm=j=>j.kind==="post"?confirmPublishedPost(uid,j.id):checkSentMessage(uid,j.row.recipient_id,j.id,j.row.media_path,j.row.media_type);
   await runPending(job,{uid,active,confirm,save:pendingSave,remove:pendingRemove,
    upload:async(j,i,checkpoint)=>{
@@ -2838,6 +2881,7 @@ async function processPending(job,progress,viewActive,existing=false){
     if(!active()||!t.path.startsWith(uid+"/")||!MEDIA_TYPES.includes(f.type)||!f.size)throw Error("Archivo no válido");
     if(t.started){try{const {data,error}=await db.storage.from(j.bucket).list(uid,{search:t.path.split("/").pop(),limit:10});if(!error&&(data||[]).some(x=>x.name===t.path.split("/").pop()&&Number(x.metadata?.size)===f.size))return;}catch{}}
     t.started=true;await checkpoint();
+    if(navigator.onLine===false)throw Error("Sin conexión; copia guardada");
     await uploadGysteMedia(uid,j.bucket,t.path,f,t,active,p=>progress("Archivo "+(i+1)+"/"+j.files.length+" · "+p+" %"),checkpoint);
    },
    insert:async j=>{if(!active())throw Error("Cuenta cambiada");progress("Confirmando envío…");const {error}=await db.from(j.kind==="post"?"posts":"gyste_messages").insert(j.row);if(error)throw error;},
