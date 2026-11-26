@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r29">
+<meta name="gyste-build" content="2026-11-26-r30">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3659,6 +3659,9 @@ async function notificationView(){
 // No afirma ofrecer cifrado de extremo a extremo ni notificaciones push.
 let chatRefreshTimer=null,chatViewEpoch=0;
 let chatRenderSignature="";
+function gysteChatPollDue(elapsed,light,visible,online){
+ return visible&&online&&Number.isFinite(elapsed)&&elapsed>=(light?24000:8000);
+}
 function stopChatRefresh(){if(chatRefreshTimer){clearInterval(chatRefreshTimer);chatRefreshTimer=null;}}
 const CHAT_BUCKET="gyste-chat-media";
 let chatFilePreviewUrl=null;
@@ -3844,7 +3847,16 @@ async function messagesView(){
  const chatList=document.getElementById("chatlist"),reload=document.getElementById("chat-reload-files");
  reload.onclick=async()=>{if(!valid()||reload.disabled)return;reload.disabled=true;chatMediaCache.clear();chatRenderSignature="";try{await refreshChatMessages(target,true);}finally{if(reload.isConnected)reload.disabled=false;}};
  await refreshChatMessages(target,true);
- if(valid()&&chatList?.isConnected&&document.getElementById("chatlist")===chatList)chatRefreshTimer=setInterval(()=>{if(document.visibilityState!=="hidden")refreshChatMessages(target,true);},8000);
+ if(valid()&&chatList?.isConnected&&document.getElementById("chatlist")===chatList){
+ let lastPoll=performance.now();
+ chatRefreshTimer=setInterval(()=>{
+  if(!valid()||!chatList.isConnected)return;
+  const now=performance.now();
+  if(!gysteChatPollDue(now-lastPoll,gysteDataSaver(uid),document.visibilityState!=="hidden",navigator.onLine!==false))return;
+  if(chatRefreshLocks.has(chatList))return;
+  lastPoll=now;void refreshChatMessages(target,true);
+ },8000);
+ }
 }
 function resetVoiceUI(){
  const b=document.getElementById("voice-record"),cancel=document.getElementById("voice-cancel"),preview=document.getElementById("voice-preview");
