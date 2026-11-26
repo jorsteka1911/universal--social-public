@@ -212,6 +212,17 @@ body.gyste-custom-background #app{background:#07121d55}
 .wallpaper-choice{color:#fff;min-height:74px;border:2px solid transparent;border-radius:12px;padding:9px;text-shadow:0 1px 3px #000;font-weight:700}
 .wallpaper-choice[aria-pressed="true"]{border-color:#5de1c3;outline:1px solid #5de1c3}
 .wallpaper-preview{min-height:130px;border:1px solid var(--line);border-radius:12px;background-size:cover;background-position:center;display:grid;place-items:center;color:white;text-shadow:0 1px 4px #000;background-color:#081722}
+.home-launch{padding:12px;margin-bottom:10px;border-radius:18px}
+.home-launch-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.home-launch-top .home-prompt{flex:1;min-width:0;text-align:left;border:1px solid var(--line);border-radius:24px;padding:12px;color:var(--txt);background:transparent;font-size:14px;cursor:pointer}
+.home-action-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;border-top:1px solid var(--line);padding-top:8px}
+.home-action-row button{border:0;background:transparent;color:var(--txt);font-size:11px;font-weight:700;min-width:0;min-height:48px;padding:4px 1px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.home-action-row button span{font-size:21px;line-height:1.2}
+.home-links{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;margin:0 0 12px;padding:2px}
+.home-links button{flex:0 0 auto;min-height:40px;white-space:nowrap}
+.home-more{margin:14px 0 20px}.home-more>summary{cursor:pointer;font-weight:800;color:var(--mint);padding:12px 0}.home-more[open]>summary{margin-bottom:8px}
+#home-circle .face.lg{width:52px;height:52px;font-size:21px}
+.home-launch .face{flex-shrink:0}
 </style>
 </head>
 <body>
@@ -307,7 +318,7 @@ app.innerHTML=`
 <button class="icon-btn ${tab==="explore"?"selected":""}" data-tab="explore" aria-label="Buscar personas" title="Buscar personas">⌕</button>
 <button class="icon-btn ${tab==="notifications"?"selected":""}" data-tab="notifications" aria-label="Notificaciones" title="Notificaciones">♧</button>
 <button class="icon-btn top-avatar" data-tab="profile" aria-label="Mi perfil" title="Mi perfil">${avatarContent(me)}</button>
-<details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">☰</summary>
+<details class="quick-menu" id="quick-menu"><summary class="icon-btn" aria-label="Más secciones" title="Más secciones">⋯</summary>
 <div class="menu-dropdown">
 <button data-tab="studio">✨ Estudio creativo</button><button data-tab="challenges">🏆 Retos y talentos</button><button data-tab="spaces">✧ Espacios</button><button data-tab="learn">📚 Aprender · vídeos y cursos</button>
 <button data-tab="stories">⏳ Historias de 24 horas</button><button data-tab="history">📷 Historia documental</button>
@@ -2091,16 +2102,19 @@ ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activar�
 </section>`;
 const extraHTML=`${shortcutsHTML()}${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?projectAppsPreview():""}${!sharedPostId&&!selectedSpaceId?`<section class="panel"><h2>✨ Descubre tu talento</h2><p>Aprende, crea y comparte algo que te haga sentir orgulloso.</p><button class="primary full" data-tab="challenges">Explorar retos creativos</button><button class="secondary full" data-tab="learn">Mi academia y aprendizaje</button></section>`:""}<section class="panel"><button class="secondary full" data-tab="help">❔ ¿Cómo usar Gyste?</button><button class="secondary full" data-tab="feedback">💡 Ayúdanos a mejorar Gyste</button><button class="secondary full" data-tab="stories">⏳ Ver y crear historias de 24 horas</button></section>`;
 shell(`
-${contentFirst?`<div class="section-heading" style="margin:2px 0 8px"><h1 style="font-size:18px;margin:0">Hola, ${esc(me?.display_name||"Tu comunidad")}</h1><button class="text-link" data-tab="help">Ayuda</button></div>`:""}
+${contentFirst?`<section class="panel home-launch" aria-label="Crear y descubrir"><div class="home-launch-top"><button class="face" style="border:0" data-tab="profile" aria-label="Mi perfil">${avatarContent(me)}</button><button class="home-prompt" type="button" id="quick-compose">¿Qué quieres compartir hoy?</button></div><div class="home-action-row"><button type="button" id="quick-media"><span aria-hidden="true">🖼️</span>Fotos</button><button type="button" data-tab="videos"><span aria-hidden="true">🎥</span>Vídeos</button><button type="button" data-tab="reels"><span aria-hidden="true">▶️</span>Reels</button><button type="button" id="quick-studio"><span aria-hidden="true">✨</span>Crear</button></div></section>`:""}
 ${contentFirst?homeCircleHTML():""}
+${contentFirst?`<div class="home-links" aria-label="Tu comunidad"><button class="secondary" data-tab="pages">📰 Páginas y noticias</button><button class="secondary" data-tab="spaces">✧ Espacios</button><button class="secondary" data-tab="stories">⏳ Historias</button><button class="secondary" data-tab="explore">Personas</button></div>`:""}
 ${sharedPostId?`<div class="panel"><button class="secondary" data-tab="feed">← Ver todas las publicaciones</button></div>`:activeSpace?`<div class="panel"><div class="section-heading"><h2>${esc(title)}</h2><button class="text-link" data-tab="spaces">Explorar espacios</button></div><p class="muted">${esc(intro)}</p></div>`:filtersHTML()}
-${contentFirst?`<div style="display:flex;gap:6px;overflow-x:auto;padding:0 0 8px"><button type="button" class="primary" style="white-space:nowrap" id="quick-compose">＋ Crear</button><button class="secondary" style="white-space:nowrap" data-tab="stories">Historias</button><button class="secondary" style="white-space:nowrap" data-tab="pages">Páginas</button><button class="secondary" style="white-space:nowrap" data-open-page="cuba">Cuba</button></div>`:composerHTML}
+${!contentFirst?composerHTML:""}
 <div class="section-heading" id="community-feed-heading"><h2>${esc(title)}</h2><span class="muted" style="font-size:12px">${(data||[]).length} publicaciones en esta página</span></div>
 <div id="feed">${communityCards[0]||""}${contentFirst&&page===0?editorialFeed(homeFilter,null,1):""}${communityCards.slice(1).join("")}${!communityCards.length?`<div class="empty-state"><span class="symbol">✧</span><strong>Empieza una nueva conversación</strong><p>${esc(intro)}</p></div>`:""}${!sharedPostId&&(page>0||hasNext)?feedPageHTML(page,hasNext):""}${contentFirst&&page===0&&(homeFilter==="all"||pageFollows().has("cuba"))?cubaBriefHTML():""}${contentFirst&&page===0&&(homeFilter==="all"||pageFollows().has("cuba")||pageFollows().has("caribe-tiempo"))?caribbeanBulletinsHTML():""}${contentFirst&&page===0?pageShelf(homeFilter):""}</div>
 ${contentFirst?composerHTML:""}
-${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${extraHTML}`);
+${!sharedPostId&&!selectedSpaceId&&homeFilter==="all"?`<section class="panel"><h2>▶ Reels Gyste</h2><button class="primary full" data-tab="reels">Ver Reels de la comunidad</button></section>`:""}${contentFirst?`<details class="home-more"><summary>Más herramientas y espacios</summary>${extraHTML}</details>`:extraHTML}`);
 document.getElementById("publish").onclick=publish;
 const quickCompose=document.getElementById("quick-compose");if(quickCompose)quickCompose.onclick=()=>{const input=document.getElementById("posttext");if(input){input.scrollIntoView({behavior:"smooth",block:"center"});input.focus({preventScroll:true});}};
+const quickMedia=document.getElementById("quick-media");if(quickMedia)quickMedia.onclick=()=>{const media=document.getElementById("media");if(media){media.scrollIntoView({behavior:"auto",block:"center"});media.click();}};
+const quickStudio=document.getElementById("quick-studio");if(quickStudio)quickStudio.onclick=()=>document.getElementById("open-creator-studio")?.click();
  document.getElementById("open-creator-studio").onclick=()=>{const t=document.getElementById("posttext"),f=document.getElementById("media");if((t.value.trim()||f.files.length)&&!confirm("Abrir el estudio dejará atrás este borrador y sus archivos. ¿Continuar?"))return;goTab("studio");};
  bindAudiencePicker();
  bindPostDraft();
