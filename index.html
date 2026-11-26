@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r19">
+<meta name="gyste-build" content="2026-11-26-r20">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2660,6 +2660,49 @@ function bindAudiencePicker(){
  mode.onchange=()=>{picker.hidden=!["selected","except"].includes(mode.value);};
  search.oninput=async()=>{if(!editable())return;const n=++serial,q=search.value.trim().replace(/[%_,]/g,""),out=document.getElementById("audience-results");out.replaceChildren();if(q.length<2)return;const {data,error}=await db.from("gyste_profiles").select("user_id,display_name,username").ilike("display_name","%"+q+"%").neq("user_id",me.id).limit(20);if(n!==serial||!out.isConnected||!editable())return;if(error){out.textContent="No se pudo buscar.";return;}for(const p of data||[]){const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=(p.display_name||"Miembro")+" @"+(p.username||"");b.onclick=()=>{if(!editable()||audienceChosen.size>=100)return;audienceChosen.set(p.user_id,b.textContent);draw();};out.append(b);}};
 }
+
+let gysteTusLoading=null;
+function loadGysteTus(){
+ if(window.tus?.Upload)return Promise.resolve(window.tus);
+ if(!gysteTusLoading)gysteTusLoading=new Promise((resolve,reject)=>{
+  const script=document.createElement("script");
+  script.src="https://cdn.jsdelivr.net/npm/tus-js-client@4.3.1/dist/tus.min.js";
+  const fail=()=>{clearTimeout(timer);script.remove();gysteTusLoading=null;reject(Error("No se pudo cargar la subida reanudable"));};
+  const timer=setTimeout(fail,30000);
+  script.onerror=fail;
+  script.onload=()=>{clearTimeout(timer);if(window.tus?.Upload)resolve(window.tus);else fail();};
+  document.head.append(script);
+ });
+ return gysteTusLoading;
+}
+async function gysteResumableTransfer({client,endpoint,key,uid,bucket,path,file,state,active,progress,load}){
+ if(!active())throw Error("Pantalla cerrada");
+ const Tus=await load();
+ if(!active())throw Error("Pantalla cerrada");
+ const session=async()=>{const {data,error}=await client.auth.getSession();if(error||data?.session?.user?.id!==uid||!data.session.access_token||!active())throw Error("Sesión no disponible");return data.session.access_token;};
+ const token=await session();
+ return new Promise((resolve,reject)=>{
+  let upload;
+  const remember=()=>{if(upload?.url)state.url=upload.url;};
+  upload=new Tus.Upload(file,{
+   endpoint,uploadUrl:state.url||null,chunkSize:6*1024*1024,
+   uploadDataDuringCreation:false,storeFingerprintForResuming:false,removeFingerprintOnSuccess:true,
+   retryDelays:[0,2000,5000,10000,20000],
+   headers:{authorization:"Bearer "+token,apikey:key},
+   metadata:{bucketName:bucket,objectName:path,contentType:file.type,cacheControl:"3600"},
+   onBeforeRequest:async req=>{req.setHeader("authorization","Bearer "+await session());},
+   onProgress:(sent,total)=>{remember();if(active())progress(Math.min(100,Math.floor(100*sent/Math.max(1,total))));},
+   onError:error=>{remember();reject(error);},
+   onSuccess:()=>{state.url=null;resolve();}
+  });
+  try{upload.start();}catch(error){remember();reject(error);}
+ });
+}
+function uploadGysteMedia(uid,bucket,path,file,state,active,progress){
+ const endpoint=URL_DB.replace(".supabase.co",".storage.supabase.co")+"/storage/v1/upload/resumable";
+ return gysteResumableTransfer({client:db,endpoint,key:KEY_DB,uid,bucket,path,file,state,active,progress,load:loadGysteTus});
+}
+const pendingPostTransfers=new WeakMap();
 const publishLocks=new Set();
 async function confirmPublishedPost(uid,id){
  try{const {data,error}=await db.from("posts").select("id,user_id").eq("id",id).eq("user_id",uid).maybeSingle();return !error&&data?.id===id&&data.user_id===uid;}catch{return false;}
@@ -2674,24 +2717,33 @@ async function publish(options={}){
  return say("Selecciona hasta 10 archivos compatibles, con un máximo de 50 MB en total.",true);
  const b=document.getElementById("publish");if(!b||publishLocks.has(me.id)||(b.disabled&&!batch))return {ok:false};
  const uid=me.id,space=document.getElementById("postspace")?.value||null;
- const audience=document.getElementById("audience")?.value||"only_me",members=[...audienceChosen.keys()],postId=crypto.randomUUID(),bucket=audience==="public"?BUCKET:PRIVATE_BUCKET;
+ const audience=document.getElementById("audience")?.value||"only_me",members=[...audienceChosen.keys()],bucket=audience==="public"?BUCKET:PRIVATE_BUCKET;
  if(!["public","friends","selected","except","only_me"].includes(audience))return say("Selecciona una audiencia válida.",true);
  if(["selected","except"].includes(audience)&&!members.length)return say("Elige al menos una persona.",true);
  const active=()=>me?.id===uid&&b.isConnected&&document.getElementById("publish")===b;
  publishLocks.add(uid);b.disabled=true;b.textContent="Publicando…";
  const controls=[textInput,mediaInput,document.getElementById("postspace"),document.getElementById("audience"),document.getElementById("audience-search"),...document.querySelectorAll("#audience-chosen button,#audience-results button")].filter(Boolean),previous=controls.map(c=>c.disabled);
  controls.forEach(c=>c.disabled=true);
- const uploaded=[];let postCommitted=false,insertAttempted=false,preparationError=false,videoPreparationError=false;
+ let draft=pendingPostTransfers.get(mediaInput);
+ const signature=JSON.stringify([uid,text,space,audience,members,batch]);
+ const same=draft&&draft.signature===signature&&draft.files.length===files.length&&files.every((f,i)=>f===draft.files[i]);
+ if(!same){draft={signature,files,postId:crypto.randomUUID(),prepared:null,uploaded:[],transfers:[],insertAttempted:false};pendingPostTransfers.set(mediaInput,draft);}
+ const postId=draft.postId,uploaded=draft.uploaded;
+ let postCommitted=false,insertAttempted=draft.insertAttempted,preparationError=false,videoPreparationError=false;
  try{
+  if(!draft.prepared){
   const prepared=[];
   for(let i=0;i<files.length;i++){if(!active())throw Error("Sección cerrada");const original=files[i];if(postFileMode(original)==="convert"){b.textContent="Preparando foto "+(i+1)+" de "+files.length+"…";try{prepared.push(await prepareLightChatPhoto(original,true,false));}catch{preparationError=true;throw Error("Conversión no disponible");}}else{if(original.type.startsWith("video/")){b.textContent="Comprobando vídeo "+(i+1)+" de "+files.length+"…";const result=await probeLocalVideo(original);if(result==="unsupported"){videoPreparationError=true;throw Error("Vídeo incompatible");}}prepared.push(original);}}
   if(prepared.some(f=>!MEDIA_TYPES.includes(f.type)||!f.size||f.size>MAX_POST_BYTES)||prepared.reduce((n,f)=>n+f.size,0)>MAX_POST_BYTES){preparationError=true;throw Error("Archivos preparados demasiado grandes");}
-  for(let i=0;i<prepared.length;i++){
+  draft.prepared=prepared;
+  draft.transfers=prepared.map(file=>({path:uid+"/"+postId+"-"+crypto.randomUUID()+"."+({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type],url:null}));
+  }
+  const prepared=draft.prepared;
+  for(let i=uploaded.length;i<prepared.length;i++){
    if(!active())throw Error("Sección cerrada");
-   const file=prepared[i],ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"})[file.type];
-   const path=uid+"/"+postId+"-"+crypto.randomUUID()+"."+ext;
+   const file=prepared[i],state=draft.transfers[i],path=state.path;
    b.textContent="Subiendo "+(i+1)+" de "+prepared.length+"…";
-   const {error}=await db.storage.from(bucket).upload(path,file,{upsert:false,contentType:file.type});if(error)throw error;
+   await uploadGysteMedia(uid,bucket,path,file,state,active,p=>{b.textContent="Archivo "+(i+1)+"/"+prepared.length+" · "+p+" %";});
    uploaded.push({path,type:file.type});
   }
   const first=uploaded[0];
@@ -2699,9 +2751,11 @@ async function publish(options={}){
   const newPost={id:postId,content:text,user_id:uid,audience,media_url:url,media_type:first?.type||null,media_path:first?.path||null};
   if(spacesReady)newPost.space_id=space;
   if(!active())throw Error("Sección cerrada");
-  insertAttempted=true;
+  if(insertAttempted)postCommitted=await confirmPublishedPost(uid,postId);
+  if(!postCommitted){insertAttempted=true;draft.insertAttempted=true;
   try{const {error}=await db.from("posts").insert(newPost);if(error)throw error;postCommitted=true;}
-  catch(error){if(me?.id===uid)postCommitted=await confirmPublishedPost(uid,postId);if(!postCommitted)throw error;}
+  catch(error){if(me?.id===uid)postCommitted=await confirmPublishedPost(uid,postId);if(!postCommitted)throw error;}}
+  pendingPostTransfers.delete(mediaInput);
   if(me?.id!==uid)return {ok:true,warning:true};
  if(readPostDraft(uid).trim()===text)writePostDraft(uid,"");
  if(["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);if(batch)return {ok:true,warning:true};b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
@@ -2711,8 +2765,8 @@ async function publish(options={}){
    say("Publicación compartida.");
   try{resetFeedPage();await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
-  if(uploaded.length&&!insertAttempted&&me?.id===uid){try{const {error}=await db.storage.from(bucket).remove(uploaded.map(m=>m.path));if(error)console.warn("Archivos pendientes de limpieza:",error.message);}catch{}}
-  if(active())say(videoPreparationError?"Este teléfono no puede abrir uno de los vídeos seleccionados. Usa MP4 con H.264 y AAC. No se ha publicado nada.":preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo publicar. Conservamos tu selección mientras sigas en esta pantalla.",true);
+  // Se conservan los archivos confirmados y las URL temporales para reintentar el mismo borrador sin duplicarlos.
+  if(active())say(videoPreparationError?"Este teléfono no puede abrir uno de los vídeos seleccionados. Usa MP4 con H.264 y AAC. No se ha publicado nada.":preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"Subida interrumpida. Conservamos tu selección y el progreso disponible. Pulsa Compartir otra vez cuando vuelva Internet, sin cambiar los archivos ni salir.",true);
   if(batch)return {ok:postCommitted,warning:postCommitted};
    }finally{publishLocks.delete(uid);controls.forEach((c,i)=>c.disabled=previous[i]);if(b.isConnected&&!batch){b.disabled=false;b.textContent="Compartir publicación";}}
 }
@@ -3468,7 +3522,7 @@ async function sendMessage(e){
  if(payload&&chatFileType(payload).startsWith("video/")){stage="comprobación del vídeo";if(status)status.textContent="Comprobando vídeo en este teléfono…";const result=await probeLocalVideo(payload);if(!active())return;if(result==="unsupported"){if(status)status.textContent="Este teléfono no puede abrir el vídeo. Usa MP4 con H.264 y AAC. Conservamos tu selección.";return;}}
  fileType=chatFileType(payload);
  const id=crypto.randomUUID(),ext=({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","audio/webm":"webm","audio/mp4":"m4a","audio/ogg":"ogg","audio/mpeg":"mp3","audio/wav":"wav"})[fileType];
- draft={uid,target,content,file,payload,light,fileType,id,path:file?uid+"/"+id+"."+ext:null,uploaded:false,insertAttempted:false};
+ draft={uid,target,content,file,payload,light,fileType,id,path:file?uid+"/"+id+"."+ext:null,uploaded:false,insertAttempted:false,transfer:{url:null}};
  chatPendingSends.set(form,draft);
  }
  fileType=draft.fileType;
@@ -3477,8 +3531,10 @@ async function sendMessage(e){
  if(!active())return;
  if(file&&!draft.uploaded){
  stage="subida del archivo";if(active()&&status)status.textContent="Subiendo archivo… No cierres esta conversación.";
- const {error}=await db.storage.from(CHAT_BUCKET).upload(draft.path,draft.payload,{upsert:false,contentType:fileType});
- if(error)throw error;draft.uploaded=true;
+ if(fileType.startsWith("image/")||fileType.startsWith("video/")){
+  await uploadGysteMedia(uid,CHAT_BUCKET,draft.path,draft.payload,draft.transfer,active,p=>{if(status)status.textContent="Subiendo archivo · "+p+" %";button.textContent=p+" %";});
+ }else{const {error}=await db.storage.from(CHAT_BUCKET).upload(draft.path,draft.payload,{upsert:false,contentType:fileType});if(error)throw error;}
+ draft.uploaded=true;
  }
  if(!active())return;
  stage="registro del mensaje";button.textContent="Enviando…";if(active()&&status)status.textContent="Registrando mensaje…";draft.insertAttempted=true;
@@ -3491,7 +3547,7 @@ async function sendMessage(e){
  }
  if(committed){chatPendingSends.delete(form);if(active()){input.value="";fileInput.value="";clearVoiceDraft();resetVoiceUI();const fs=document.getElementById("chatfile-status");if(fs)fs.textContent="";const fileSend=document.getElementById("send-chat-file");if(fileSend)fileSend.hidden=true;const lightOption=document.getElementById("chat-light-photo-option");if(lightOption)lightOption.hidden=true;clearChatFilePreview();if(status){status.dataset.success="true";status.textContent=file?"Archivo enviado y registrado.":"Mensaje enviado y registrado.";}try{await refreshChatMessages(target,true);}catch{}}}
  }catch(error){
- if(active()&&status){status.removeAttribute("data-success");status.textContent=error?.code==="42501"?"No se pudo enviar por las preferencias de privacidad o los permisos. Conservamos tu borrador.":"No se pudo completar la etapa de "+stage+". Conservamos tu borrador mientras sigas en esta conversación. Revisa los mensajes o vuelve a pulsar Enviar.";}
+ if(active()&&status){status.removeAttribute("data-success");status.textContent=error?.code==="42501"?"No se pudo enviar por las preferencias de privacidad o los permisos. Conservamos tu borrador.":"No se pudo completar la etapa de "+stage+". Conservamos tu borrador y el progreso disponible mientras sigas en esta conversación. Cuando vuelva Internet, pulsa Enviar sin cambiar el archivo.";}
  // No eliminar archivos tras una respuesta incierta: podrían pertenecer a un mensaje ya registrado.
  }finally{chatSendLocks.delete(key);controls.forEach((c,i)=>c.disabled=previous[i]);button.textContent="Enviar";if(committed&&active())input.focus();}
 }
