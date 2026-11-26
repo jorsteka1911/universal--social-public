@@ -2666,6 +2666,11 @@ async function refreshChatMessages(target,markRead=false){
  }catch{if(valid()&&status)status.textContent="No se pudieron actualizar los mensajes. Se volverá a intentar.";}
  finally{chatRefreshLocks.delete(list);}
 }
+// A missing profile can be a block, deletion or temporary visibility issue. Never infer which.
+function chatContactAvailable(person){return !!person&&typeof person==="object"&&!Array.isArray(person);}
+function chatSafetyNotice(person){
+ return '<div class="actions"><button type="button" class="secondary" data-tab="safety">🛡 Seguridad y privacidad</button><button type="button" class="secondary" data-tab="feedback">Informar de un problema</button></div><p class="muted">Si alguien te molesta, puedes bloquearlo. Para pedir ayuda, elige Seguridad y privacidad en Sugerencias. No se envía automáticamente ningún mensaje ni archivo de esta conversación. La atención de moderación está en preparación.</p>'+(!chatContactAvailable(person)?'<p role="status">Este perfil no está disponible. Puedes consultar los mensajes anteriores, pero no enviar nuevos mensajes desde esta pantalla.</p>':'');
+}
 async function messagesView(){
  stopChatRefresh();stopVoiceCapture();chatRenderSignature="";chatMediaCache.clear();
  const uid=me?.id,requestedChat=chatUser,epoch=++chatViewEpoch;if(!uid)return;
@@ -2714,11 +2719,12 @@ async function messagesView(){
  if(!valid())return;
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
- shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p><div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status"></p><form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form></section>`);
+ const canCompose=chatContactAvailable(person);
+ shell(`<section class="panel"><button id="back" class="ghost">← Conversaciones</button><button id="block-chat" class="secondary">Bloquear usuario</button><h2 class="comment-author"><span class="face">${avatarContent(person)}</span>${esc(person?.display_name||"Conversación")}</h2><p class="muted">Gyste Chat · texto, voz, fotos y vídeos privados</p>${chatSafetyNotice(person)}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><p id="chatstatus" class="error" role="status"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
  document.getElementById("back").onclick=()=>{stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
- bindVoiceRecorder(target);
+ if(canCompose){bindVoiceRecorder(target);
  document.getElementById("sendmsg").onsubmit=sendMessage;
- document.getElementById("chatfile").onchange=e=>{stopVoiceCapture();resetVoiceUI();const f=e.target.files[0];document.getElementById("chatfile-status").textContent=f?f.name+" · "+(f.size/1048576).toFixed(1)+" MB":"";};
+ document.getElementById("chatfile").onchange=e=>{stopVoiceCapture();resetVoiceUI();const f=e.target.files[0];document.getElementById("chatfile-status").textContent=f?f.name+" · "+(f.size/1048576).toFixed(1)+" MB":"";};}
  document.getElementById("block-chat").onclick=e=>blockUser(target,e.currentTarget);
  const chatList=document.getElementById("chatlist");
  await refreshChatMessages(target,true);
