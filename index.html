@@ -399,6 +399,21 @@ header{gap:6px;padding:8px 9px}
 .reel-panel #reelstatus{font-size:12px;color:var(--muted);margin:7px 0}
 .reel-panel details{margin:10px 0}.reel-panel details summary{cursor:pointer;padding:10px 0;color:var(--mint)}
 .reel-panel .reel-tools button{min-height:44px}
+/* Apariencia: temas con muestra visual y guardado explícito */
+.wallpaper-preview{display:block;min-height:200px;padding:14px;overflow:hidden}
+.appearance-demo{max-width:320px;margin:auto;background:#122d49;border:1px solid #ffffff45;border-radius:15px;padding:11px;text-shadow:none;color:#f3f6f9;box-shadow:0 5px 18px #0004}
+.appearance-demo-head{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:850;color:var(--preview-accent,#36c7b2)}
+.appearance-demo-head .demo-logo{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--preview-accent,#36c7b2);color:#06202a}
+.appearance-demo-post{margin:10px 0 8px;padding:9px;background:#091827;border-radius:9px;font-size:12px}
+.appearance-demo-action{display:inline-block;color:#06202a;background:var(--preview-accent,#36c7b2);padding:6px 10px;border-radius:8px;font-weight:800;font-size:11px}
+.appearance-demo-caption{margin:6px 0 12px;font-size:12px;color:var(--muted)}
+.wallpaper-options{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.wallpaper-choice{min-height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:12px;overflow-wrap:anywhere}
+.wallpaper-choice .theme-swatch{width:23px;height:23px;border:1px solid #ffffffa0;border-radius:50%}
+.wallpaper-choice[aria-pressed=true]{border-color:#b2f3e5;outline:1px solid #b2f3e5}
+.appearance-save-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px}
+.appearance-save-row button{min-height:44px}
+@media(max-width:340px){.wallpaper-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -654,8 +669,13 @@ const WALLPAPERS={
  violet:{label:"Violeta",css:"linear-gradient(145deg,#663f8b,#17162f 80%)"},
  forest:{label:"Bosque",css:"linear-gradient(145deg,#367355,#092821 75%)"},
  sunset:{label:"Atardecer",css:"linear-gradient(140deg,#ac5c55,#512b56 65%,#15223c)"},
- midnight:{label:"Noche",css:"linear-gradient(145deg,#263956,#070b15 70%)"}
+ midnight:{label:"Noche",css:"linear-gradient(145deg,#263956,#070b15 70%)"},
+ rose:{label:"Rosa",css:"linear-gradient(145deg,#924568,#24182e 75%)"},
+ sky:{label:"Cielo",css:"linear-gradient(145deg,#2d659a,#15263f 75%)"},
+ amber:{label:"Ámbar",css:"linear-gradient(145deg,#855929,#281e26 75%)"}
 };
+const THEME_ACCENTS=Object.freeze({default:"#36c7b2",ocean:"#79dded",violet:"#d0b8ff",forest:"#a5e5a9",sunset:"#ffc6a5",midnight:"#b8d2f7",rose:"#ffb6d7",sky:"#a8d8ff",amber:"#ffdc98",photo:"#36c7b2"});
+function wallpaperAccent(v){return THEME_ACCENTS[validWallpaper(v).kind];}
 const wallpaperKey=uid=>"gyste-wallpaper-v1:"+uid;
 function validWallpaper(v){
  if(v&&Object.hasOwn(WALLPAPERS,v.kind))return {kind:v.kind};
@@ -667,6 +687,7 @@ function wallpaperCSS(v){v=validWallpaper(v);return v.kind==="photo"?'linear-gra
 function applyWallpaper(value){
  const v=validWallpaper(value);document.body.classList.toggle("gyste-custom-background",v.kind!=="default");
  document.body.style.setProperty("--gyste-wallpaper",wallpaperCSS(v));
+ if(v.kind==="default")document.body.style.removeProperty("--mint");else document.body.style.setProperty("--mint",wallpaperAccent(v));
 }
 function gysteDataSaver(uid=me?.id){
  if(!uid)return false;
@@ -674,19 +695,23 @@ function gysteDataSaver(uid=me?.id){
  return navigator.connection?.saveData===true;
 }
 function appearanceView(){
- const uid=me.id;let current=readWallpaper(uid),busy=false;
- shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div class="data-saver-setting"><label><input id="data-saver-toggle" type="checkbox" ${gysteDataSaver(uid)?"checked":""}> Ahorrar datos móviles</label><p>Las fotos de las publicaciones se descargan al pulsar Ver foto. Los vídeos no se reproducen automáticamente. No cambia la calidad del archivo original ni la privacidad. Ajuste de esta cuenta en este navegador.</p><p id="data-saver-status" role="status"></p></div><div id="wallpaper-preview" class="wallpaper-preview"><b>Vista previa del fondo</b></div><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false">${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Restablecer fondo original</button><p id="wallpaper-status" role="status"></p></section>`);
+ const uid=me.id;let current=readWallpaper(uid),pending=current,busy=false;
+ shell(`<section class="panel"><h2>🎨 Personaliza tu Gyste</h2><p>Elige un fondo para toda la red social. Solo cambia la pantalla de esta cuenta en este navegador; nadie más verá tu elección.</p><div class="data-saver-setting"><label><input id="data-saver-toggle" type="checkbox" ${gysteDataSaver(uid)?"checked":""}> Ahorrar datos móviles</label><p>Las fotos de las publicaciones se descargan al pulsar Ver foto. Los vídeos no se reproducen automáticamente. No cambia la calidad del archivo original ni la privacidad. Ajuste de esta cuenta en este navegador.</p><p id="data-saver-status" role="status"></p></div><h3>Vista previa de tu Gyste</h3><div id="wallpaper-preview" class="wallpaper-preview"><div class="appearance-demo" aria-hidden="true"><div class="appearance-demo-head"><span class="demo-logo">G</span> GYSTE</div><div class="appearance-demo-post"><b>Tu comunidad</b><p style="margin:6px 0">Comparte algo que te inspire.</p><span style="color:var(--preview-accent)">♡ &nbsp; Comentar &nbsp; · &nbsp; Guardar</span></div><span class="appearance-demo-action">Crear publicación</span></div></div><p class="appearance-demo-caption">Muestra ilustrativa de los colores. Las publicaciones reales conservan su contenido.</p><h3>Colores y estilos</h3><div class="wallpaper-options">${Object.entries(WALLPAPERS).map(([k,p])=>`<button type="button" class="wallpaper-choice" data-wallpaper="${k}" style="background:${p.css}" aria-pressed="false"><span class="theme-swatch" style="background:${THEME_ACCENTS[k]}" aria-hidden="true"></span>${esc(p.label)}</button>`).join("")}</div><h3 style="margin-top:18px">Tu propia fotografía</h3><label>Selecciona una imagen de tu teléfono (JPG, PNG o WebP, hasta 12 MB)<input id="wallpaper-file" class="field" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">La foto se reduce y guarda en tu dispositivo, no se envía a Gyste ni se publica. Los paneles conservan su contraste para facilitar la lectura.</p><button type="button" id="wallpaper-reset" class="secondary full">Elegir fondo original</button><div class="appearance-save-row"><button type="button" class="primary" id="wallpaper-apply" disabled>Guardar estilo</button><button type="button" class="secondary" id="wallpaper-cancel" disabled>Cancelar cambio</button></div><p id="wallpaper-status" role="status" aria-live="polite"></p></section>`);
  const status=document.getElementById("wallpaper-status"),preview=document.getElementById("wallpaper-preview");
  const saver=document.getElementById("data-saver-toggle");saver.onchange=()=>{if(me?.id!==uid)return;try{localStorage.setItem("gyste-data-saver:"+uid,saver.checked?"on":"off");document.getElementById("data-saver-status").textContent=saver.checked?"Ahorro activado para las próximas publicaciones.":"Ahorro desactivado.";}catch{saver.checked=gysteDataSaver(uid);document.getElementById("data-saver-status").textContent="No se pudo guardar la preferencia.";} };
- const draw=()=>{preview.style.backgroundImage=wallpaperCSS(current);app.querySelectorAll("[data-wallpaper]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.wallpaper===current.kind)));};
- const save=v=>{if(me?.id!==uid||tab!=="appearance")return;v=validWallpaper(v);try{if(v.kind==="default")localStorage.removeItem(wallpaperKey(uid));else localStorage.setItem(wallpaperKey(uid),JSON.stringify(v));}catch{status.textContent="No se pudo guardar. Libera espacio en el navegador y vuelve a intentarlo.";return;}current=v;applyWallpaper(v);draw();status.textContent="Fondo guardado en este dispositivo.";};
- app.querySelectorAll("[data-wallpaper]").forEach(b=>b.onclick=()=>{if(!busy)save({kind:b.dataset.wallpaper});});
- document.getElementById("wallpaper-reset").onclick=()=>{if(!busy)save({kind:"default"});};
+ const apply=document.getElementById("wallpaper-apply"),cancel=document.getElementById("wallpaper-cancel");
+ const dirty=()=>JSON.stringify(current)!==JSON.stringify(pending);
+ const draw=()=>{preview.style.backgroundImage=wallpaperCSS(pending);preview.style.setProperty("--preview-accent",wallpaperAccent(pending));app.querySelectorAll("[data-wallpaper]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.wallpaper===pending.kind)));apply.disabled=cancel.disabled=busy||!dirty();};
+ const select=v=>{if(me?.id!==uid||tab!=="appearance")return;pending=validWallpaper(v);draw();status.textContent=dirty()?"Vista previa sin guardar. Pulsa Guardar estilo para aplicarla.":"Este es tu estilo guardado.";};
+ apply.onclick=()=>{if(busy||me?.id!==uid||tab!=="appearance"||!dirty())return;try{if(pending.kind==="default")localStorage.removeItem(wallpaperKey(uid));else localStorage.setItem(wallpaperKey(uid),JSON.stringify(pending));}catch{status.textContent="No se pudo guardar. Libera espacio en el navegador y vuelve a intentarlo.";return;}current=pending;applyWallpaper(current);draw();status.textContent="Estilo guardado en este dispositivo.";};
+ cancel.onclick=()=>{if(!busy)select(current);};
+ app.querySelectorAll("[data-wallpaper]").forEach(b=>b.onclick=()=>{if(!busy)select({kind:b.dataset.wallpaper});});
+ document.getElementById("wallpaper-reset").onclick=()=>{if(!busy)select({kind:"default"});};
  document.getElementById("wallpaper-file").onchange=async e=>{
   const f=e.target.files?.[0];e.target.value="";if(!f||busy)return;
   if(!["image/jpeg","image/png","image/webp"].includes(f.type)||f.size>12*1024*1024){status.textContent="Elige una imagen compatible de hasta 12 MB.";return;}
-  busy=true;status.textContent="Preparando fotografía…";let src;
-  try{src=URL.createObjectURL(f);const img=new Image();img.src=src;await img.decode();if(img.naturalWidth*img.naturalHeight>50000000)throw Error("Imagen demasiado grande");const scale=Math.min(1,1200/Math.max(img.naturalWidth,img.naturalHeight)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));const ctx=canvas.getContext("2d");ctx.fillStyle="#081722";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);let data=canvas.toDataURL("image/jpeg",0.8);if(data.length>1400000)data=canvas.toDataURL("image/jpeg",0.55);if(validWallpaper({kind:"photo",data}).kind!=="photo")throw Error("No se pudo reducir la imagen");save({kind:"photo",data});}catch{if(tab==="appearance"&&me?.id===uid)status.textContent="No se pudo preparar la imagen. Prueba con otra fotografía.";}finally{if(src)URL.revokeObjectURL(src);busy=false;}
+  busy=true;draw();status.textContent="Preparando fotografía…";let src;
+  try{src=URL.createObjectURL(f);const img=new Image();img.src=src;await img.decode();if(img.naturalWidth*img.naturalHeight>50000000)throw Error("Imagen demasiado grande");const scale=Math.min(1,1200/Math.max(img.naturalWidth,img.naturalHeight)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));const ctx=canvas.getContext("2d");ctx.fillStyle="#081722";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);let data=canvas.toDataURL("image/jpeg",0.8);if(data.length>1400000)data=canvas.toDataURL("image/jpeg",0.55);if(validWallpaper({kind:"photo",data}).kind!=="photo")throw Error("No se pudo reducir la imagen");select({kind:"photo",data});}catch{if(tab==="appearance"&&me?.id===uid)status.textContent="No se pudo preparar la imagen. Prueba con otra fotografía.";}finally{if(src)URL.revokeObjectURL(src);busy=false;if(preview.isConnected&&me?.id===uid)draw();}
  };
  draw();
 }
