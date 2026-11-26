@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r31">
+<meta name="gyste-build" content="2026-11-26-r32">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -748,7 +748,7 @@ if(next!=="stories")stopStoryTimer();
 if(next!=="messages"){stopChatRefresh();stopVoiceCapture();}
 if(next==="feed"){resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter="all";const u=new URL(location.href);if(u.searchParams.has("post")){u.searchParams.delete("post");history.replaceState(null,"",u.href);}}
 if(next!=="messages")chatUser=null;
-tab=next;notice="";noticeError=false;const requested=next,uid=me?.id;if(session&&me)shell('<section class="panel"><p role="status">Cargando sección…</p></section>');Promise.resolve(renderTab()).then(()=>{if(tab===requested&&me?.id===uid&&session&&timingSerial===gysteTimingSerial)recordGysteTiming(requested,timingStart);}).catch(()=>{if(tab===requested&&me?.id===uid&&session)shell('<section class="panel"><p class="error">No se pudo cargar esta sección. Comprueba tu conexión.</p><button class="secondary" data-tab="'+esc(requested)+'">Reintentar</button></section>');});window.scrollTo({top:0,behavior:"auto"});
+tab=next;notice="";noticeError=false;const requested=next,uid=me?.id;if(session&&me)shell('<section class="panel"><p role="status">Cargando sección…</p></section>');Promise.resolve(renderTab()).then(()=>{if(tab===requested&&me?.id===uid&&session&&timingSerial===gysteTimingSerial)recordGysteTiming(requested,timingStart);}).catch(error=>{if(tab===requested&&me?.id===uid&&session){gysteFault("secciones",error);shell('<section class="panel"><p class="error">No se pudo cargar esta sección. Comprueba tu conexión.</p><button class="secondary" data-tab="'+esc(requested)+'">Reintentar</button></section>');}});window.scrollTo({top:0,behavior:"auto"});
 }
 function revealPostComposer(focusText=false){
  const panel=document.getElementById("composer");if(!panel)return false;
@@ -885,6 +885,28 @@ function appearanceView(){
  draw();
 }
 const GYSTE_BUILD=document.querySelector('meta[name="gyste-build"]')?.content||"desconocida";
+// Local, bounded diagnostics. No error text, URLs, user identifiers or content are recorded.
+const GYSTE_FAULT_AREAS=Object.freeze(["inicio","acceso","registro","publicaciones","mensajes","archivos","secciones","programa"]);
+const GYSTE_FAULT_KINDS=Object.freeze(["fallo","sin_conexion","permiso","tiempo"]);
+function createGysteFaultCounter(){
+ const counts=new Map();
+ return Object.freeze({record(area,kind){
+  if(!GYSTE_FAULT_AREAS.includes(area)||!GYSTE_FAULT_KINDS.includes(kind))return false;
+  const key=area+" · "+kind;counts.set(key,Math.min(999,(counts.get(key)||0)+1));return true;
+ },summary(){return [...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(([k,v])=>k+": "+v+(v===999?"+":""));},clear(){counts.clear();}});
+}
+const gysteFaults=createGysteFaultCounter();
+let gysteFaultOwner=null,gysteFaultReport=null;
+function gysteFaultScope(uid){if(uid!==gysteFaultOwner){if(gysteFaultOwner!==null)gysteFaults.clear();gysteFaultOwner=uid;gysteFaultReport=null;}}
+function gysteFault(area,error){try{const code=error?.code;const kind=navigator.onLine===false?"sin_conexion":code==="42501"?"permiso":error?.name==="TimeoutError"||error?.name==="AbortError"?"tiempo":"fallo";gysteFaults.record(area,kind);}catch{}}
+function gysteFaultSummary(){const rows=gysteFaults.summary();return ["Gyste · informe técnico local","Versión: "+GYSTE_BUILD,...(rows.length?rows:["Sin fallos registrados en esta sesión."])].join("\n");}
+function bindGysteFaultReport(){
+ const out=document.getElementById("fault-report"),send=document.getElementById("fault-share"),clear=document.getElementById("fault-clear");
+ if(!out||!send||!clear)return;
+ const draw=()=>{out.textContent=gysteFaultSummary();send.disabled=!gysteFaults.summary().length;};draw();
+ clear.onclick=()=>{gysteFaults.clear();draw();};
+ send.onclick=()=>{const uid=me?.id;if(!uid||!gysteFaults.summary().length||!confirmNavigationDraft())return;gysteFaultReport={uid,text:gysteFaultSummary()};goTab("feedback",null,true);};
+}
 function paintGysteConnection(){const node=document.getElementById("gyste-connection"),detail=document.getElementById("gyste-connection-detail");if(node){const offline=navigator.onLine===false,light=gysteDataSaver();node.hidden=!offline&&!light;node.textContent=offline?"Sin conexión detectada. Recupera los archivos guardados desde Archivos pendientes cuando vuelva Internet. Conserva los borradores aún no guardados.":"Conexión inteligente · modo ligero activo. Se adapta a la conexión y las pausas de reproducción. Puedes cambiarlo en Apariencia y ahorro de datos.";}if(detail)detail.textContent=gysteConnectionDescription();}
 window.addEventListener("offline",paintGysteConnection);window.addEventListener("online",paintGysteConnection);gysteConnectionInfo()?.addEventListener?.("change",paintGysteConnection);
 function classifyGysteBuild(current,remote){if(!/^\d{4}-\d{2}-\d{2}-r\d+$/.test(remote||""))return "unknown";return current===remote?"same":"different";}
@@ -1031,6 +1053,7 @@ async function feedbackView(){
  shell(`<section class="panel"><h2>💡 Construyamos Gyste juntos</h2><p>Envía tus ideas, errores y propuestas. Tu mensaje no se publica. Podrás consultarlo tú y el equipo autorizado, que puede utilizar IA para analizar propuestas. No incluyas contraseñas, datos personales, datos de menores ni información confidencial. Para denunciar publicaciones utiliza Denunciar.</p><form id="feedback-form"><label>Tipo<select class="field" id="feedback-category">${Object.entries(FEEDBACK_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label><button type="button" class="secondary full" id="feedback-bug-template">Usar guía para informar de un error</button><label>Tu sugerencia<textarea class="field" id="feedback-body" minlength="10" maxlength="2000" required></textarea></label><p class="muted" id="feedback-length" aria-live="polite"></p><button type="submit" class="primary full">Enviar sugerencia privada</button><p id="feedback-result" role="status"></p></form></section><section class="panel"><h3>Mis sugerencias</h3>${mine.error?"No se pudieron cargar.":(mine.data||[]).map(x=>row(x)).join("")||"Todavía no hay sugerencias."}</section>${role.data?'<section class="panel"><h3>Revisión autorizada</h3><button class="secondary" id="feedback-review">Consultar propuestas</button><div id="feedback-admin"></div></section>':""}`);
  const form=document.getElementById("feedback-form");if(commercialInterest){const request=commercialInterest;commercialInterest=null;if(request.uid===uid){document.getElementById("feedback-category").value="other";document.getElementById("feedback-body").value=request.text;document.getElementById("feedback-result").textContent="Revisa el texto y envíalo solo si deseas manifestar interés. No se realizará ningún cobro.";}}const bodyInput=document.getElementById("feedback-body"),categoryInput=document.getElementById("feedback-category"),template=document.getElementById("feedback-bug-template"),out=document.getElementById("feedback-result"),submit=form.querySelector('[type="submit"]');
  if(safetyFeedbackRequest){const request=safetyFeedbackRequest;safetyFeedbackRequest=null;if(request.uid===uid){categoryInput.value="safety";out.textContent="Describe el problema sin incluir nombres de menores, contraseñas ni conversaciones privadas. La atención no es inmediata. Envía únicamente si lo deseas.";}}
+ if(gysteFaultReport){const report=gysteFaultReport;gysteFaultReport=null;if(report.uid===uid){categoryInput.value="error";bodyInput.value=report.text;out.textContent="Revisa el informe técnico. Se enviará asociado a tu cuenta únicamente si pulsas Enviar sugerencia privada.";}}
  const count=()=>{document.getElementById("feedback-length").textContent=bodyInput.value.length+" / 2000 caracteres";};
  bodyInput.oninput=count;count();
  template.onclick=()=>{if(!valid()||feedbackSendLocks.has(uid))return;if(bodyInput.value.trim()&&!confirm("¿Sustituir el texto por la guía de errores?"))return;categoryInput.value="error";bodyInput.value="Versión: "+GYSTE_BUILD+"\n"+feedbackBugTemplate;count();bodyInput.focus();};
@@ -1045,7 +1068,7 @@ async function feedbackView(){
  };
  const review=document.getElementById("feedback-review");if(review)review.onclick=async()=>{review.disabled=true;const {data,error}=await db.from("gyste_feedback").select("id,category,body,status,created_at").order("created_at",{ascending:false}).limit(100);const box=document.getElementById("feedback-admin");if(!box||tab!=="feedback"||me?.id!==uid)return;review.disabled=false;box.innerHTML=error?"No se pudieron consultar.":(data||[]).map(x=>row(x,true)).join("")||"No hay propuestas.";box.querySelectorAll("[data-feedback-id]").forEach(s=>s.onchange=async()=>{s.disabled=true;const {error}=await db.from("gyste_feedback").update({status:s.value}).eq("id",s.dataset.feedbackId).select("id").single();s.disabled=false;if(error){say("No se pudo actualizar.",true);review.click();}else say("Estado actualizado.");});};
 }
-function helpView(){shell(`<section class="panel"><h2>Cómo usar Gyste</h2><p>Bienvenido a la comunidad. Elige lo que quieras hacer:</p>${gysteUpdateHTML()}<details><summary>Comprobar mi dispositivo · diagnóstico beta</summary><p class="muted">Comprueba la compatibilidad y las copias pendientes sin enviar datos ni leer el contenido de tus archivos. No prueba el servidor ni garantiza todas las funciones.</p><button type="button" class="secondary full" id="beta-diag-run">Comprobar dispositivo</button><pre id="beta-diag-result" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" class="secondary full" id="beta-diag-copy" disabled>Copiar diagnóstico</button><p id="beta-diag-status" role="status"></p></details><details><summary>Diagnóstico de velocidad (beta)</summary><p class="muted">Mide el tiempo que tarda en finalizar la carga solicitada desde este dispositivo. También mide desde el evento de reproducción hasta que comienza a reproducirse un vídeo o Reel, y las pausas de carga que se resuelven. No incluye intentos que no llegan a reproducirse ni garantiza que una sección haya cargado con éxito. La apertura se mide desde el inicio del programa, no desde que tocas el icono. Los datos se mantienen solo en esta página, sin enviarse automáticamente.</p><pre id="timing-report" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" class="secondary full" id="timing-copy">Copiar mediciones</button><button type="button" class="secondary full" id="timing-clear">Borrar mediciones</button><p id="timing-status" role="status"></p></details><details><summary>Primeros pasos en Gyste · prueba beta</summary><ol><li>Personaliza tu perfil sin incluir datos privados.</li><li>Crea una publicación de prueba y selecciona «Solo yo» antes de publicarla.</li><li>Prueba a abrir una fotografía, reproducir un vídeo y guardar una publicación.</li><li>Revisa quién puede enviarte mensajes en Seguridad.</li><li>Si quieres probar mensajes con otra persona, hazlo con alguien de confianza y con su permiso.</li><li>Elimina tus publicaciones de prueba cuando termines.</li></ol><p class="muted">Si algo falla, envíanos una sugerencia indicando el dispositivo, la versión de Gyste, la sección, el problema y el tiempo aproximado de espera. No incluyas contraseñas ni datos personales.</p><button class="secondary full" data-tab="feedback">Informar de un problema</button></details><div class="userrow"><div class="userinfo"><b>Publicar una foto o vídeo</b><p>En Crear puedes escribir, adjuntar archivos y seleccionar quién los verá.</p></div><button class="secondary" id="help-create">Crear</button></div><div class="userrow"><div class="userinfo"><b>Hablar con una persona</b><p>En Mensajes busca un nombre y abre una conversación. Puedes adjuntar fotos, vídeo o grabar voz.</p></div><button class="secondary" data-tab="messages">Mensajes</button></div><div class="userrow"><div class="userinfo"><b>Aprender con vídeos y cursos</b><p>Selecciona una especialidad. Solo se abre un vídeo de la academia cada vez.</p></div><button class="secondary" data-tab="learn">Aprender</button></div><div class="userrow"><div class="userinfo"><b>Historias temporales</b><p>Comparte un momento que dejará de mostrarse tras 24 horas.</p></div><button class="secondary" data-tab="stories">Historias</button></div><div class="userrow"><div class="userinfo"><b>Privacidad y seguridad</b><p>Controla quién te puede escribir y bloquea o denuncia cuentas. Los destinatarios pueden conservar contenido que reciben.</p></div><button class="secondary" data-tab="safety">Seguridad</button></div><div class="userrow"><div class="userinfo"><b>Guardar o enviar una publicación</b><p>Abre sus tres puntos y selecciona la opción. Solo las públicas pueden reenviarse desde Gyste.</p></div><button class="secondary" data-tab="feed">Inicio</button></div><p class="muted">Gyste · versión beta. No compartas datos personales de otras personas sin permiso. Si detectas una publicación inapropiada, utiliza Denunciar.</p><button class="secondary full" id="help-rules">Normas de convivencia</button></section>`);bindGysteUpdate();bindBetaDiagnostic();document.getElementById("help-create").onclick=goCompose;document.getElementById("help-rules").onclick=showCommunityRules;const report=document.getElementById("timing-report"),status=document.getElementById("timing-status");report.textContent=timingSummary();document.getElementById("timing-copy").onclick=async()=>{try{await navigator.clipboard.writeText(timingSummary());status.textContent="Mediciones copiadas. Puedes compartirlas si quieres.";}catch{window.prompt("Copia las mediciones:",timingSummary());}};document.getElementById("timing-clear").onclick=()=>{gysteTimings=[];gysteMediaTimings=new WeakMap();report.textContent=timingSummary();status.textContent="Mediciones borradas.";};}
+function helpView(){shell(`<section class="panel"><h2>Cómo usar Gyste</h2><p>Bienvenido a la comunidad. Elige lo que quieras hacer:</p>${gysteUpdateHTML()}<details><summary>Comprobar mi dispositivo · diagnóstico beta</summary><p class="muted">Comprueba la compatibilidad y las copias pendientes sin enviar datos ni leer el contenido de tus archivos. No prueba el servidor ni garantiza todas las funciones.</p><button type="button" class="secondary full" id="beta-diag-run">Comprobar dispositivo</button><pre id="beta-diag-result" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" class="secondary full" id="beta-diag-copy" disabled>Copiar diagnóstico</button><p id="beta-diag-status" role="status"></p></details><details><summary>Fallos técnicos detectados en esta sesión</summary><p class="muted">Contadores locales de errores, sin textos de mensajes, credenciales, direcciones ni historial personal. No se envían automáticamente y se pierden al cerrar o recargar la página. Si decides compartirlos, podrás revisar el informe y enviarlo asociado a tu cuenta al equipo autorizado.</p><pre id="fault-report" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" class="secondary full" id="fault-share">Preparar informe privado</button><button type="button" class="secondary full" id="fault-clear">Borrar contadores</button></details><details><summary>Diagnóstico de velocidad (beta)</summary><p class="muted">Mide el tiempo que tarda en finalizar la carga solicitada desde este dispositivo. También mide desde el evento de reproducción hasta que comienza a reproducirse un vídeo o Reel, y las pausas de carga que se resuelven. No incluye intentos que no llegan a reproducirse ni garantiza que una sección haya cargado con éxito. La apertura se mide desde el inicio del programa, no desde que tocas el icono. Los datos se mantienen solo en esta página, sin enviarse automáticamente.</p><pre id="timing-report" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><button type="button" class="secondary full" id="timing-copy">Copiar mediciones</button><button type="button" class="secondary full" id="timing-clear">Borrar mediciones</button><p id="timing-status" role="status"></p></details><details><summary>Primeros pasos en Gyste · prueba beta</summary><ol><li>Personaliza tu perfil sin incluir datos privados.</li><li>Crea una publicación de prueba y selecciona «Solo yo» antes de publicarla.</li><li>Prueba a abrir una fotografía, reproducir un vídeo y guardar una publicación.</li><li>Revisa quién puede enviarte mensajes en Seguridad.</li><li>Si quieres probar mensajes con otra persona, hazlo con alguien de confianza y con su permiso.</li><li>Elimina tus publicaciones de prueba cuando termines.</li></ol><p class="muted">Si algo falla, envíanos una sugerencia indicando el dispositivo, la versión de Gyste, la sección, el problema y el tiempo aproximado de espera. No incluyas contraseñas ni datos personales.</p><button class="secondary full" data-tab="feedback">Informar de un problema</button></details><div class="userrow"><div class="userinfo"><b>Publicar una foto o vídeo</b><p>En Crear puedes escribir, adjuntar archivos y seleccionar quién los verá.</p></div><button class="secondary" id="help-create">Crear</button></div><div class="userrow"><div class="userinfo"><b>Hablar con una persona</b><p>En Mensajes busca un nombre y abre una conversación. Puedes adjuntar fotos, vídeo o grabar voz.</p></div><button class="secondary" data-tab="messages">Mensajes</button></div><div class="userrow"><div class="userinfo"><b>Aprender con vídeos y cursos</b><p>Selecciona una especialidad. Solo se abre un vídeo de la academia cada vez.</p></div><button class="secondary" data-tab="learn">Aprender</button></div><div class="userrow"><div class="userinfo"><b>Historias temporales</b><p>Comparte un momento que dejará de mostrarse tras 24 horas.</p></div><button class="secondary" data-tab="stories">Historias</button></div><div class="userrow"><div class="userinfo"><b>Privacidad y seguridad</b><p>Controla quién te puede escribir y bloquea o denuncia cuentas. Los destinatarios pueden conservar contenido que reciben.</p></div><button class="secondary" data-tab="safety">Seguridad</button></div><div class="userrow"><div class="userinfo"><b>Guardar o enviar una publicación</b><p>Abre sus tres puntos y selecciona la opción. Solo las públicas pueden reenviarse desde Gyste.</p></div><button class="secondary" data-tab="feed">Inicio</button></div><p class="muted">Gyste · versión beta. No compartas datos personales de otras personas sin permiso. Si detectas una publicación inapropiada, utiliza Denunciar.</p><button class="secondary full" id="help-rules">Normas de convivencia</button></section>`);bindGysteUpdate();bindBetaDiagnostic();bindGysteFaultReport();document.getElementById("help-create").onclick=goCompose;document.getElementById("help-rules").onclick=showCommunityRules;const report=document.getElementById("timing-report"),status=document.getElementById("timing-status");report.textContent=timingSummary();document.getElementById("timing-copy").onclick=async()=>{try{await navigator.clipboard.writeText(timingSummary());status.textContent="Mediciones copiadas. Puedes compartirlas si quieres.";}catch{window.prompt("Copia las mediciones:",timingSummary());}};document.getElementById("timing-clear").onclick=()=>{gysteTimings=[];gysteMediaTimings=new WeakMap();report.textContent=timingSummary();status.textContent="Mediciones borradas.";};}
 function shortcutsHTML(){
 return `<section class="shortcut-section" aria-label="Accesos rápidos">
 <div class="section-heading"><h2>Tu mundo, a un toque</h2><button class="text-link" data-tab="spaces">Ver espacios ›</button></div>
@@ -1220,7 +1243,7 @@ async function login(){
     session=data.session;
     await boot();
   }catch(error){
-    say(authMessage(error,"login"),true);
+    gysteFault("acceso",error);say(authMessage(error,"login"),true);
   }finally{
     finish();
   }
@@ -1254,7 +1277,7 @@ async function signup(){
       say("Solicitud de registro recibida. Si Supabase requiere confirmar el correo, revisa tu bandeja de entrada y spam.");
     }
   }catch(error){
-    say(authMessage(error,"signup"),true);
+    gysteFault("registro",error);say(authMessage(error,"signup"),true);
   }finally{
     finish();
   }
@@ -1279,7 +1302,7 @@ async function logout(){
    }
   }else if(jobs===null&&!confirm("No se pudo comprobar si hay archivos pendientes en este dispositivo. Cerrar sesión no los elimina. ¿Continuar?"))return;
   const {error}=await db.auth.signOut();if(error)return say("No se pudo cerrar sesión. Comprueba la conexión.",true);
-  session=null;me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=null;homeFilter="all";authView();
+  gysteFaultScope(null);gysteFaults.clear();session=null;me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=null;homeFilter="all";authView();
  }finally{gysteLogoutBusy=false;}
 }
 function choosePendingLogout(count){
@@ -1318,7 +1341,7 @@ const {data:{user},error}=await reads.auth;
 if(!current())return;
 if(error||!user){session=null;me=null;return authView();}
 if(user.id!==expectedUid)return;
-me={id:user.id,email:user.email};
+gysteFaultScope(user.id);me={id:user.id,email:user.email};
 const active=()=>current()&&me?.id===user.id;
 const editorialSync=syncEditorial(user.id).catch(()=>false);
 const loaded=await reads.preload;
@@ -2752,7 +2775,7 @@ if(general&&valid()){
  shell(`<section class="panel"><h2>Inicio</h2><p role="status">Cargando publicaciones de la comunidad…</p><button class="secondary" data-tab="pages">Páginas y noticias</button></section>${filtersHTML()}`);
 }
 const showError=()=>{
- if(!valid())return;
+ if(!valid())return;gysteFault("publicaciones");
  shell(`<section class="panel"><h2>Inicio</h2><p class="error">No se pudieron cargar las publicaciones de la comunidad. Comprueba tu conexión.</p><button type="button" class="secondary full" id="retry-feed">Reintentar publicaciones</button><button class="secondary" data-tab="pages">Páginas y noticias</button></section>${general?filtersHTML():""}${news?cubaBriefHTML():""}${general?editorialFeed(homeFilter,null,2):""}`);
  document.getElementById("retry-feed").onclick=()=>{if(valid())feedView();};
 };
@@ -3145,6 +3168,7 @@ async function publish(options={}){
    say("Publicación compartida.");
   try{resetFeedPage();await feedView();}catch(refreshError){console.warn("Publicación guardada; falló la actualización:",refreshError);say("Publicación guardada. Actualiza Inicio para verla.");}
  }catch(e){
+  if(active())gysteFault("publicaciones",e);
   // Se conservan los archivos confirmados y las URL temporales para reintentar el mismo borrador sin duplicarlos.
   if(active())say(videoPreparationError?"Este teléfono no puede abrir uno de los vídeos seleccionados. Usa MP4 con H.264 y AAC. No se ha publicado nada.":preparationError?"No se pudieron preparar las fotos en este teléfono o se superaron los 50 MB. Usa JPG o PNG, o selecciona menos fotos. No se ha publicado nada.":postCommitted?"Publicación guardada; revisa su visibilidad y actualiza Inicio.":insertAttempted?"No se pudo confirmar la publicación. Revisa Inicio antes de volver a compartir.":"No se pudo confirmar el envío. Si se guardó la copia, aparecerá en Archivos pendientes. Si no aparece, conserva esta pantalla y vuelve a intentarlo.",true);
   if(batch)return {ok:postCommitted,warning:postCommitted};
@@ -3776,7 +3800,7 @@ async function refreshChatMessages(target,markRead=false){
  const {error:readError}=await db.from("gyste_messages").update({read_at:new Date().toISOString()}).eq("recipient_id",uid).eq("sender_id",target).in("id",unread).is("read_at",null);
  if(readError&&valid()&&status)status.textContent="No se pudieron confirmar los avisos de lectura.";else if(!readError&&valid())void refreshUnreadBadges(true);
  }
- }catch{if(valid()&&status)status.textContent="No se pudieron actualizar los mensajes. Se volverá a intentar.";}
+ }catch(error){if(valid()){gysteFault("mensajes",error);if(status)status.textContent="No se pudieron actualizar los mensajes. Se volverá a intentar.";}}
  finally{chatRefreshLocks.delete(list);if(chatRefreshQueued.has(list)){chatRefreshQueued.delete(list);if(valid())void refreshChatMessages(target,true);}}
 }
 // A missing profile can be a block, deletion or temporary visibility issue. Never infer which.
@@ -3801,7 +3825,7 @@ async function messagesView(page=0){
  if(!requestedChat){
   const {data,error}=await db.rpc("gyste_chat_inbox_v1",{p_limit:GYSTE_INBOX_PAGE+1,p_offset:page*GYSTE_INBOX_PAGE});
   if(!valid())return;
-  if(error){shell('<section class="panel"><p class="error" role="status">No se pudieron cargar las conversaciones.</p><button type="button" id="inbox-retry">Reintentar</button></section>');document.getElementById("inbox-retry").onclick=()=>{if(valid())messagesView(page);};return;}
+  if(error){gysteFault("mensajes",error);shell('<section class="panel"><p class="error" role="status">No se pudieron cargar las conversaciones.</p><button type="button" id="inbox-retry">Reintentar</button></section>');document.getElementById("inbox-retry").onclick=()=>{if(valid())messagesView(page);};return;}
   const {rows,hasMore}=gysteInboxPage(data);
   if(page>0&&!rows.length){return messagesView(page-1);}
   const ids=rows.map(m=>m.peer_id);let map={};
@@ -3956,6 +3980,7 @@ async function sendMessage(e){
  }
  if(committed){chatPendingSends.delete(form);if(active()){input.value="";fileInput.value="";clearVoiceDraft();resetVoiceUI();const fs=document.getElementById("chatfile-status");if(fs)fs.textContent="";const fileSend=document.getElementById("send-chat-file");if(fileSend)fileSend.hidden=true;const lightOption=document.getElementById("chat-light-photo-option");if(lightOption)lightOption.hidden=true;clearChatFilePreview();if(status){status.dataset.success="true";status.textContent=file?"Archivo enviado y registrado.":"Mensaje enviado y registrado.";}try{await refreshChatMessages(target,true);}catch{}}}
  }catch(error){
+ if(active())gysteFault("mensajes",error);
  if(active()&&status){status.removeAttribute("data-success");status.textContent=error?.code==="42501"?"No se pudo enviar por las preferencias de privacidad o los permisos. Conservamos tu borrador.":"No se pudo completar la etapa de "+stage+". Si se guardó la copia, estará en Archivos pendientes. Si no aparece, conserva esta pantalla y vuelve a pulsar Enviar.";}
  // No eliminar archivos tras una respuesta incierta: podrían pertenecer a un mensaje ya registrado.
  }finally{chatSendLocks.delete(key);controls.forEach((c,i)=>c.disabled=previous[i]);button.textContent="Enviar";if(committed&&active())input.focus();}
@@ -3964,6 +3989,7 @@ async function start(){
 const timingStart=performance.now();
 try{
 if(!window.supabase||typeof window.supabase.createClient!=="function"){
+ gysteFault("inicio");
 app.innerHTML='<section class="auth"><h1>Gyste</h1><p class="error">No se pudo cargar el servicio de conexión. Comprueba Internet y vuelve a intentarlo.</p><button class="primary full" id="retry">Reintentar</button></section>';
 document.getElementById("retry").onclick=start;
 return;
@@ -3978,7 +4004,7 @@ if(!db)db=window.supabase.createClient(URL_DB,KEY_DB,{
 });
 if(!authListener){
 authListener=db.auth.onAuthStateChange((event,s)=>{
-session=s;
+gysteFaultScope(s?.user?.id||null);session=s;
 if(event==="PASSWORD_RECOVERY"){
   recoveryView();
   return;
@@ -3992,12 +4018,13 @@ new Promise((_,reject)=>setTimeout(()=>reject(new Error("La conexión está tard
 ]);
 const {data,error}=result;
 if(error)throw error;
-session=data.session;
+session=data.session;gysteFaultScope(session?.user?.id||null);
 const recoveryLink=/(?:^|[&#])type=recovery(?:&|$)/i.test(window.location.hash);
 if(recoveryLink&&session){recoveryView();}
 else if(session)await boot();else authView();
 if(session&&me)recordGysteTiming("startup",timingStart);
 }catch(e){
+gysteFault("inicio",e);
 app.innerHTML=`<section class="auth"><h1>Gyste</h1><p class="error">${esc(e?.message||"No se pudo iniciar Gyste. Comprueba Internet.")}</p><button class="primary full" id="retry">Reintentar</button></section>`;
 document.getElementById("retry").onclick=start;
 }
@@ -4016,6 +4043,8 @@ for(const event of ["play","playing","waiting","stalled","pause","ended","error"
 document.addEventListener("visibilitychange",()=>{if(document.hidden)gysteMediaTimings=new WeakMap();else void refreshUnreadBadges();});
 setInterval(()=>{if(!document.hidden)void refreshUnreadBadges();},60000);
 window.addEventListener("pagehide",stopVoiceCapture);
+window.addEventListener("error",e=>{if(e.target===window)gysteFault("programa");else if(e.target instanceof HTMLMediaElement&&app.contains(e.target))gysteFault("archivos");},true);
+window.addEventListener("unhandledrejection",()=>gysteFault("programa"));
 start();
 // Register independently of authentication; no reload and no cached application data.
 if(document.readyState==="complete")void registerGysteOffline();else window.addEventListener("load",()=>{void registerGysteOffline();},{once:true});
