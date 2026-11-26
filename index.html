@@ -277,6 +277,26 @@ header{gap:6px;padding:8px 9px}
 #post-preview>div{flex:0 0 100px;min-width:0;scroll-snap-align:start}
 #post-preview img,#post-preview video{width:100px;height:100px;border-radius:12px;object-fit:cover;background:#081722}
 #post-preview small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+/* Tarjetas sociales: acciones accesibles y álbumes compactos */
+[data-post-card] .posthead{margin-bottom:8px}
+[data-post-card] .posthead .author{overflow-wrap:anywhere}
+[data-post-card] .reaction-bar{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;margin:12px 0 6px}
+[data-post-card] .reaction-bar button{min-width:0;min-height:44px;padding:4px 0;font-size:20px;border-radius:12px;background:#122d40}
+[data-post-card] .reaction-bar button.chosen{background:#275567;border:2px solid #83e8d5}
+[data-post-card] .post-interactions{display:flex;flex-direction:column;gap:5px;margin:5px 0 0}
+[data-post-card] .post-interactions>.reaction-count{align-self:flex-start;min-height:36px;padding:4px 0;font-size:12px;color:var(--muted)}
+[data-post-card] .post-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:3px;border-top:1px solid var(--line);padding-top:7px;margin:0}
+[data-post-card] .post-actions .action{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:48px;font-size:11px;padding:3px 0;border-radius:9px;color:var(--txt)}
+[data-post-card] .post-actions .action:active{background:#24475b}
+[data-post-card] .post-actions .action[aria-pressed=true]{color:var(--mint)}
+[data-post-card] .post-actions .gyste-icon{width:21px;height:21px}
+.media-gallery.photo-album{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.media-gallery.photo-album .media-frame{border-radius:10px}
+.media-gallery.photo-album .media-frame .media{width:100%;height:auto;aspect-ratio:1;object-fit:cover}
+.media-gallery.photo-album .media-expand{font-size:11px;min-height:36px}
+.media-gallery.photo-album .album-index{position:absolute;top:7px;right:7px;pointer-events:none;background:#091827dc;color:white;padding:3px 7px;border-radius:20px;font-size:11px}
+@media(max-width:410px){[data-post-card] .reaction-bar{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){[data-post-card] button{transition:none}}
 </style>
 </head>
 <body>
@@ -370,7 +390,10 @@ explore:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
 notifications:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12a2 2 0 0 0 4 0"/>',
 photos:'<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/>',
 studio:'<path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5z"/>',
-menu:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'
+menu:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+bookmark:'<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/>',
+send:'<path d="m22 2-7 20-4-9-9-4 20-7zM22 2 11 13"/>',
+repost:'<path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3"/>'
 };return paths[name]?'<svg class="gyste-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+paths[name]+'</svg>':"";}
 function navButton(dest,label,symbol){return `<button data-tab="${dest}" class="${tab===dest?"active":""}" aria-label="${label}" ${tab===dest?'aria-current="page"':''}><b aria-hidden="true">${gysteIcon(dest)||symbol}</b>${label}</button>`;}
 
@@ -1786,11 +1809,12 @@ function mediaItemUrl(m,p){
 }
 function postMediaHTML(p){
  const items=postMediaItems(p);if(!items.length)return "";
- return `<div class="media-gallery ${items.length>1?"multi":""}">${items.map((m,i)=>{
+ const album=items.length>1&&items.every(m=>m.type?.startsWith("image/"));
+ return `<div class="media-gallery ${items.length>1?"multi":""}${album?" photo-album":""}">${items.map((m,i)=>{
   const url=mediaItemUrl(m,p);if(!url)return '<p class="muted">Archivo no disponible temporalmente.</p>';
   const video=m.type?.startsWith("video/");
   const element=video?`<video class="media" controls playsinline preload="none" src="${esc(url)}"></video><p class="muted" style="margin:4px 8px;font-size:12px">Pulsa ▶ para cargar y reproducir.</p>`:`<img class="media" loading="lazy" decoding="async" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
-  return `<div class="media-frame ${video?"video-frame":""}">${element}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
+  return `<div class="media-frame ${video?"video-frame":""}">${element}${album?`<span class="album-index" aria-hidden="true">${i+1}/${items.length}</span>`:""}<button type="button" class="media-expand">⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
  }).join("")}</div>`;
 }
 // Photo failure recovery: keep the original URL (including any signature), never substitute another image.
@@ -2271,7 +2295,7 @@ function postCard(p,author,mediaOverride=null){
  <div class="bodytext">${esc(original?.content||(!original?"Publicación original no disponible.":""))}</div>
  ${original?(mediaOverride!==null?mediaOverride:postMediaHTML(original)):""}
  <div class="reaction-bar">${REACTION_TYPES.map(([key,emoji,label])=>`<button type="button" data-target="${esc(target)}" data-react="${key}" class="${reactionMine.get(target)===key?"chosen":""}" aria-pressed="${reactionMine.get(target)===key}" title="${label}" aria-label="${label}">${emoji}</button>`).join("")}</div>
- <div class="actions"><button class="action" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><button class="action" data-comments="${esc(target)}">◯ Comentar</button>${isPublic?`<button class="action" data-repost="${esc(source)}">🔁 Republicar</button><button class="action" data-sendpost="${esc(source)}">✉ Enviar</button>`:""}</div>
+ <div class="post-interactions"><button type="button" class="action reaction-count" data-reactors="${esc(target)}">Ver reacciones · ${Number(p.likes||0)}</button><div class="actions post-actions"><button type="button" class="action" data-comments="${esc(target)}">${gysteIcon("messages")}Comentar</button>${isPublic?`<button type="button" class="action" data-repost="${esc(source)}">${gysteIcon("repost")}Republicar</button><button type="button" class="action" data-sendpost="${esc(source)}">${gysteIcon("send")}Enviar</button>`:""}<button type="button" class="action" data-savepost="${esc(target)}" data-quick-save aria-pressed="${savedIds.has(target)}">${gysteIcon("bookmark")}<span>${savedIds.has(target)?"Guardado":"Guardar"}</span></button></div></div>
  <div class="reactors-list hidden" id="reactors-${esc(target)}"></div>
  <div id="comments-${esc(target)}" class="hidden"><div id="list-${esc(target)}"></div><form class="commentform" data-comment-form="${esc(target)}"><input class="field" maxlength="2000" placeholder="Escribe un comentario…" required><button class="primary">Enviar</button><p class="muted" role="status" data-comment-status></p></form></div>
  </article>`;
@@ -2418,7 +2442,7 @@ const savingPostIds=new Set();
 function savedPostButtons(id){return Array.from(app.querySelectorAll("[data-savepost]")).filter(n=>n.dataset.savepost===id);}
 function paintSavedPost(id,saved){
  if(saved)savedIds.add(id);else savedIds.delete(id);
- savedPostButtons(id).forEach(n=>{const quick=n.hasAttribute("data-reel-save");n.textContent=quick?(saved?"✓ Reel guardado":"🔖 Guardar Reel"):(saved?"Quitar de guardados":"🔖 Guardar publicación");n.setAttribute("aria-pressed",String(saved));});
+ savedPostButtons(id).forEach(n=>{const quick=n.hasAttribute("data-reel-save");if(n.hasAttribute("data-quick-save")){const label=n.querySelector("span");if(label)label.textContent=saved?"Guardado":"Guardar";}else n.textContent=quick?(saved?"✓ Reel guardado":"🔖 Guardar Reel"):(saved?"Quitar de guardados":"🔖 Guardar publicación");n.setAttribute("aria-pressed",String(saved));});
 }
 async function savePost(id,b){
  const uid=me?.id,epoch=cardsEpoch,initialTab=tab,lock=uid+":"+id;
