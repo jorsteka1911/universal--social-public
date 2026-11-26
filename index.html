@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r37">
+<meta name="gyste-build" content="2026-11-26-r38">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3439,10 +3439,12 @@ app.querySelectorAll("[data-explore-topic]").forEach(b=>b.onclick=()=>findPosts(
 await search();
 }
 
-let memberProfileId=null,memberProfileEpoch=0;
+let memberProfileId=null,memberProfileEpoch=0,memberProfileOrigin="explore",memberProfileChat=null;
+function returnFromMemberProfile(){if(!confirmNavigationDraft())return;if(memberProfileOrigin==="messages"){chatUser=memberProfileChat;return goTab("messages",null,true);}goTab(memberProfileOrigin,null,true);}
 function openMemberProfile(id){
  if(!me?.id||!id||!confirmNavigationDraft())return;
  if(id===me.id)return goTab("profile",null,true);
+ if(tab!=="memberprofile"){memberProfileOrigin=tab;memberProfileChat=tab==="messages"?chatUser:null;}
  memberProfileId=id;goTab("memberprofile",null,true);
 }
 async function memberProfileView(){
@@ -3458,7 +3460,8 @@ async function memberProfileView(){
  if(!valid())return;
  const cards=postError?"":await prepareCards(posts||[]);
  if(!valid())return;
- shell(`<section class="panel profile-section"><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions"><button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button><button class="secondary" data-chat="${esc(id)}">Mensaje</button></div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones públicas visibles para ti.</p>${postError?'<p>No se pudieron cargar las publicaciones.</p>':cards||'<p>No hay publicaciones visibles.</p>'}`);
+ shell(`<section class="panel profile-section"><button type="button" class="secondary" id="member-profile-back">← Volver</button><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions"><button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button><button class="secondary" data-chat="${esc(id)}">Mensaje</button></div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones públicas visibles para ti.</p>${postError?'<p>No se pudieron cargar las publicaciones.</p>':cards||'<p>No hay publicaciones visibles.</p>'}`);
+ document.getElementById("member-profile-back").onclick=returnFromMemberProfile;
  bindPeople();bindPostActions();
  }catch{if(valid())shell('<section class="panel"><h2>Perfil</h2><p role="alert">No se pudo cargar el perfil. Comprueba tu conexión.</p><button type="button" class="secondary" data-tab="memberprofile">Reintentar</button><button type="button" class="secondary" data-tab="explore">Volver a Explorar</button></section>');}
 }
