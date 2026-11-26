@@ -666,13 +666,14 @@ function recoveryView(){
 app.innerHTML=`
 <section class="auth">
 <h1>Crear contraseña nueva</h1>
-<p class="muted">Escribe tu nueva contraseña dos veces para confirmar el cambio.</p>
+<p class="muted">Escribe tu nueva contraseña de al menos 8 caracteres dos veces para confirmar el cambio.</p>
 <div id="notice" class="notice ${noticeError?"error":""}">${esc(notice)}</div>
-<input id="newpassword" class="field" type="password" minlength="6" autocomplete="new-password" placeholder="Nueva contraseña">
-<input id="confirmnewpassword" class="field" type="password" minlength="6" autocomplete="new-password" placeholder="Repite la nueva contraseña">
+<input id="newpassword" class="field" type="password" minlength="8" autocomplete="new-password" placeholder="Nueva contraseña">
+<input id="confirmnewpassword" class="field" type="password" minlength="8" autocomplete="new-password" placeholder="Repite la nueva contraseña">
 <button class="primary full" id="savepassword">Guardar contraseña</button>
 </section>`;
 document.getElementById("savepassword").onclick=saveNewPassword;
+document.getElementById("confirmnewpassword").onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();saveNewPassword();}};
 }
 
 let authBusy=false;
@@ -695,26 +696,43 @@ finally{finish();}
 }
 
 async function saveNewPassword(){
-const password=document.getElementById("newpassword").value;
-const confirmation=document.getElementById("confirmnewpassword").value;
-if(password.length<6)return say("La contraseña debe tener al menos 6 caracteres.",true);
+const input=document.getElementById("newpassword"),repeat=document.getElementById("confirmnewpassword"),button=document.getElementById("savepassword"),uid=session?.user?.id;
+if(!input||!repeat||!button||button.disabled)return;
+if(!uid)return say("Abre el enlace de recuperación más reciente.",true);
+const password=input.value,confirmation=repeat.value;
+if(password.length<8)return say("La contraseña nueva debe tener al menos 8 caracteres.",true);
 if(password!==confirmation)return say("Las contraseñas no coinciden. Escríbelas de nuevo.",true);
-const button=document.getElementById("savepassword");
-button.disabled=true;button.textContent="Guardando…";
+const current=()=>button.isConnected&&document.getElementById("savepassword")===button&&session?.user?.id===uid;
+button.disabled=true;input.disabled=true;repeat.disabled=true;button.textContent="Guardando…";
+let confirmed=false;
 try{
-const {data,error}=await db.auth.updateUser({password});
-if(error)throw error;
-session=(await db.auth.getSession()).data.session;
-if(data?.user){
-  window.history.replaceState({},document.title,window.location.pathname+window.location.search);
-  notice="Contraseña actualizada correctamente. Ya puedes usarla para entrar en Gyste.";
-  noticeError=false;
-  await db.auth.signOut();
-  session=null;me=null;chatUser=null;
-  authView();
-  say(notice,false);
+ const {data,error}=await db.auth.updateUser({password});
+ if(error)throw error;
+ if(data?.user?.id!==uid)throw Error("Cambio no confirmado");
+ confirmed=true;input.value="";repeat.value="";
+ if(!current())return;
+ window.history.replaceState({},document.title,window.location.pathname+window.location.search);
+ const closeRecovery=async()=>{
+  if(!current())return;
+  button.disabled=true;button.textContent="Cerrando sesión…";
+  try{
+   const result=await db.auth.signOut();
+   if(result.error)throw result.error;
+   if(session?.user?.id&&session.user.id!==uid)return;
+   session=null;me=null;chatUser=null;
+   notice="Contraseña actualizada correctamente. Ya puedes usarla para entrar en Gyste.";noticeError=false;
+   authView();say(notice,false);
+  }catch{
+   if(current()){say("Contraseña actualizada. No se ha podido confirmar el cierre de sesión. Pulsa Cerrar sesión de nuevo.",true);button.textContent="Cerrar sesión";button.disabled=false;button.onclick=closeRecovery;}
+  }
+ };
+ await closeRecovery();
+}catch{
+ if(current()){
+  say(confirmed?"Contraseña actualizada; vuelve a abrir Gyste para comprobar el acceso.":"No se pudo confirmar el cambio. Comprueba tu conexión o abre el enlace de recuperación más reciente.",true);
+  if(!confirmed){button.disabled=false;input.disabled=false;repeat.disabled=false;button.textContent="Guardar contraseña";}
+ }
 }
-}catch(e){say("No se pudo actualizar la contraseña. Vuelve a abrir el enlace de recuperación más reciente.",true);button.disabled=false;button.textContent="Guardar contraseña";}
 }
 
 function authMessage(error, mode){
