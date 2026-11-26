@@ -496,6 +496,17 @@ button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var
 .gyste-update-panel summary{cursor:pointer;padding:8px 0;color:var(--mint);font-weight:750}
 .gyste-update-panel button{min-height:44px;margin:4px 0}
 .assist-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.assist-actions button{font-size:12px;min-height:36px;padding:6px 9px}.assist-alert{border:1px solid #c99843;padding:8px;border-radius:8px}.assist-dialog{width:min(92vw,520px);max-height:85dvh;overflow:auto;background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:14px;padding:16px}.assist-dialog button{margin:5px}.assist-large .bodytext,.assist-large .panel p,.assist-large .field{font-size:19px;line-height:1.55}.assist-xl .bodytext,.assist-xl .panel p,.assist-xl .field{font-size:23px;line-height:1.55}.assist-large button,.assist-xl button{min-height:44px}.assist-contrast{--txt:#fff!important;--muted:#fff!important;--bg:#000!important;--panel:#111!important;--line:#aaa!important;--mint:#7fffe8!important}.assist-contrast .panel,.assist-contrast .post,.assist-contrast .chat-bubble{background:#111!important;color:#fff!important;border-color:#aaa!important}.assist-motion *{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}.assist-tools{overflow-wrap:anywhere}
+
+/* Mobile interaction: prevent accidental contextual text search on controls and profile identity. */
+@media (any-pointer:coarse){
+  button,summary,.mobile-nav,.profile-face,.profile-cover,.profile-heading h2,.profile-heading p.muted,.profile-metrics{
+    -webkit-user-select:none;user-select:none;
+  }
+  .profile-heading h2{font-size:clamp(18px,5.5vw,23px);line-height:1.25;overflow-wrap:anywhere}
+  .profile-heading p.muted{font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+  .profile-photo-links button{min-height:44px}
+  .profile-photo-links button:disabled{opacity:1;color:var(--muted);border-color:var(--line);cursor:default}
+}
 </style>
 </head>
 <body>
