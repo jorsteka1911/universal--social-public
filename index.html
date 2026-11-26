@@ -450,6 +450,9 @@ header{gap:6px;padding:8px 9px}
 .business-card h3{margin:0 0 3px;overflow-wrap:anywhere;font-size:16px}
 .business-card .bodytext{font-size:13px;margin:10px 0 0}
 .business-editor summary{cursor:pointer;padding:10px 0;font-weight:800;color:var(--mint)}
+/* Revisión de compatibilidad: mantener menús y pantalla completa fuera de la contención */
+#feed .post:has(.media-overlay),#feed .post:has(.post-menu[open]){content-visibility:visible;contain-intrinsic-size:none}
+button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
 </style>
 </head>
 <body>
@@ -590,11 +593,12 @@ bindNavigation();
 paintUnreadBadges();void refreshUnreadBadges();
 }
 
+function businessDraftChanged(form){if(!form?.dataset.initial)return false;return JSON.stringify(Array.from(form.querySelectorAll("input,select,textarea")).map(f=>f.value))!==form.dataset.initial;}
 function navigationDraftState(){
  const post=document.getElementById("posttext"),media=document.getElementById("media"),msg=document.getElementById("msg"),chatfile=document.getElementById("chatfile"),reel=document.getElementById("reel-upload-status");
- const busy=!!me?.id&&(publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id)||feedbackSendLocks.has(me.id));
+ const busy=!!me?.id&&(publishLocks.has(me.id)||chatSendLocks.has(me.id+":"+chatUser)||reel?.dataset.busy==="true"||profileImageBusy||profileSaveLocks.has(me.id)||feedbackSendLocks.has(me.id)||document.getElementById("business-form")?.dataset.busy==="true");
  const changedProfile=tab==="profile"&&["display","username","bio"].some(id=>{const f=document.getElementById(id);return f&&f.value!==f.defaultValue;});
- const text=!!(changedProfile||document.getElementById("feedback-body")?.value.trim()||post?.value.trim()||msg?.value.trim()||Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim()));
+ const text=!!(changedProfile||businessDraftChanged(document.getElementById("business-form"))||document.getElementById("feedback-body")?.value.trim()||post?.value.trim()||msg?.value.trim()||Array.from(app.querySelectorAll("[data-comment-form] input,[data-editorial-comment-form] textarea")).some(x=>x.value.trim()));
  const files=!!(media?.files?.length||chatfile?.files?.length||voiceDraft||voiceCapture||Number(reel?.dataset.pending||0)>0);
  return {busy,text,files};
 }
@@ -922,7 +926,7 @@ async function copyGuestLink(){
  catch{field.focus();field.select();status.textContent="Mantén pulsado el enlace y elige Copiar.";}
 }
 function authView(){
-safetyFeedbackRequest=null;
+safetyFeedbackRequest=null;commercialInterest=null;reelVideoKey="";verticalVideoKey="";reelFilter="all";videoFilter="all";reelLimit=REEL_BATCH;videoLimit=60;
 resetUnreadBadges();
 resetFeedPage();
 cubaNewsFilter={uid:null,query:"",topic:""};
@@ -1802,7 +1806,7 @@ async function reelsView(){
  if(!active())return;
  stage.innerHTML=`<div class="reel-player-controls"><button class="primary" id="reelplay" ${url?"":"disabled"}>▶ Reproducir</button><button class="secondary" id="reelretry">Recargar vídeo</button>${url?'<button class="secondary" id="reel-full">⛶ Ampliar</button>':""}</div><p id="reelstatus" role="status">${url?"Pulsa Reproducir para comenzar.":"No se pudo obtener el vídeo. Revisa tu acceso o vuelve a intentarlo."}</p>${url?`<video id="reelvideo" controls playsinline preload="${gysteDataSaver()?"none":"metadata"}" style="display:block;width:100%;height:clamp(150px,47dvh,440px);touch-action:pan-x pinch-zoom;object-fit:contain;background:#05090e;border-radius:12px" src="${esc(url)}"></video>`:""}<div class="actions"><button class="secondary" data-savepost="${esc(x.p.id)}" data-reel-save aria-pressed="${savedIds.has(x.p.id)}">${savedIds.has(x.p.id)?"✓ Reel guardado":"🔖 Guardar Reel"}</button></div><p id="reel-save-status" role="status" aria-live="polite"></p>${postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===uid?me:null),"")}`;
  const v=document.getElementById("reelvideo"),play=document.getElementById("reelplay"),status=document.getElementById("reelstatus");
- document.getElementById("reelretry").onclick=()=>{if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);return draw();};
+ document.getElementById("reelretry").onclick=()=>{if(!confirmNavigationDraft())return;if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);return draw();};
  if(v){let touchStart=null;v.addEventListener("touchstart",e=>{touchStart=e.touches.length===1?{x:e.touches[0].clientX,y:e.touches[0].clientY}:null;},{passive:true});v.addEventListener("touchcancel",()=>{touchStart=null;});v.addEventListener("touchend",e=>{const t=e.changedTouches[0],start=touchStart;touchStart=null;if(!start||!t||!active())return;const d=reelSwipeDirection(t.clientX-start.x,t.clientY-start.y);if(d&&index+d>=0&&index+d<entries.length&&confirmNavigationDraft()){index+=d;draw();}},{passive:true});const full=document.getElementById("reel-full");full.onclick=async()=>{try{if(v.requestFullscreen)await v.requestFullscreen();else if(v.webkitEnterFullscreen)v.webkitEnterFullscreen();else status.textContent="Usa el control de pantalla completa del vídeo.";}catch{status.textContent="Usa el control de pantalla completa del vídeo.";}};bindReelPlayback(v,play,status,active);}
  bindPostActions();
  }
@@ -2014,7 +2018,7 @@ function bindMediaActions(){
   const frame=b.closest(".media-frame"),original=b.textContent;
    const image=frame.querySelector("img");if(image?.hasAttribute("data-photo-src"))return;if(image){bindPhotoRecovery(frame,image,b);b.onclick=()=>{if(!b.disabled)openPhotoViewer(image);};image.style.cursor="zoom-in";image.onclick=b.onclick;return;}
   const refresh=()=>{b.textContent=(document.fullscreenElement===frame||frame.classList.contains("media-overlay"))?"✕ Salir de pantalla completa":original;};
-  frame.addEventListener("fullscreenchange",refresh);
+  if(!b.dataset.fullscreenBound){b.dataset.fullscreenBound="1";frame.addEventListener("fullscreenchange",refresh);}
   b.onclick=async()=>{
    if(document.fullscreenElement===frame){await document.exitFullscreen();return;}
    if(frame.classList.contains("media-overlay")){frame.classList.remove("media-overlay");refresh();return;}
@@ -2262,10 +2266,10 @@ async function videosView(){
  shell(`<section class="panel"><h2>▶ Vídeos de Gyste</h2><p class="muted">Descubre vídeos, reacciona, comenta y guarda tus favoritos. En la lista los vídeos solicitan la carga al reproducirlos; el modo vertical prepara un vídeo a la vez.</p><div class="actions"><button class="secondary" data-video-layout="list" aria-pressed="${videoLayout==="list"}">☷ Lista</button><button class="secondary" data-video-layout="vertical" aria-pressed="${videoLayout==="vertical"}">▯ Un vídeo a la vez</button></div><div class="actions"><button class="secondary" data-vfilter="all">Todos</button><button class="secondary" data-vfilter="following">Siguiendo</button><button class="secondary" data-vfilter="mine">Mis vídeos</button><button class="primary" id="new-video">+ Publicar vídeo</button></div><p class="muted">${videoFilter==="all"?"Todos los vídeos":videoFilter==="following"?"Personas que sigues":"Mis vídeos"}</p></section>${videoLayout==="vertical"?`<section class="panel"><p class="muted">Modo vertical · vídeos de cualquier duración. Tú decides cuándo reproducirlos.</p><div class="vertical-video-controls"><button class="secondary" id="vertical-prev">↑ Anterior</button><span id="vertical-count" role="status"></span><button class="secondary" id="vertical-next">Siguiente ↓</button></div><div class="vertical-video-stage" id="vertical-stage"></div></section>`:(cards||'<p class="muted">No hay vídeos en esta selección.</p>')}${(data||[]).length===videoLimit&&videoLimit<300?'<button class="secondary full" id="more-videos">Buscar más vídeos</button>':""}`);
  const firstVideoReady=layout==="vertical"?bindVerticalVideos(items):null;
  if(layout==="list")bindPostActions();
- app.querySelectorAll("[data-video-layout]").forEach(b=>b.onclick=()=>{if(videoLayout===b.dataset.videoLayout)return;videoLayout=b.dataset.videoLayout;videosView();});
- app.querySelectorAll("[data-vfilter]").forEach(b=>b.onclick=()=>{videoFilter=b.dataset.vfilter;videoLimit=60;verticalVideoKey="";videosView();});
- document.getElementById("new-video").onclick=async()=>{tab="feed";homeFilter="all";selectedSpaceId=null;sharedPostId=null;await feedView();revealPostComposer();};
- const more=document.getElementById("more-videos");if(more)more.onclick=()=>{videoLimit=Math.min(300,videoLimit+60);videosView();};
+ app.querySelectorAll("[data-video-layout]").forEach(b=>b.onclick=()=>{if(videoLayout===b.dataset.videoLayout||!confirmNavigationDraft())return;videoLayout=b.dataset.videoLayout;videosView();});
+ app.querySelectorAll("[data-vfilter]").forEach(b=>b.onclick=()=>{if(!confirmNavigationDraft())return;videoFilter=b.dataset.vfilter;videoLimit=60;verticalVideoKey="";videosView();});
+ document.getElementById("new-video").onclick=async()=>{if(!confirmNavigationDraft())return;tab="feed";homeFilter="all";selectedSpaceId=null;sharedPostId=null;await feedView();revealPostComposer();};
+ const more=document.getElementById("more-videos");if(more)more.onclick=()=>{if(!confirmNavigationDraft())return;videoLimit=Math.min(300,videoLimit+60);videosView();};
  await firstVideoReady;
 }
 function bindVerticalVideos(items){
@@ -2274,7 +2278,7 @@ function bindVerticalVideos(items){
  const uid=me?.id;let index=Math.max(0,entries.findIndex(x=>x.key===verticalVideoKey)),serial=0;
  const draw=async()=>{
   const n=++serial,valid=()=>n===serial&&tab==="videos"&&videoLayout==="vertical"&&me?.id===uid&&stage.isConnected;
-  stage.querySelectorAll("video").forEach(v=>v.pause());
+  stage.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load();});
   prev.disabled=index<=0||!entries.length;next.disabled=index>=entries.length-1;
   count.textContent=entries.length?(index+1)+" de "+entries.length:"0 vídeos";
   const x=entries[index];if(!x){stage.innerHTML='<p class="muted">Aún no hay vídeos para mostrar. Puedes publicar el primero.</p>';return;}
@@ -2290,13 +2294,13 @@ function bindVerticalVideos(items){
    }catch{}
   }
   if(!valid())return;
-  const media=url?`<div class="media-gallery"><div class="media-frame video-frame"><video class="media" controls playsinline preload="metadata" src="${esc(url)}"></video><button type="button" class="media-expand">⛶ Pantalla completa</button></div><p class="muted" data-duration></p><button type="button" class="secondary" data-retry-video hidden>Reintentar vídeo</button></div>`:'<p class="muted">Vídeo no disponible. Puede que ya no tengas acceso.</p><button type="button" class="secondary" data-retry-video>Reintentar vídeo</button>';
+  const media=url?`<div class="media-gallery"><div class="media-frame video-frame"><video class="media" controls playsinline preload="${gysteDataSaver()?"none":"metadata"}" src="${esc(url)}"></video><button type="button" class="media-expand">⛶ Pantalla completa</button></div><p class="muted" data-duration></p><button type="button" class="secondary" data-retry-video hidden>Reintentar vídeo</button></div>`:'<p class="muted">Vídeo no disponible. Puede que ya no tengas acceso.</p><button type="button" class="secondary" data-retry-video>Reintentar vídeo</button>';
   stage.innerHTML=postCard(x.p,postAuthors[x.p.user_id]||(x.p.user_id===uid?me:null),media);
   const retry=stage.querySelector("[data-retry-video]");if(retry)retry.onclick=()=>{if(x.m.path)mediaUrlCache.delete(bucketFor(x.p)+":"+x.m.path);draw();};
   const v=stage.querySelector("video");if(v){v.addEventListener("loadedmetadata",()=>{if(!valid())return;const label=stage.querySelector("[data-duration]");if(label&&Number.isFinite(v.duration)){const seconds=Math.ceil(v.duration);label.textContent=seconds<60?seconds+" s":Math.floor(seconds/60)+" min "+(seconds%60)+" s";}});v.addEventListener("error",()=>{if(!valid())return;const label=stage.querySelector("[data-duration]");if(label)label.textContent="No se pudo cargar el vídeo.";if(retry)retry.hidden=false;});}
   bindPostActions();
  };
- prev.onclick=()=>{if(index>0){index--;draw();}};next.onclick=()=>{if(index<entries.length-1){index++;draw();}};
+ prev.onclick=()=>{if(index>0&&confirmNavigationDraft()){index--;draw();}};next.onclick=()=>{if(index<entries.length-1&&confirmNavigationDraft()){index++;draw();}};
  return draw();
 }
 async function savedView(){
@@ -2849,7 +2853,8 @@ async function businessView(){
  document.getElementById("business-open-editor").onclick=()=>{const editor=document.getElementById("business-editor");editor.open=true;editor.scrollIntoView({block:"start"});};
  app.querySelectorAll("[data-business-category]").forEach(b=>b.onclick=()=>{category=b.dataset.businessCategory;draw();});
  document.getElementById("business-search").oninput=draw;draw();
- document.getElementById("business-form").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button");if(!valid()||b.disabled)return;const row={name:document.getElementById("business-name").value.trim(),category:document.getElementById("business-category").value,status:document.getElementById("business-status").value,city:document.getElementById("business-city").value.trim(),description:document.getElementById("business-description").value.trim()};if(row.name.length<2||row.name.length>80||!Object.hasOwn(BUSINESS_CATEGORIES,row.category)||!["draft","pending"].includes(row.status)||row.city.length>80||row.description.length>1000)return say("Revisa los campos de tu ficha.",true);b.disabled=true;try{const {data,error}=await (p.id?db.from("gyste_businesses").update(row).eq("id",p.id).eq("owner_id",uid):db.from("gyste_businesses").insert({...row,owner_id:uid})).select("id,status").single();if(error||!data?.id||data.status!==row.status)throw Error("No confirmado");if(valid()){say(row.status==="pending"?"Ficha enviada a revisión.":"Borrador privado guardado.");await businessView();}}catch{if(valid())say("No se pudo confirmar el guardado. Revisa la ficha antes de reintentar.",true);}finally{b.disabled=false;} };
+ const businessForm=document.getElementById("business-form");businessForm.dataset.initial=JSON.stringify(Array.from(businessForm.querySelectorAll("input,select,textarea")).map(f=>f.value));
+ document.getElementById("business-form").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button");if(!valid()||b.disabled)return;const row={name:document.getElementById("business-name").value.trim(),category:document.getElementById("business-category").value,status:document.getElementById("business-status").value,city:document.getElementById("business-city").value.trim(),description:document.getElementById("business-description").value.trim()};if(row.name.length<2||row.name.length>80||!Object.hasOwn(BUSINESS_CATEGORIES,row.category)||!["draft","pending"].includes(row.status)||row.city.length>80||row.description.length>1000)return say("Revisa los campos de tu ficha.",true);b.disabled=true;businessForm.dataset.busy="true";try{const {data,error}=await (p.id?db.from("gyste_businesses").update(row).eq("id",p.id).eq("owner_id",uid):db.from("gyste_businesses").insert({...row,owner_id:uid})).select("id,status").single();if(error||!data?.id||data.status!==row.status)throw Error("No confirmado");if(valid()){say(row.status==="pending"?"Ficha enviada a revisión.":"Borrador privado guardado.");await businessView();}}catch{if(valid())say("No se pudo confirmar el guardado. Revisa la ficha antes de reintentar.",true);}finally{b.disabled=false;businessForm.dataset.busy="false";} };
  const del=document.getElementById("business-delete");if(del)del.onclick=async()=>{if(!confirm("¿Eliminar tu ficha comercial?"))return;del.disabled=true;const {data,error}=await db.from("gyste_businesses").delete().eq("id",p.id).eq("owner_id",uid).select("id").single();if(error||data?.id!==p.id){del.disabled=false;return say("No se pudo confirmar la eliminación.",true);}say("Ficha eliminada.");if(tab==="business")await businessView();};
  const review=document.getElementById("business-review");if(review)review.onclick=async()=>{const {data,error}=await db.from("gyste_businesses").select("id,name,category,city,description,status").eq("status","pending").limit(100);const box=document.getElementById("business-review-list");if(!box)return;if(error){box.textContent="No se pudo cargar.";return;}box.innerHTML=(data||[]).map(x=>`<article class="post"><h3>${esc(x.name)}</h3><p>${esc(x.category)} · ${esc(x.city)}</p><p>${esc(x.description)}</p><button class="secondary" data-business-review="${esc(x.id)}" data-decision="approved">Aprobar</button><button class="secondary" data-business-review="${esc(x.id)}" data-decision="rejected">Rechazar</button></article>`).join("")||'<p>No hay fichas pendientes.</p>';box.querySelectorAll("[data-business-review]").forEach(b=>b.onclick=async()=>{if(!confirm("¿Confirmar esta decisión de moderación?"))return;b.disabled=true;const {data,error}=await db.from("gyste_businesses").update({status:b.dataset.decision}).eq("id",b.dataset.businessReview).eq("status","pending").select("id,status").single();if(error||data?.id!==b.dataset.businessReview||data.status!==b.dataset.decision){b.disabled=false;return say("No se pudo confirmar la decisión.",true);}say("Decisión guardada.");if(tab==="business")await businessView();});};
 }
