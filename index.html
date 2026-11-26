@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r40">
+<meta name="gyste-build" content="2026-11-26-r41">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3811,7 +3811,7 @@ function chatMarkup(items){
  let previousDay=null;
  return (items||[]).map(m=>{
  const mine=m.sender_id===me.id,day=chatDateKey(m.created_at),separator=day&&day!==previousDay?'<div class="chat-day">'+esc(chatDayLabel(m.created_at))+'</div>':"";previousDay=day;
- return separator+'<div class="chat-line '+(mine?"mine":"received")+'">'+(!mine?'<span class="face" aria-hidden="true">'+avatarContent(chatPeerProfile)+'</span>':"")+'<div class="chat-bubble '+(m.media_path?"has-media":"")+'"><div class="bodytext">'+chatBody(m.content)+'</div>'+assistHTML(m.content,!mine)+chatAttachment(m)+'<small class="chat-time">'+esc(chatClock(m.created_at))+(mine?(m.read_at?' · Leído':' · Enviado'):"")+'</small></div></div>';
+ return separator+'<div class="chat-line '+(mine?"mine":"received")+'">'+(!mine?'<button type="button" class="face" data-member-profile="'+esc(m.sender_id)+'" aria-label="Ver perfil del remitente">'+avatarContent(chatPeerProfile)+'</button>':"")+'<div class="chat-bubble '+(m.media_path?"has-media":"")+'"><div class="bodytext">'+chatBody(m.content)+'</div>'+assistHTML(m.content,!mine)+chatAttachment(m)+'<small class="chat-time">'+esc(chatClock(m.created_at))+(mine?(m.read_at?' · Leído':' · Enviado'):"")+'</small></div></div>';
  }).join("")||'<p class="muted">Inicia la conversación.</p>';
 }
 const chatRefreshLocks=new WeakSet(),chatRefreshQueued=new WeakSet();
@@ -3833,7 +3833,7 @@ async function refreshChatMessages(target,markRead=false){
  if(status)status.textContent="";
  if(document.fullscreenElement||list.querySelector(".media-overlay")||Array.from(list.querySelectorAll("video,audio")).some(v=>!v.paused&&!v.ended))return;
  if(signature!==chatRenderSignature){
- const oldTop=list.scrollTop,nearBottom=!chatRenderSignature||list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();
+ const oldTop=list.scrollTop,nearBottom=!chatRenderSignature||list.scrollHeight-list.scrollTop-list.clientHeight<110;list.innerHTML=chatMarkup(ordered);bindMediaActions();bindMemberProfiles();
  list.querySelectorAll("[data-chat-post]").forEach(b=>b.onclick=()=>{if(!valid()||!confirmNavigationDraft())return;sharedPostId=b.dataset.chatPost;selectedSpaceId=null;homeFilter="all";tab="feed";chatUser=null;renderTab();window.scrollTo({top:0,behavior:"smooth"});});
  list.querySelectorAll("[data-chat-media-retry]").forEach(b=>b.onclick=()=>{if(!valid())return;b.disabled=true;chatMediaCache.clear();chatRenderSignature="";void refreshChatMessages(target,true).finally(()=>{if(b.isConnected)b.disabled=false;});});
  list.scrollTop=nearBottom?list.scrollHeight:oldTop;chatRenderSignature=signature;
