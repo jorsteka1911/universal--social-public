@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r32">
+<meta name="gyste-build" content="2026-11-26-r33">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1346,16 +1346,16 @@ const active=()=>current()&&me?.id===user.id;
 const editorialSync=syncEditorial(user.id).catch(()=>false);
 const loaded=await reads.preload;
 if(!active())return;
-if(!loaded.value)return authViewWithError("No se pudo completar la carga inicial. Comprueba tu conexión y vuelve a entrar.");
+if(!loaded.value){gysteFault("inicio");return authViewWithError("No se pudo completar la carga inicial. Comprueba tu conexión y vuelve a entrar.");}
 const [profileResult,followingResult,spacesResult]=loaded.value;
 let {data:p,error:profileError}=profileResult;
-if(profileError)return authViewWithError("No se pudo cargar tu perfil: "+profileError.message);
+if(profileError){gysteFault("inicio",profileError);return authViewWithError("No se pudo cargar tu perfil. Comprueba tu conexión y vuelve a entrar.");}
 if(!p){
 const name="Miembro de Gyste "+user.id.slice(0,6);
 const username="gyste_"+user.id.replace(/-/g,"").slice(0,16);
 const {data:created,error:createError}=await db.from("gyste_profiles").upsert({user_id:user.id,display_name:name,username}).select().single();
 if(!active())return;
-if(createError)return authViewWithError("No se pudo crear tu perfil: "+createError.message);
+if(createError){gysteFault("inicio",createError);return authViewWithError("No se pudo crear tu perfil. Comprueba tu conexión y vuelve a entrar.");}
 p=created;
 }
 me={...me,...p};
@@ -3985,13 +3985,20 @@ async function sendMessage(e){
  // No eliminar archivos tras una respuesta incierta: podrían pertenecer a un mensaje ya registrado.
  }finally{chatSendLocks.delete(key);controls.forEach((c,i)=>c.disabled=previous[i]);button.textContent="Enviar";if(committed&&active())input.focus();}
 }
+function gysteWithTimeout(work,ms,schedule=setTimeout,cancel=clearTimeout){
+ let timer;
+ return Promise.race([Promise.resolve().then(work),new Promise((_,reject)=>{timer=schedule(()=>{const e=new Error("La conexión está tardando demasiado.");e.name="TimeoutError";reject(e);},ms);})]).finally(()=>cancel(timer));
+}
+let gysteStarting=false;
 async function start(){
+if(gysteStarting)return;
+gysteStarting=true;
 const timingStart=performance.now();
 try{
 if(!window.supabase||typeof window.supabase.createClient!=="function"){
  gysteFault("inicio");
 app.innerHTML='<section class="auth"><h1>Gyste</h1><p class="error">No se pudo cargar el servicio de conexión. Comprueba Internet y vuelve a intentarlo.</p><button class="primary full" id="retry">Reintentar</button></section>';
-document.getElementById("retry").onclick=start;
+document.getElementById("retry").onclick=()=>location.reload();
 return;
 }
 if(!db)db=window.supabase.createClient(URL_DB,KEY_DB,{
@@ -4012,10 +4019,7 @@ if(event==="PASSWORD_RECOVERY"){
 if(!s){me=null;chatUser=null;tab="feed";sharedPostId=null;selectedSpaceId=null;homeFilter="all";authView();}
 });
 }
-const result=await Promise.race([
-db.auth.getSession(),
-new Promise((_,reject)=>setTimeout(()=>reject(new Error("La conexión está tardando demasiado. Comprueba Internet y pulsa Reintentar.")),15000))
-]);
+const result=await gysteWithTimeout(()=>db.auth.getSession(),15000);
 const {data,error}=result;
 if(error)throw error;
 session=data.session;gysteFaultScope(session?.user?.id||null);
@@ -4025,9 +4029,10 @@ else if(session)await boot();else authView();
 if(session&&me)recordGysteTiming("startup",timingStart);
 }catch(e){
 gysteFault("inicio",e);
-app.innerHTML=`<section class="auth"><h1>Gyste</h1><p class="error">${esc(e?.message||"No se pudo iniciar Gyste. Comprueba Internet.")}</p><button class="primary full" id="retry">Reintentar</button></section>`;
+const message=e?.name==="TimeoutError"?"La conexión está tardando demasiado. Comprueba Internet y pulsa Reintentar.":"No se pudo iniciar Gyste. Comprueba Internet y vuelve a intentarlo.";
+app.innerHTML=`<section class="auth"><h1>Gyste</h1><p class="error">${esc(message)}</p><button class="primary full" id="retry">Reintentar</button></section>`;
 document.getElementById("retry").onclick=start;
-}
+}finally{gysteStarting=false;}
 }
 
 // Renueva la vista del feed al volver a la app si los enlaces firmados están cerca de expirar.
