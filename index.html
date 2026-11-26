@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r27">
+<meta name="gyste-build" content="2026-11-26-r28">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2897,6 +2897,15 @@ function bindBetaDiagnostic(){
  copy.onclick=async()=>{try{await navigator.clipboard.writeText(out.textContent);if(status.isConnected)status.textContent="Diagnóstico copiado. Tú decides con quién compartirlo.";}catch{if(status.isConnected)status.textContent="Selecciona y copia manualmente el diagnóstico.";}};
 }
 
+function gysteConfirmedOffset(value,size){
+ if(typeof value!=="string"||!/^\d+$/.test(value))return null;
+ const n=Number(value);return Number.isSafeInteger(n)&&n>=0&&n<=size?n:null;
+}
+function gystePendingSummary(job){
+ const total=job.files.reduce((n,f)=>n+f.size,0);
+ const confirmed=job.files.reduce((n,f,i)=>{const t=job.transfers[i];return n+(t?.done?f.size:Math.min(f.size,Math.max(0,Number.isSafeInteger(t?.confirmedBytes)?t.confirmedBytes:0)));},0);
+ return job.files.length+" archivo(s) · "+(total/1048576).toFixed(1)+" MB · "+job.transfers.filter(t=>t.done).length+" completos · "+Math.floor(100*confirmed/Math.max(1,total))+" % confirmado durante la última sesión";
+}
 async function gysteResumableTransfer({client,endpoint,key,uid,bucket,path,file,state,active,progress,load,checkpoint=async()=>{}}){
  if(!active())throw Error("Pantalla cerrada");
  const Tus=await load();
@@ -2913,7 +2922,11 @@ async function gysteResumableTransfer({client,endpoint,key,uid,bucket,path,file,
    headers:{authorization:"Bearer "+token,apikey:key},
    metadata:{bucketName:bucket,objectName:path,contentType:file.type,cacheControl:"3600"},
    onBeforeRequest:async req=>{if(new URL(req.getURL(),endpoint).origin!==new URL(endpoint).origin)throw Error("Dirección no válida");req.setHeader("authorization","Bearer "+await session());},
-   onAfterResponse:async(req,res)=>{if(req.getMethod()==="POST"&&res.getStatus()>=200&&res.getStatus()<300){const loc=res.getHeader("Location");if(loc){const url=new URL(loc,endpoint).href;if(new URL(url).origin!==new URL(endpoint).origin)throw Error("Dirección no válida");state.url=url;state.urlCreatedAt=Date.now();await checkpoint();}}},
+   onAfterResponse:async(req,res)=>{
+    const method=req.getMethod(),status=res.getStatus();if(status<200||status>=300)return;
+    if(method==="POST"){const loc=res.getHeader("Location");if(loc){const url=new URL(loc,endpoint).href;if(new URL(url).origin!==new URL(endpoint).origin)throw Error("Dirección no válida");state.url=url;state.urlCreatedAt=Date.now();state.confirmedBytes=0;await checkpoint();}}
+    if(method==="HEAD"||method==="PATCH"){const offset=gysteConfirmedOffset(res.getHeader("Upload-Offset"),file.size);if(offset!==null&&offset!==state.confirmedBytes){state.confirmedBytes=offset;await checkpoint();}}
+   },
    onProgress:(sent,total)=>{remember();if(active())progress(Math.min(100,Math.floor(100*sent/Math.max(1,total))));},
    onError:error=>{remember();reject(error);},
    onSuccess:()=>{state.url=null;state.urlCreatedAt=null;resolve();}
@@ -2933,7 +2946,7 @@ async function runPending(job,ops){
    if(!ops.active())throw Error("Cuenta cambiada");
    if(job.transfers[i].done)continue;
    await ops.upload(job,i,()=>ops.save(job));
-   job.transfers[i].done=true;job.transfers[i].url=null;await ops.save(job);
+   job.transfers[i].done=true;job.transfers[i].url=null;job.transfers[i].confirmedBytes=job.files[i].size;await ops.save(job);
   }
   if(!ops.active())throw Error("Cuenta cambiada");
   try{await ops.insert(job)}catch(e){if(!await ops.confirm(job))throw e}
@@ -2992,10 +3005,10 @@ async function processPending(job,progress,viewActive,existing=false){
     if(t.started){try{const {data,error}=await db.storage.from(j.bucket).list(uid,{search:t.path.split("/").pop(),limit:10});if(!error&&(data||[]).some(x=>x.name===t.path.split("/").pop()&&Number(x.metadata?.size)===f.size))return;}catch{}}
     t.started=true;await checkpoint();
     if(navigator.onLine===false)throw Error("Sin conexión; copia guardada");
-    if(gysteExpiredTransfer(t,Date.now())){t.url=null;t.urlCreatedAt=null;await checkpoint();progress("La sesión de subida caducó. Se conserva el archivo local.");}
+    if(gysteExpiredTransfer(t,Date.now())){t.url=null;t.urlCreatedAt=null;t.confirmedBytes=0;await checkpoint();progress("La sesión de subida caducó. Se conserva el archivo local.");}
     const attempt=()=>uploadGysteMedia(uid,j.bucket,t.path,f,t,active,p=>progress("Archivo "+(i+1)+"/"+j.files.length+" · "+p+" %"),checkpoint);
     const hadURL=!!t.url;
-    try{await attempt();}catch(error){if(!hadURL||!gysteMissingTransfer(error)||!active()||navigator.onLine===false)throw error;t.url=null;t.urlCreatedAt=null;await checkpoint();progress("Recuperando sesión de subida…");await attempt();}
+    try{await attempt();}catch(error){if(!hadURL||!gysteMissingTransfer(error)||!active()||navigator.onLine===false)throw error;t.url=null;t.urlCreatedAt=null;t.confirmedBytes=0;await checkpoint();progress("Recuperando sesión de subida…");await attempt();}
    },
    insert:async j=>{if(!active())throw Error("Cuenta cambiada");progress("Confirmando envío…");const {error}=await db.from(j.kind==="post"?"posts":"gyste_messages").insert(j.row);if(error)throw error;},
    audience:async j=>{if(!active())throw Error("Cuenta cambiada");if(j.kind!=="post"||!["selected","except"].includes(j.row.audience))return;
@@ -3018,7 +3031,7 @@ async function pendingView(){
   for(const job of jobs.sort((a,b)=>a.created-b.created)){
    const card=document.createElement("article");card.className="post";
    const title=document.createElement("h3");title.textContent=job.kind==="chat"?"Mensaje privado pendiente":"Publicación pendiente";
-   const meta=document.createElement("p");meta.className="muted";meta.textContent=job.files.length+" archivo(s) · "+(job.files.reduce((n,f)=>n+f.size,0)/1048576).toFixed(1)+" MB · "+job.transfers.filter(t=>t.done).length+" completos";
+   const meta=document.createElement("p");meta.className="muted";meta.textContent=gystePendingSummary(job);
    const names=document.createElement("p");names.textContent=job.files.map(f=>f.name||"Archivo").join(", ").slice(0,400);
    const info=document.createElement("p");info.className="muted";info.textContent=job.kind==="chat"?"Destinatario original conservado.":"Audiencia original: "+({public:"Público",friends:"Amigos",selected:"Personas elegidas",except:"Amigos excepto seleccionados",only_me:"Solo yo"}[job.row.audience]||"Privada");
    const resume=document.createElement("button");resume.type="button";resume.className="primary";resume.textContent="Reanudar";
@@ -3026,7 +3039,7 @@ async function pendingView(){
    const feedback=document.createElement("p");feedback.setAttribute("role","status");
    card.append(title,meta,names,info,resume,discard,feedback);host.append(card);
    const removeCard=message=>{if(active()){card.remove();status.textContent=message;if(!host.children.length)host.textContent="No tienes archivos pendientes en este dispositivo.";}};
-   resume.onclick=async()=>{if(!active())return;resume.disabled=discard.disabled=true;feedback.textContent="Comprobando conexión…";try{await processPending(job,p=>{if(active())feedback.textContent=p;},active,true);removeCard("Envío confirmado.");}catch{if(active())feedback.textContent="No se confirmó el envío. Actualiza la lista o comprueba Internet y vuelve a intentarlo.";}finally{resume.disabled=discard.disabled=false;}};
+   resume.onclick=async()=>{if(!active())return;resume.disabled=discard.disabled=true;feedback.textContent="Comprobando conexión…";try{await processPending(job,p=>{if(active())feedback.textContent=p;},active,true);removeCard("Envío confirmado.");}catch{if(active()){let saved=null;try{saved=await pendingGet(job.id);}catch{}if(active()){if(saved?.uid===uid)meta.textContent=gystePendingSummary(saved);feedback.textContent=saved?.uid===uid?(navigator.onLine===false?"Sin conexión. Tu copia local sigue guardada.":"No se confirmó el envío. Tu copia local sigue guardada. Puedes reanudarla."):"No se pudo verificar la copia local. Actualiza la lista antes de volver a enviar.";}}}finally{resume.disabled=discard.disabled=false;}};
    discard.onclick=async()=>{if(!active()||!confirm("¿Quitar la copia local? No se deshacen envíos ya registrados."))return;resume.disabled=discard.disabled=true;try{await pendingLock(job.id,async()=>{if(!active())throw Error("Cuenta cambiada");const current=await pendingGet(job.id);if(current?.uid===uid)await pendingRemove(job.id);});removeCard("Copia local eliminada.");}catch{if(active())feedback.textContent="No se pudo quitar la copia.";}finally{resume.disabled=discard.disabled=false;}};
   }
  }catch{if(active())status.textContent="No se pudo acceder al almacenamiento local.";}
