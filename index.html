@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r33-preview">
+<meta name="gyste-build" content="2026-11-26-r34-preview">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2206,15 +2206,16 @@ function mediaItemUrl(m,p){
  }
  return bucket===PRIVATE_BUCKET||MEDIA_BUCKET_PRIVATE?"":(m.url?safeMediaUrl(m.url):"");
 }
+function gysteMediaLoadPolicy(type,light){return type==="video"?light?"on-demand-video":"video-controls":light?"on-demand-photo":"lazy-photo";}
 function postMediaHTML(p){
  const items=postMediaItems(p);if(!items.length)return "";
  const album=items.length>1&&items.every(m=>m.type?.startsWith("image/"));
  return `<div class="media-gallery ${items.length>1?"multi":""}${album?" photo-album":""}">${items.map((m,i)=>{
   const url=mediaItemUrl(m,p);if(!url)return '<p class="muted">Archivo no disponible temporalmente.</p>';
   const video=m.type?.startsWith("video/");
-  const deferred=!video&&gysteDataSaver();
-  const element=video?`<video class="media" controls playsinline preload="none" src="${esc(url)}"></video><p class="muted" style="margin:4px 8px;font-size:12px">Pulsa ▶ para cargar y reproducir.</p>`:deferred?`<button type="button" class="load-photo">${gysteIcon("photos")} Ver foto ${i+1} de ${items.length}</button><img class="media" decoding="async" data-photo-src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`:`<img class="media" loading="lazy" decoding="async" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
-  return `<div class="media-frame ${video?"video-frame":""}">${element}${album?`<span class="album-index" aria-hidden="true">${i+1}/${items.length}</span>`:""}<button type="button" class="media-expand" ${deferred?"hidden":""}>⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
+  const policy=gysteMediaLoadPolicy(video?"video":"photo",gysteDataSaver()),deferred=policy==="on-demand-photo",deferredVideo=policy==="on-demand-video";
+  const element=deferredVideo?`<button type="button" class="secondary full" data-load-feed-video>▶ Cargar vídeo</button><video class="media" controls playsinline preload="none" data-feed-video-src="${esc(url)}" hidden aria-label="Vídeo de la publicación"></video>`:video?`<video class="media" controls playsinline preload="none" src="${esc(url)}"></video><p class="muted" style="margin:4px 8px;font-size:12px">Pulsa ▶ para cargar y reproducir.</p>`:deferred?`<button type="button" class="load-photo">${gysteIcon("photos")} Ver foto ${i+1} de ${items.length}</button><img class="media" decoding="async" data-photo-src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`:`<img class="media" loading="lazy" decoding="async" src="${esc(url)}" alt="Foto ${i+1} de ${items.length}">`;
+  return `<div class="media-frame ${video?"video-frame":""}">${element}${album?`<span class="album-index" aria-hidden="true">${i+1}/${items.length}</span>`:""}<button type="button" class="media-expand" ${deferred||deferredVideo?"hidden":""}>⛶ ${video?"Pantalla completa":"Ampliar foto"}</button></div>`;
  }).join("")}</div>`;
 }
 // Photo failure recovery: keep the original URL (including any signature), never substitute another image.
@@ -2232,11 +2233,21 @@ function bindPhotoRecovery(frame,image,button){
  if(image.complete){if(image.naturalWidth>0)ready();else error();}else{button.disabled=true;}
 }
 function bindMediaActions(){
+ const uid=me?.id;
+ app.querySelectorAll("[data-load-feed-video]").forEach(b=>{b.onclick=()=>{
+  const frame=b.closest(".media-frame"),video=frame?.querySelector("video[data-feed-video-src]"),expand=frame?.querySelector(".media-expand");
+  if(!uid||me?.id!==uid||!b.isConnected||!video||!expand)return;
+  if(navigator.onLine===false){say("No hay conexión. Vuelve a intentarlo cuando tengas Internet.",true);return;}
+  const url=safeMediaUrl(video.dataset.feedVideoSrc);if(!url){say("No se pudo acceder al vídeo. Vuelve a abrir la publicación.",true);return;}
+  b.hidden=true;video.hidden=false;expand.hidden=false;video.removeAttribute("data-feed-video-src");video.src=url;bindVideoRecovery(frame,video);
+  // Only the explicit load button assigns the source; playback remains user-controlled.
+  video.focus();
+ };});
  app.querySelectorAll(".load-photo").forEach(load=>{load.onclick=()=>{const frame=load.closest(".media-frame"),img=frame?.querySelector("img[data-photo-src]"),expand=frame?.querySelector(".media-expand");if(!img||!expand)return;const url=img.dataset.photoSrc;load.hidden=true;img.removeAttribute("data-photo-src");expand.hidden=false;img.src=url;bindPhotoRecovery(frame,img,expand);expand.onclick=()=>{if(!expand.disabled)openPhotoViewer(img);};img.onclick=expand.onclick;};});
  app.querySelectorAll(".media-expand").forEach(b=>{
   const frame=b.closest(".media-frame"),original=b.textContent;
    const image=frame.querySelector("img");if(image?.hasAttribute("data-photo-src"))return;if(image){bindPhotoRecovery(frame,image,b);b.onclick=()=>{if(!b.disabled)openPhotoViewer(image);};image.style.cursor="zoom-in";image.onclick=b.onclick;return;}
-  const video=frame.querySelector("video");if(video)bindVideoRecovery(frame,video);
+  const video=frame.querySelector("video");if(video&&!video.hasAttribute("data-feed-video-src"))bindVideoRecovery(frame,video);
   const refresh=()=>{b.textContent=(document.fullscreenElement===frame||frame.classList.contains("media-overlay"))?"✕ Salir de pantalla completa":original;};
   if(!b.dataset.fullscreenBound){b.dataset.fullscreenBound="1";frame.addEventListener("fullscreenchange",refresh);}
   b.onclick=async()=>{
@@ -2587,6 +2598,28 @@ function addComposerTag(tag){
  if(!f.value.includes(tag.trim()))f.value=(tag+f.value).slice(0,5000);
  f.dispatchEvent(new Event("input",{bubbles:true}));f.focus();
 }
+function gysteAccessibleText(original,kind,description,limit=5000){
+ if(!["description","transcript"].includes(kind)||typeof description!=="string"||typeof original!=="string")return null;
+ const clean=description.trim();if(!clean)return null;
+ const label=kind==="description"?"Descripción visual":"Transcripción del audio";
+ const result=original.trimEnd()+(original.trim()?"\n\n":"")+label+":\n"+clean;
+ return result.length<=limit?result:null;
+}
+function bindGysteAccessibleDraft(){
+ const uid=me?.id,input=document.getElementById("posttext"),status=document.getElementById("accessible-draft-status");
+ if(!uid||!input||!status)return;
+ app.querySelectorAll("[data-accessible-draft]").forEach(b=>{b.onclick=()=>{
+  if(me?.id!==uid||!input.isConnected||input.disabled||publishLocks.has(uid))return;
+  const kind=b.dataset.accessibleDraft;
+  const d=document.createElement("dialog");d.className="assist-dialog";const title=document.createElement("h2");title.textContent=kind==="description"?"Descripción visual":"Transcripción del audio";d.setAttribute("aria-label",title.textContent);
+  const label=document.createElement("label");label.textContent=kind==="description"?"Describe lo que se ve en tu archivo.":"Escribe lo que se escucha, incluyendo sonidos importantes.";
+  const field=document.createElement("textarea");field.className="field";field.rows=5;field.maxLength=5000;label.append(field);
+  const info=document.createElement("p");info.setAttribute("role","status");info.textContent="Este texto se añadirá al borrador de tu publicación.";
+  const add=document.createElement("button"),cancel=document.createElement("button");add.type=cancel.type="button";add.className="primary";cancel.className="secondary";add.textContent="Añadir al borrador";cancel.textContent="Cancelar";
+  add.onclick=()=>{if(me?.id!==uid||!input.isConnected||input.disabled||publishLocks.has(uid)){d.close();return;}const next=gysteAccessibleText(input.value,kind,field.value);if(next===null){info.textContent="Escribe una descripción que quepa en el límite total de 5000 caracteres.";return;}input.value=next;input.dispatchEvent(new Event("input",{bubbles:true}));status.textContent="Texto añadido al borrador. Puedes revisarlo antes de publicar.";d.close();input.focus();};
+  cancel.onclick=()=>d.close();d.append(title,label,info,add,cancel);d.addEventListener("close",()=>d.remove(),{once:true});document.body.append(d);d.showModal();field.focus();
+ };});
+}
 function bindPostDraft(){
  const uid=me?.id,input=document.getElementById("posttext"),status=document.getElementById("draft-status"),save=document.getElementById("draft-save"),discard=document.getElementById("draft-discard"),restore=document.getElementById("draft-restore");
  if(!uid||!input)return;let active=false;
@@ -2798,7 +2831,7 @@ const composerHTML=`<section class="panel composer" id="composer" ${contentFirst
 <textarea id="posttext" class="field" maxlength="5000" placeholder="Escribe un estado o comparte una experiencia…"></textarea><div class="row"><button type="button" class="secondary" id="draft-save">Guardar borrador</button><button type="button" class="secondary" id="draft-restore" hidden>Recuperar borrador</button><button type="button" class="ghost" id="draft-discard" hidden>Borrar borrador</button></div><p class="muted">Antes de publicar, Gyste revisa posibles datos personales escritos en tu texto mediante reglas locales. No analiza fotos ni vídeos.</p><p id="draft-status" class="muted" role="status">Opcional: guarda solo el texto en este navegador. No se publica ni se sincroniza. Evita guardarlo en dispositivos compartidos. Los archivos no se conservan.</p>
 <div class="composer-tools">
 <label>Publicar en<select id="postspace" class="field" ${spacesReady?"":"disabled"}>${selectOptions}</select></label>
-<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><p class="muted" id="gyste-audience-summary" role="status"></p><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label><div id="post-preview" aria-label="Vista previa local de los archivos"></div><label>Optimización de fotos y vídeos<select id="post-optimize" class="field"><option value="auto">Automática según conexión</option><option value="original">Conservar original</option><option value="light">Ligero · ahorrar datos</option></select></label><p id="post-optimize-status" class="muted" role="status">Las fotos JPG se optimizan en el teléfono. Los vídeos cortos compatibles se pueden reducir en modo Ligero; el original se conserva si la prueba falla.</p>
+<label>Quién puede ver esta publicación<select id="audience" class="field"><option value="friends" selected>Amigos (seguimiento mutuo)</option><option value="public">Todos</option><option value="except">Todos excepto…</option><option value="selected">Personas específicas</option><option value="only_me">Solo yo</option></select></label><p class="muted" id="gyste-audience-summary" role="status"></p><div id="audience-picker" hidden><label>Buscar personas<input id="audience-search" class="field" placeholder="Nombre o usuario"></label><div id="audience-chosen"></div><div id="audience-results"></div></div><label>Fotos y vídeos (hasta 10 archivos, 50 MB en total)<input id="media" class="field" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm"><span class="media-selection" id="media-selection" aria-live="polite">Puedes seleccionar varias fotos de una vez.</span></label><div id="post-preview" aria-label="Vista previa local de los archivos"></div><details><summary>Hacer accesible mi contenido</summary><p class="muted">Añade una descripción de lo que se ve o una transcripción de lo que se escucha. Se incorporará al texto de tu publicación; no crea subtítulos sincronizados ni modifica el archivo.</p><div class="actions"><button type="button" class="secondary" data-accessible-draft="description">Añadir descripción visual</button><button type="button" class="secondary" data-accessible-draft="transcript">Añadir transcripción</button></div><p id="accessible-draft-status" role="status"></p></details><label>Optimización de fotos y vídeos<select id="post-optimize" class="field"><option value="auto">Automática según conexión</option><option value="original">Conservar original</option><option value="light">Ligero · ahorrar datos</option></select></label><p id="post-optimize-status" class="muted" role="status">Las fotos JPG se optimizan en el teléfono. Los vídeos cortos compatibles se pueden reducir en modo Ligero; el original se conserva si la prueba falla.</p>
 </div>
 <button id="publish" class="primary full">Compartir publicación</button><button class="secondary full" id="open-creator-studio" type="button">✨ Estudio creativo</button>
 ${!spacesReady?'<p class="muted" style="font-size:12px">Los espacios se activarán cuando apliques el archivo SQL. Los estados personales siguen funcionando.</p>':""}
@@ -2826,6 +2859,7 @@ const quickStudio=document.getElementById("quick-studio");if(quickStudio)quickSt
  document.getElementById("open-creator-studio").onclick=()=>goTab("studio");
  bindAudiencePicker();
  bindPostDraft();
+ bindGysteAccessibleDraft();
  document.getElementById("media").onchange=e=>{
  const files=Array.from(e.target.files||[]),bytes=files.reduce((n,f)=>n+f.size,0);
  renderPostPreviews(bytes<=MAX_POST_BYTES&&files.length<=MAX_POST_FILES?files:[]);
