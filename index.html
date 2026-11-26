@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-26-r28">
+<meta name="gyste-build" content="2026-11-26-r29">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3010,12 +3010,8 @@ async function processPending(job,progress,viewActive,existing=false){
     const hadURL=!!t.url;
     try{await attempt();}catch(error){if(!hadURL||!gysteMissingTransfer(error)||!active()||navigator.onLine===false)throw error;t.url=null;t.urlCreatedAt=null;t.confirmedBytes=0;await checkpoint();progress("Recuperando sesión de subida…");await attempt();}
    },
-   insert:async j=>{if(!active())throw Error("Cuenta cambiada");progress("Confirmando envío…");const {error}=await db.from(j.kind==="post"?"posts":"gyste_messages").insert(j.row);if(error)throw error;},
-   audience:async j=>{if(!active())throw Error("Cuenta cambiada");if(j.kind!=="post"||!["selected","except"].includes(j.row.audience))return;
-    const read=()=>db.from("gyste_post_audience").select("member_ids").eq("post_id",j.id).eq("owner_id",uid).maybeSingle();
-    const matches=d=>d&&JSON.stringify([...(d.member_ids||[])].sort())===JSON.stringify([...j.members].sort());
-    const previous=await read();if(previous.error)throw previous.error;if(previous.data){if(!matches(previous.data))throw Error("Audiencia diferente");return;}
-    const {error}=await db.from("gyste_post_audience").insert({post_id:j.id,owner_id:uid,member_ids:j.members});if(error){const check=await read();if(check.error||!matches(check.data))throw error;}
+   insert:async j=>{if(!active())throw Error("Cuenta cambiada");progress("Confirmando envío…");const {error}=await (j.kind==="post"?insertGystePost(j.row,j.members):db.from("gyste_messages").insert(j.row));if(error)throw error;},
+   audience:async j=>{if(!active())throw Error("Cuenta cambiada");if(j.kind==="post")await ensureGysteAudience(j.row,j.members);
    }});
  });
 }
@@ -3047,6 +3043,19 @@ async function pendingView(){
 
 const pendingPostTransfers=new WeakMap();
 const publishLocks=new Set();
+async function insertGystePost(row,members){
+ if(["selected","except"].includes(row.audience))return db.rpc("gyste_publish_with_audience_v1",{p_post:row,p_members:members});
+ return db.from("posts").insert(row);
+}
+async function ensureGysteAudience(row,members){
+ if(!["selected","except"].includes(row.audience))return;
+ const read=()=>db.from("gyste_post_audience").select("member_ids").eq("post_id",row.id).eq("owner_id",row.user_id).maybeSingle();
+ const matches=d=>d&&JSON.stringify([...(d.member_ids||[])].sort())===JSON.stringify([...members].sort());
+ const existing=await read();if(existing.error)throw existing.error;
+ if(existing.data){if(!matches(existing.data))throw Error("Audiencia diferente");return;}
+ const {error}=await db.from("gyste_post_audience").insert({post_id:row.id,owner_id:row.user_id,member_ids:members});
+ if(error){const check=await read();if(check.error||!matches(check.data))throw error;}
+}
 async function confirmPublishedPost(uid,id){
  try{const {data,error}=await db.from("posts").select("id,user_id").eq("id",id).eq("user_id",uid).maybeSingle();return !error&&data?.id===id&&data.user_id===uid;}catch{return false;}
 }
@@ -3124,12 +3133,12 @@ async function publish(options={}){
   if(!active())throw Error("Sección cerrada");
   if(insertAttempted)postCommitted=await confirmPublishedPost(uid,postId);
   if(!postCommitted){insertAttempted=true;draft.insertAttempted=true;
-  try{const {error}=await db.from("posts").insert(newPost);if(error)throw error;postCommitted=true;}
+  try{const {error}=await insertGystePost(newPost,members);if(error)throw error;postCommitted=true;}
   catch(error){if(me?.id===uid)postCommitted=await confirmPublishedPost(uid,postId);if(!postCommitted)throw error;}}
   pendingPostTransfers.delete(mediaInput);
   if(me?.id!==uid)return {ok:true,warning:true};
  if(readPostDraft(uid).trim()===text)writePostDraft(uid,"");
- if(["selected","except"].includes(audience)){const {error:audienceError}=await db.from("gyste_post_audience").insert({post_id:postId,owner_id:uid,member_ids:members});if(audienceError){say("Publicación visible solo para ti: no se pudo guardar la audiencia.",true);if(batch)return {ok:true,warning:true};b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}}
+ try{await ensureGysteAudience(newPost,members);}catch(audienceError){say("No se pudo confirmar la audiencia de la publicación.",true);if(batch)return {ok:true,warning:true};b.disabled=false;b.textContent="Compartir publicación";await feedView();return;}
  if(batch)return {ok:true};
   if(!active())return {ok:true};
   sharedPostId=null;
