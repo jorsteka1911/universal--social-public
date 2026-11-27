@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r43">
+<meta name="gyste-build" content="2026-11-27-r44">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3667,7 +3667,7 @@ async function changeProfileImage(kind,file){
   const saved=await db.from("gyste_profiles").update({[key]:url,updated_at:new Date().toISOString()}).eq("user_id",uid).select().single();
   if(saved.error)throw saved.error;
   if(!saved.data||saved.data[key]!==url)throw Error("No se pudo confirmar la fotografía guardada.");
-  if(me?.id===uid){me={...me,...saved.data};refreshProfilePhotoControls();}
+  if(me?.id===uid){me={...me,[key]:saved.data[key]};refreshProfilePhotoControls();}
   // Remove only objects belonging to this account, after the database update succeeds.
   // Avoid deleting on uncertain network failures (the saved URL may already be in use).
   let cleanupError=false;
