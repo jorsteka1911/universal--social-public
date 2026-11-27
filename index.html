@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r46">
+<meta name="gyste-build" content="2026-11-27-r47">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3512,7 +3512,7 @@ async function memberProfileView(){
  box.removeAttribute("role");
  box.innerHTML=cards||'<p>No hay publicaciones visibles.</p>';
  bindPostActions();
- }catch{if(valid()&&box.isConnected){box.innerHTML='<p>No se pudieron cargar las publicaciones.</p><button type="button" class="secondary">Reintentar</button>';box.querySelector("button").onclick=()=>memberProfileView();}}
+ }catch{if(valid()&&box.isConnected){box.innerHTML='<p>No se pudieron cargar las publicaciones.</p><button type="button" class="secondary">Reintentar</button>';box.querySelector("button").onclick=async()=>{if(!valid()||!box.isConnected)return;box.innerHTML="Cargando publicaciones…";try{const {data,error}=await db.from("posts").select(POST_COLUMNS+(spacesReady?",space_id":"")).eq("user_id",id).order("created_at",{ascending:false}).limit(60);if(error)throw error;if(!valid()||!box.isConnected)return;const cards=await prepareCards(data||[]);if(!valid()||!box.isConnected)return;box.removeAttribute("role");box.innerHTML=cards||"<p>No hay publicaciones visibles.</p>";bindPostActions();}catch{if(valid()&&box.isConnected){box.innerHTML='<p>No se pudieron cargar las publicaciones.</p><button type="button" class="secondary">Actualizar perfil</button>';box.querySelector("button").onclick=()=>memberProfileView();}}};}}
  }catch{if(valid()){shell('<section class="panel"><h2>Perfil</h2><p role="alert">No se pudo cargar el perfil. Comprueba tu conexión e inténtalo de nuevo.</p><button type="button" class="secondary" id="member-profile-retry">Reintentar</button><button type="button" class="secondary" id="member-profile-back">← Volver</button></section>');document.getElementById("member-profile-retry").onclick=()=>memberProfileView();document.getElementById("member-profile-back").onclick=returnFromMemberProfile;}}
 }
 function bindMemberProfiles(){
