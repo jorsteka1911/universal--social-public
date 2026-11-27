@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r65">
+<meta name="gyste-build" content="2026-11-27-r66">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -538,6 +538,9 @@ html body input,html body textarea,html body [contenteditable="true"],html body 
 /* r62: accessible touch targets and readable mobile controls */
 button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--mint);outline-offset:3px}
 @media(pointer:coarse){.mobile-nav button,.top-actions .icon-btn,.actions .action{min-height:44px}.top-actions .icon-btn{min-width:44px}.field{font-size:16px}.mobile-nav button{font-size:12px}}
+
+/* r66: keep selected feed controls visible after navigation */
+.home-tabs{scroll-margin-top:145px}.home-tabs button{min-height:44px}.home-tabs button[aria-pressed="true"]{box-shadow:inset 0 -3px 0 currentColor}
 </style>
 </head>
 <body>
@@ -729,7 +732,7 @@ bindCubaBrief();
 app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=async event=>{
 event.preventDefault();event.stopPropagation();if(!confirmNavigationDraft())return;
 const requested=b.dataset.filter;if(!["all","following","mine"].includes(requested))return;
-resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter=requested;tab="feed";await renderTab();if(tab==="feed"&&homeFilter===requested){const target=document.getElementById("feed")||document.querySelector(".home-tabs");target?.scrollIntoView({block:"start",behavior:"auto"});}
+resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter=requested;tab="feed";await renderTab();if(tab==="feed"&&homeFilter===requested){const target=document.querySelector(".home-tabs")||document.getElementById("feed");target?.scrollIntoView({block:"start",behavior:"auto"});}
 });
 }
 
@@ -1118,9 +1121,9 @@ ${spaces.slice(0,24).map(s=>`<button class="shortcut ${selectedSpaceId===s.id?"a
 
 function filtersHTML(){
 return `<div class="home-tabs" role="group" aria-label="Elegir publicaciones">
-<button data-filter="all" class="${homeFilter==="all"&&!selectedSpaceId?"active":""}">Para ti</button>
-<button data-filter="following" class="${homeFilter==="following"&&!selectedSpaceId?"active":""}">Siguiendo</button>
-<button data-filter="mine" class="${homeFilter==="mine"&&!selectedSpaceId?"active":""}">Mis estados</button>
+<button type="button" data-filter="all" aria-pressed="${homeFilter==="all"&&!selectedSpaceId}" class="${homeFilter==="all"&&!selectedSpaceId?"active":""}">Para ti</button>
+<button type="button" data-filter="following" aria-pressed="${homeFilter==="following"&&!selectedSpaceId}" class="${homeFilter==="following"&&!selectedSpaceId?"active":""}">Siguiendo</button>
+<button type="button" data-filter="mine" aria-pressed="${homeFilter==="mine"&&!selectedSpaceId}" class="${homeFilter==="mine"&&!selectedSpaceId?"active":""}">Mis estados</button>
 </div>`;
 }
 
