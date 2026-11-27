@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r61">
+<meta name="gyste-build" content="2026-11-27-r62">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -534,6 +534,10 @@ html body input,html body textarea,html body [contenteditable="true"],html body 
 #app button,#app summary,#app a{-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
 #app .panel,#app .post,#app .profile-identity{min-width:0;max-width:100%;overflow-wrap:anywhere;box-sizing:border-box;}
 #app .bodytext,#app .chat-bubble{overflow-wrap:anywhere;min-width:0;}
+
+/* r62: accessible touch targets and readable mobile controls */
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--mint);outline-offset:3px}
+@media(pointer:coarse){.mobile-nav button,.top-actions .icon-btn,.actions .action{min-height:44px}.top-actions .icon-btn{min-width:44px}.field{font-size:16px}.mobile-nav button{font-size:12px}}
 </style>
 </head>
 <body>
