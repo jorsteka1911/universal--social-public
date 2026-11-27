@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-28-r68">
+<meta name="gyste-build" content="2026-11-28-r69">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -541,6 +541,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 
 /* r66: keep selected feed controls visible after navigation */
 .home-tabs{scroll-margin-top:145px}.home-tabs button{min-height:44px}.home-tabs button[aria-pressed="true"]{box-shadow:inset 0 -3px 0 currentColor}
+
+/* r69: accessible notification filter selection */
+.notice-inbox [data-notice-filter][aria-pressed="true"]{outline:2px solid var(--mint);outline-offset:2px;font-weight:800}.notice-inbox .actions button{min-height:44px}
 </style>
 </head>
 <body>
@@ -3744,7 +3747,7 @@ async function refreshUnreadBadges(force=false){
 }
 function notificationMarkup(rows,busy){
  let day=null;
- return rows.map((n,i)=>{const key=chatDateKey(n.created_at),separator=key&&key!==day?'<div class="notice-day">'+esc(chatDayLabel(n.created_at))+'</div>':"";day=key;return separator+'<article class="notice-item '+(n.is_read?"":"unread")+'"><span class="notice-symbol">'+gysteIcon("notifications")+'</span><div class="notice-copy">'+esc(n.message)+'<div class="notice-meta"><span>'+esc(chatClock(n.created_at))+' · '+(n.is_read?"Leído":"Nuevo")+'</span>'+(!n.is_read?'<button type="button" class="secondary" data-read-index="'+i+'" '+(busy?"disabled":"")+'>Marcar leído</button>':"")+'</div></div></article>';}).join("")||'<p class="muted">No hay avisos en esta selección.</p>';
+ return rows.map((n,i)=>{const key=chatDateKey(n.created_at),separator=key&&key!==day?'<div class="notice-day">'+esc(chatDayLabel(n.created_at))+'</div>':"";day=key;return separator+'<article class="notice-item '+(n.is_read?"":"unread")+'"><span class="notice-symbol">'+gysteIcon("notifications")+'</span><div class="notice-copy">'+esc(n.message)+'<div class="notice-meta"><span>'+esc(chatClock(n.created_at))+' · '+(n.is_read?"Leído":"Nuevo")+'</span>'+(!n.is_read?'<button type="button" class="secondary" data-read-index="'+i+'" '+(busy?"disabled":"")+'>Marcar leído</button>':"")+'</div></div></article>';}).join("")||'<p class="muted">No hay avisos en esta selección. Pulsa Todos para consultar los demás.</p>';
 }
 let notificationEpoch=0,notificationFilter="all";
 const notificationLocks=new Set();
@@ -3772,7 +3775,7 @@ async function notificationView(){
  const draw=()=>{
  if(!valid())return;
  const displayed=visibleNotifications(rows,notificationFilter),unread=rows.filter(n=>!n.is_read).length;
- document.getElementById("notice-count").textContent=unread+" sin leer entre los últimos "+rows.length+" avisos.";
+ document.getElementById("notice-count").textContent=unread===0?"Estás al día en los últimos "+rows.length+" avisos.":unread+" sin leer entre los últimos "+rows.length+" avisos.";
  app.querySelectorAll("[data-notice-filter]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.noticeFilter===notificationFilter)));
  bulk.disabled=busy||!displayed.some(n=>!n.is_read);
  box.innerHTML=notificationMarkup(displayed,busy);
