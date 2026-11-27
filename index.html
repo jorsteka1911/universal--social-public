@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r45">
+<meta name="gyste-build" content="2026-11-27-r46">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3492,7 +3492,7 @@ async function memberProfileView(){
  if(!valid())return;
  if(error)throw error;
  if(!p){shell('<section class="panel"><p>Perfil no disponible o no visible para tu cuenta.</p><button type="button" id="member-profile-back" class="secondary">← Volver</button></section>');document.getElementById("member-profile-back").onclick=returnFromMemberProfile;return;}
- const mutualResult=await db.from("gyste_follows").select("follower_id,followed_id").or("and(follower_id.eq."+uid+",followed_id.eq."+id+"),and(follower_id.eq."+id+",followed_id.eq."+uid+")");
+ const mutualResult=await Promise.resolve(db.from("gyste_follows").select("follower_id,followed_id").or("and(follower_id.eq."+uid+",followed_id.eq."+id+"),and(follower_id.eq."+id+",followed_id.eq."+uid+")")).catch(error=>({data:null,error}));
  if(!valid())return;
  const relationshipUnavailable=Boolean(mutualResult.error);
  if(!relationshipUnavailable){if((mutualResult.data||[]).some(f=>f.follower_id===uid&&f.followed_id===id))following.add(id);else following.delete(id);}
