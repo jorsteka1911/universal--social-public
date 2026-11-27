@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r54">
+<meta name="gyste-build" content="2026-11-27-r55">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3500,7 +3500,7 @@ async function memberProfileView(){
  if(!relationshipUnavailable){if((mutualResult.data||[]).some(f=>f.follower_id===uid&&f.followed_id===id))following.add(id);else following.delete(id);}
  const mutual=(mutualResult.data||[]).some(f=>f.follower_id===uid&&f.followed_id===id)&&(mutualResult.data||[]).some(f=>f.follower_id===id&&f.followed_id===uid);
 
- shell(`<section class="panel profile-section"><button type="button" class="secondary" id="member-profile-back">← Volver</button><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions">${relationshipUnavailable?`<span role="status">No se pudo comprobar la relación.</span><button type="button" class="secondary" id="member-retry-relationship">Reintentar</button>`:`<button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button>`}${!relationshipUnavailable&&mutual?`<button class="secondary" data-chat="${esc(id)}">Mensaje</button>`:`<span class="muted">Para conversar, ambos deben seguirse.</span>`}</div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones que tienes permiso para ver.</p><div id="member-posts" role="status">Cargando publicaciones…</div>`);
+ shell(`<section class="panel profile-section"><button type="button" class="secondary" id="member-profile-back">← Volver</button><div class="profile-cover">${profileImageHTML(p.cover_url)}</div><div class="profile-identity"><div class="face profile-face">${avatarContent(p)}</div><h2>${esc(p.display_name||"Miembro")}</h2><p class="muted">@${esc(p.username||"usuario")}</p><p>${esc(p.bio||"")}</p><div class="actions">${relationshipUnavailable?`<span role="status">No se pudo comprobar la relación.</span><button type="button" class="secondary" id="member-retry-relationship">Reintentar</button>`:`<button class="secondary" data-follow="${esc(id)}" aria-pressed="${following.has(id)}">${following.has(id)?"Siguiendo":"Seguir"}</button>`}<button class="secondary" data-chat="${esc(id)}">Mensaje</button><span class="muted">El envío depende de la privacidad de mensajes del destinatario.</span></div></div></section><h2>Publicaciones</h2><p class="muted">Hasta 60 publicaciones que tienes permiso para ver.</p><div id="member-posts" role="status">Cargando publicaciones…</div>`);
  document.getElementById("member-profile-back").onclick=returnFromMemberProfile;
  bindPeople();
  const retryRelationship=document.getElementById("member-retry-relationship");if(retryRelationship)retryRelationship.onclick=()=>memberProfileView();
