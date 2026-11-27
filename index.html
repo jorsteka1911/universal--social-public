@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r66">
+<meta name="gyste-build" content="2026-11-28-r67">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3950,8 +3950,8 @@ async function bindPresenceChoice(){
  const b=document.getElementById("presence-choice");if(!b||!me?.id)return;const uid=me.id;
  const r=await db.from("gyste_presence").select("visible").eq("user_id",uid).maybeSingle();
  if(!b.isConnected||me?.id!==uid)return;
- if(r.error){b.textContent="Estado de actividad no disponible";return;}
- let visible=!!r.data?.visible;b.textContent=visible?"Ocultar mi actividad":"Compartir mi actividad";b.disabled=false;
+ if(r.error){b.textContent="Estado de actividad no disponible";const status=document.getElementById("presence-status");if(status)status.textContent="No se pudo comprobar la configuración. Vuelve a abrir Mensajes.";return;}
+ let visible=!!r.data?.visible;b.textContent=visible?"Ocultar mi actividad":"Compartir mi actividad";b.setAttribute("aria-pressed",String(visible));const status=document.getElementById("presence-status");if(status)status.textContent=visible?"Estado de actividad: compartido con contactos con mensajes previos.":"Estado de actividad: privado.";b.disabled=false;
  b.onclick=async()=>{b.disabled=true;const next=!visible;const w=await db.from("gyste_presence").upsert({user_id:uid,visible:next,last_seen:new Date().toISOString()},{onConflict:"user_id"});if(!b.isConnected||me?.id!==uid)return;if(w.error){b.textContent="No se pudo guardar. Reintentar";b.disabled=false;return;}await bindPresenceChoice();void presenceTick();};
 }
 setInterval(()=>void presenceTick(),30000);
@@ -3971,7 +3971,7 @@ async function messagesView(page=0){
   const ids=rows.map(m=>m.peer_id);let map={};
   if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
   if(!valid())return;
-  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><button type="button" class="secondary" id="presence-choice" disabled>Comprobando mi actividad…</button><p class="muted">Actívalo una sola vez para que tus contactos con mensajes previos puedan ver tu actividad. Puedes ocultarla cuando quieras.</p><div class="chat-inbox-list">${ids.map(id=>{const last=rows.find(m=>m.peer_id===id);const unread=Math.max(0,Number(last?.unread_count)||0);return `<div class="chat-contact"><button type="button" class="face" data-member-profile="${esc(id)}" aria-label="Ver perfil">${avatarContent(map[id])}</button><button type="button" class="chat-contact-text ghost" data-member-profile="${esc(id)}" aria-label="Ver perfil"><span><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet" data-presence-peer="${esc(id)}">Comprobando actividad…</span><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span></button><button type="button" class="secondary" data-openchat="${esc(id)}" aria-label="Abrir conversación">Mensaje</button><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</div>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div><div class="actions">${page>0?'<button type="button" id="inbox-prev">Anteriores</button>':""}${hasMore?'<button type="button" id="inbox-next">Más conversaciones</button>':""}</div></section>`);
+  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><button type="button" class="secondary" id="presence-choice" disabled>Comprobando mi actividad…</button><p id="presence-status" role="status" aria-live="polite">Comprobando privacidad de actividad…</p><p class="muted">Actívalo una sola vez para que tus contactos con mensajes previos puedan ver tu actividad. Puedes ocultarla cuando quieras.</p><div class="chat-inbox-list">${ids.map(id=>{const last=rows.find(m=>m.peer_id===id);const unread=Math.max(0,Number(last?.unread_count)||0);return `<div class="chat-contact"><button type="button" class="face" data-member-profile="${esc(id)}" aria-label="Ver perfil">${avatarContent(map[id])}</button><button type="button" class="chat-contact-text ghost" data-member-profile="${esc(id)}" aria-label="Ver perfil"><span><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet" data-presence-peer="${esc(id)}">Comprobando actividad…</span><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span></button><button type="button" class="secondary" data-openchat="${esc(id)}" aria-label="Abrir conversación">Mensaje</button><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</div>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div><div class="actions">${page>0?'<button type="button" id="inbox-prev">Anteriores</button>':""}${hasMore?'<button type="button" id="inbox-next">Más conversaciones</button>':""}</div></section>`);
   void bindPresenceChoice();void presenceTick();
   const prev=document.getElementById("inbox-prev"),next=document.getElementById("inbox-next");
   if(prev)prev.onclick=()=>{if(valid())messagesView(page-1);};
