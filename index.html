@@ -3477,7 +3477,8 @@ async function memberProfileView(){
  try{
  const {data:p,error}=await db.from("gyste_profiles").select("user_id,display_name,username,bio,avatar_url,cover_url").eq("user_id",id).maybeSingle();
  if(!valid())return;
- if(error||!p){shell('<section class="panel"><p>Perfil no disponible.</p><button data-tab="explore" class="secondary">Volver a Explorar</button></section>');return;}
+ if(error)throw error;
+ if(!p){shell('<section class="panel"><p>Perfil no disponible o no visible para tu cuenta.</p><button type="button" id="member-profile-back" class="secondary">← Volver</button></section>');document.getElementById("member-profile-back").onclick=returnFromMemberProfile;return;}
  const mutualResult=await db.from("gyste_follows").select("follower_id,followed_id").or("and(follower_id.eq."+uid+",followed_id.eq."+id+"),and(follower_id.eq."+id+",followed_id.eq."+uid+")");
  if(!valid())return;
  if(mutualResult.error)throw mutualResult.error;
@@ -3498,7 +3499,7 @@ async function memberProfileView(){
  box.innerHTML=cards||'<p>No hay publicaciones visibles.</p>';
  bindPostActions();
  }catch{if(valid()&&box.isConnected){box.innerHTML='<p>No se pudieron cargar las publicaciones.</p><button type="button" class="secondary">Reintentar</button>';box.querySelector("button").onclick=()=>memberProfileView();}}
- }catch{if(valid())shell('<section class="panel"><h2>Perfil</h2><p role="alert">No se pudo cargar el perfil. Comprueba tu conexión.</p><button type="button" class="secondary" data-tab="memberprofile">Reintentar</button><button type="button" class="secondary" data-tab="explore">Volver a Explorar</button></section>');}
+ }catch{if(valid()){shell('<section class="panel"><h2>Perfil</h2><p role="alert">No se pudo cargar el perfil. Comprueba tu conexión e inténtalo de nuevo.</p><button type="button" class="secondary" id="member-profile-retry">Reintentar</button><button type="button" class="secondary" id="member-profile-back">← Volver</button></section>');document.getElementById("member-profile-retry").onclick=()=>memberProfileView();document.getElementById("member-profile-back").onclick=returnFromMemberProfile;}}
 }
 function bindMemberProfiles(){
  app.querySelectorAll("[data-member-profile]").forEach(b=>b.onclick=()=>openMemberProfile(b.dataset.memberProfile));
