@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-28-r67">
+<meta name="gyste-build" content="2026-11-28-r68">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2357,7 +2357,7 @@ async function sendPostDialog(id){
  const {data:current,error:checkError}=await db.from("posts").select("id,audience").eq("id",id).maybeSingle();if(checkError||!current||current.audience!=="public")throw Error("Esta publicación ya no está disponible para compartir.");
  const url=new URL(location.origin+location.pathname);url.searchParams.set("post",id);const note=d.querySelector("#sendpost-note").value.trim();
  const {error}=await db.from("gyste_messages").insert({sender_id:me.id,recipient_id:p.user_id,content:(note?note+"\n":"")+"📎 Publicación de Gyste: "+url.href});if(error)throw error;d.close();say("Publicación enviada a "+(p.display_name||"tu contacto")+".");
- }catch(e){status.textContent=e.code==="42501"?"No puedes enviar mensajes a esta persona por sus preferencias de privacidad.":e.message||"No se pudo enviar.";busy=false;send.disabled=false;}};
+ }catch(e){status.textContent=e?.code==="42501"?"No puedes enviar mensajes a esta persona por sus preferencias de privacidad.":"No se pudo confirmar el envío. Comprueba tu conexión y revisa la conversación antes de volver a enviar.";busy=false;send.disabled=false;}};
  row.append(name,send);results.append(row);}
  };
 }
