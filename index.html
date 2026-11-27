@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r52">
+<meta name="gyste-build" content="2026-11-27-r53">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1093,7 +1093,7 @@ async function feedbackView(){
  const body=bodyInput.value.trim(),category=categoryInput.value;
  if(!validateFeedback(category,body)||body===feedbackClaimTemplate||body===feedbackBugTemplate||body==="Versión: "+GYSTE_BUILD+"\n"+feedbackBugTemplate){out.textContent="Completa la descripción del problema o escribe una sugerencia de entre 10 y 2000 caracteres.";return;}
  feedbackSendLocks.add(uid);const controls=[submit,bodyInput,categoryInput,template,claimTemplate];controls.forEach(c=>c.disabled=true);out.textContent="Enviando…";let sent=false;
- try{const recent=await db.from("gyste_feedback").select("id").eq("user_id",uid).eq("category",category).eq("body",body).gte("created_at",new Date(Date.now()-10*60*1000).toISOString()).limit(1);if(!valid())return;if(recent.error){out.textContent="No podemos comprobar si ya existe esta solicitud. No se ha intentado un nuevo envío. Conservamos tu texto; inténtalo cuando vuelva la conexión.";return;}if(recent.data?.length){out.textContent="Ya existe una solicitud idéntica reciente. Referencia: "+recent.data[0].id+". No se ha enviado otra.";return;}const {error}=await db.from("gyste_feedback").insert({user_id:uid,category,body});if(error)throw error;sent=true;if(valid()){bodyInput.value="";count();out.textContent="Sugerencia recibida. Gracias.";say("Sugerencia recibida. Gracias.");await feedbackView();}}
+ try{const recent=await db.from("gyste_feedback").select("id").eq("user_id",uid).eq("category",category).eq("body",body).gte("created_at",new Date(Date.now()-10*60*1000).toISOString()).limit(1);if(!valid())return;if(recent.error){out.textContent="No podemos comprobar si ya existe esta solicitud. No se ha intentado un nuevo envío. Conservamos tu texto; inténtalo cuando vuelva la conexión.";return;}if(recent.data?.length){out.textContent="Ya existe una solicitud idéntica reciente. Referencia: "+recent.data[0].id+". No se ha enviado otra.";return;}const {data:receipt,error}=await db.from("gyste_feedback").insert({user_id:uid,category,body}).select("id").single();if(error||!receipt?.id)throw error||Error("Sin referencia");sent=true;if(valid()){bodyInput.value="";count();out.textContent="Sugerencia recibida. Gracias.";say("Sugerencia recibida. Referencia: "+receipt.id);await feedbackView();}}
  catch{if(valid())out.textContent=sent?"Sugerencia recibida. Actualiza la sección.":"No se pudo confirmar el envío. Conservamos el texto en esta pantalla; revisa Mis sugerencias antes de reintentar.";}
  finally{feedbackSendLocks.delete(uid);controls.forEach(c=>c.disabled=false);}
  };
