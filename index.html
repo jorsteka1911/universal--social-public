@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r57">
+<meta name="gyste-build" content="2026-11-27-r58">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3916,6 +3916,34 @@ function gysteInboxPage(rows){
  const list=Array.isArray(rows)?rows:[];
  return {rows:list.slice(0,GYSTE_INBOX_PAGE),hasMore:list.length>GYSTE_INBOX_PAGE};
 }
+
+let presenceBusy=false;
+async function presenceTick(){
+ if(!me?.id||!db||document.visibilityState==="hidden"||presenceBusy)return;
+ presenceBusy=true;const uid=me.id;
+ try{
+ const own=await db.from("gyste_presence").select("visible").eq("user_id",uid).maybeSingle();
+ if(me?.id!==uid)return;
+ if(!own.error&&own.data?.visible)await db.from("gyste_presence").update({last_seen:new Date().toISOString()}).eq("user_id",uid);
+ const nodes=[...document.querySelectorAll("[data-presence-peer]")];
+ const ids=[...new Set(nodes.map(n=>n.dataset.presencePeer))];
+ if(ids.length){const res=await db.from("gyste_presence").select("user_id,last_seen").in("user_id",ids).eq("visible",true);
+ if(me?.id!==uid)return;
+ for(const n of nodes){if(!n.isConnected)continue;const p=res.data?.find(x=>x.user_id===n.dataset.presencePeer);const age=p?Math.max(0,Date.now()-Date.parse(p.last_seen)):Infinity;n.textContent=res.error?"Estado no disponible":!p?"Estado no compartido":age<90000?"🟢 Activo recientemente":"⚪ Sin actividad reciente · hace "+Math.max(1,Math.floor(age/60000))+" min";}
+ }
+ }catch{}finally{presenceBusy=false;}
+}
+async function bindPresenceChoice(){
+ const b=document.getElementById("presence-choice");if(!b||!me?.id)return;const uid=me.id;
+ const r=await db.from("gyste_presence").select("visible").eq("user_id",uid).maybeSingle();
+ if(!b.isConnected||me?.id!==uid)return;
+ if(r.error){b.textContent="Estado de actividad no disponible";return;}
+ let visible=!!r.data?.visible;b.textContent=visible?"Ocultar mi actividad":"Compartir mi actividad";b.disabled=false;
+ b.onclick=async()=>{b.disabled=true;const next=!visible;const w=await db.from("gyste_presence").upsert({user_id:uid,visible:next,last_seen:new Date().toISOString()},{onConflict:"user_id"});if(!b.isConnected||me?.id!==uid)return;if(w.error){b.textContent="No se pudo guardar. Reintentar";b.disabled=false;return;}await bindPresenceChoice();void presenceTick();};
+}
+setInterval(()=>void presenceTick(),30000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void presenceTick();});
+
 async function messagesView(page=0){
  page=Number.isSafeInteger(page)&&page>=0&&page<=10000?page:0;
  stopChatRefresh();stopVoiceCapture();chatRenderSignature="";chatMediaCache.clear();
@@ -3930,7 +3958,8 @@ async function messagesView(page=0){
   const ids=rows.map(m=>m.peer_id);let map={};
   if(ids.length){const {data:u}=await db.from("gyste_profiles").select("user_id,display_name,avatar_url").in("user_id",ids);(u||[]).forEach(x=>map[x.user_id]=x);}
   if(!valid())return;
-  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><div class="chat-inbox-list">${ids.map(id=>{const last=rows.find(m=>m.peer_id===id);const unread=Math.max(0,Number(last?.unread_count)||0);return `<div class="chat-contact"><button type="button" class="face" data-member-profile="${esc(id)}" aria-label="Ver perfil">${avatarContent(map[id])}</button><button type="button" class="chat-contact-text ghost" data-member-profile="${esc(id)}" aria-label="Ver perfil"><span><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span></button><button type="button" class="secondary" data-openchat="${esc(id)}" aria-label="Abrir conversación">Mensaje</button><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</div>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div><div class="actions">${page>0?'<button type="button" id="inbox-prev">Anteriores</button>':""}${hasMore?'<button type="button" id="inbox-next">Más conversaciones</button>':""}</div></section>`);
+  shell(`<section class="panel chat-inbox"><h2>Gyste Chat</h2><p class="muted">Tus conversaciones privadas</p><button type="button" class="secondary" id="presence-choice" disabled>Comprobando mi actividad…</button><p class="muted">Compartir actividad es opcional y solo visible para contactos con mensajes previos.</p><div class="chat-inbox-list">${ids.map(id=>{const last=rows.find(m=>m.peer_id===id);const unread=Math.max(0,Number(last?.unread_count)||0);return `<div class="chat-contact"><button type="button" class="face" data-member-profile="${esc(id)}" aria-label="Ver perfil">${avatarContent(map[id])}</button><button type="button" class="chat-contact-text ghost" data-member-profile="${esc(id)}" aria-label="Ver perfil"><span><b>${esc(map[id]?.display_name||"Miembro")}</b><span class="chat-snippet" data-presence-peer="${esc(id)}">Comprobando actividad…</span><span class="chat-snippet">${esc((last?.content||"").slice(0,100))}</span></span></button><button type="button" class="secondary" data-openchat="${esc(id)}" aria-label="Abrir conversación">Mensaje</button><span class="chat-last-time">${esc(chatClock(last?.created_at))}</span>${unread?`<span class="chat-count" aria-label="${unread} mensajes sin leer">${unread}</span>`:""}</div>`;}).join("")||'<p class="muted">Aún no tienes conversaciones.</p>'}</div><div class="actions">${page>0?'<button type="button" id="inbox-prev">Anteriores</button>':""}${hasMore?'<button type="button" id="inbox-next">Más conversaciones</button>':""}</div></section>`);
+  void bindPresenceChoice();void presenceTick();
   const prev=document.getElementById("inbox-prev"),next=document.getElementById("inbox-next");
   if(prev)prev.onclick=()=>{if(valid())messagesView(page-1);};
   if(next)next.onclick=()=>{if(valid())messagesView(page+1);};
@@ -3971,7 +4000,8 @@ async function messagesView(page=0){
  if(personError){shell(`<p class="error">No se pudo cargar el perfil: ${esc(personError.message)}</p>`);return;}
  chatPeerProfile=person;
  const canCompose=chatContactAvailable(person);
- shell(`<section class="panel chat-thread"><div class="chat-header"><button type="button" id="back" class="ghost" aria-label="Volver a conversaciones">←</button><button type="button" class="face" id="chat-open-profile" aria-label="Ver perfil" ${person?"":"disabled"}>${avatarContent(person)}</button><div class="chat-person"><h2><button type="button" class="ghost" id="chat-profile-name" ${person?"":"disabled"}>${esc(person?.display_name||"Conversación")} · Ver perfil</button></h2><p class="muted">Conversación privada</p></div></div><details class="chat-safety"><summary>Seguridad y opciones</summary><button type="button" id="block-chat" class="secondary">Bloquear usuario</button>${chatSafetyNotice(person)}</details>${!canCompose?'<p role="status">Este perfil no está disponible. Puedes consultar mensajes anteriores, pero no enviar nuevos.</p>':""}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><button type="button" class="secondary" id="chat-reload-files">Actualizar conversación y archivos</button><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><label id="chat-light-photo-option" hidden><input type="checkbox" id="chat-light-photo" ${gysteDataSaver()?"checked":""}> Enviar foto ligera (reduce tamaño y puede reducir calidad)</label><p class="muted">Android e iPhone: JPG y PNG recomendados. HEIC/HEIF se convierten a JPG si el navegador puede abrirlos. Para vídeos, usa MP4 con H.264. En conexión Ligera se intentan optimizar los vídeos cortos compatibles; si no es posible, se conserva el original.</p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
+ shell(`<section class="panel chat-thread"><div class="chat-header"><button type="button" id="back" class="ghost" aria-label="Volver a conversaciones">←</button><button type="button" class="face" id="chat-open-profile" aria-label="Ver perfil" ${person?"":"disabled"}>${avatarContent(person)}</button><div class="chat-person"><h2><button type="button" class="ghost" id="chat-profile-name" ${person?"":"disabled"}>${esc(person?.display_name||"Conversación")} · Ver perfil</button></h2><p class="muted" data-presence-peer="${esc(target)}">Comprobando actividad…</p></div></div><details class="chat-safety"><summary>Seguridad y opciones</summary><button type="button" id="block-chat" class="secondary">Bloquear usuario</button>${chatSafetyNotice(person)}</details>${!canCompose?'<p role="status">Este perfil no está disponible. Puedes consultar mensajes anteriores, pero no enviar nuevos.</p>':""}<div id="chatlist" aria-live="polite" style="max-height:55vh;min-height:130px;overflow:auto"></div><p id="chat-refresh-status" class="muted" role="status"></p><button type="button" class="secondary" id="chat-reload-files">Actualizar conversación y archivos</button><p id="chatstatus" class="error" role="status" aria-live="polite"></p>${canCompose?`<form id="sendmsg"><div class="commentform"><input id="msg" class="field" maxlength="5000" placeholder="Escribe un mensaje…" aria-label="Mensaje" autocomplete="off"><button type="submit" id="sendmsgbtn" class="primary">Enviar</button></div><label class="muted">📎 Adjuntar foto, vídeo o audio (máx. 50 MB)<input id="chatfile" class="field" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav"></label><p class="muted" id="chatfile-status" aria-live="polite"></p><label id="chat-light-photo-option" hidden><input type="checkbox" id="chat-light-photo" ${gysteDataSaver()?"checked":""}> Enviar foto ligera (reduce tamaño y puede reducir calidad)</label><p class="muted">Android e iPhone: JPG y PNG recomendados. HEIC/HEIF se convierten a JPG si el navegador puede abrirlos. Para vídeos, usa MP4 con H.264. En conexión Ligera se intentan optimizar los vídeos cortos compatibles; si no es posible, se conserva el original.</p><div id="chatfile-preview" hidden></div><button type="submit" class="primary full" id="send-chat-file" hidden>Enviar archivo seleccionado</button><div class="actions"><button type="button" class="secondary" id="voice-record">🎙 Grabar voz</button><button type="button" class="secondary" id="voice-cancel" hidden>Cancelar audio</button></div><div id="voice-preview" aria-live="polite"></div><p class="muted">Los participantes pueden conservar o copiar los archivos que reciben.</p></form>`:""}</section>`);
+ void presenceTick();
  document.getElementById("chat-open-profile").onclick=()=>openMemberProfile(requestedChat);
  document.getElementById("chat-profile-name").onclick=()=>openMemberProfile(requestedChat);
  document.getElementById("back").onclick=()=>{if(!confirmNavigationDraft())return;stopVoiceCapture();stopChatRefresh();chatUser=null;messagesView();};
