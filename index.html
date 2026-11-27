@@ -3637,7 +3637,7 @@ async function changeProfileImage(kind,file){
  const storage=db.storage.from(PROFILE_BUCKET);let newPath=null;let oldPath=null;
  try{
   profilePhotoStatus(file?"Preparando fotografía…":"Quitando fotografía…");
-  if(file&&(!Object.hasOwn(extensions,file.type)||file.size>PROFILE_MAX_BYTES)){file=await gysteOptimizePhoto(file,"light",true);if(!Object.hasOwn(extensions,file.type)||file.size>PROFILE_MAX_BYTES)throw Error("La imagen no se pudo convertir a JPG, PNG o WebP de hasta 5 MB");}
+  if(file){const original=file;try{const optimized=await gysteOptimizePhoto(file,"light",true);if(optimized.size<original.size||!Object.hasOwn(extensions,original.type)||original.size>PROFILE_MAX_BYTES)file=optimized;}catch(e){if(!Object.hasOwn(extensions,original.type)||original.size>PROFILE_MAX_BYTES)throw e;}if(!file.size||!Object.hasOwn(extensions,file.type)||file.size>PROFILE_MAX_BYTES)throw Error("La imagen no se pudo convertir a JPG, PNG o WebP de hasta 5 MB");}
   if(file)profilePhotoStatus("Subiendo fotografía…");
   const current=await db.from("gyste_profiles").select(key).eq("user_id",uid).single();
   if(current.error)throw current.error;
@@ -3653,6 +3653,7 @@ async function changeProfileImage(kind,file){
   if(me?.id!==uid)throw new Error("La sesión ha cambiado. Vuelve a intentarlo.");
   const saved=await db.from("gyste_profiles").update({[key]:url,updated_at:new Date().toISOString()}).eq("user_id",uid).select().single();
   if(saved.error)throw saved.error;
+  if(!saved.data||saved.data[key]!==url)throw Error("No se pudo confirmar la fotografía guardada.");
   if(me?.id===uid){me={...me,...saved.data};refreshProfilePhotoControls();}
   // Remove only objects belonging to this account, after the database update succeeds.
   // Avoid deleting on uncertain network failures (the saved URL may already be in use).
