@@ -3184,7 +3184,7 @@ async function publish(options={}){
   if(!active())throw Error("Sección cerrada");
   if(insertAttempted)postCommitted=await confirmPublishedPost(uid,postId);
   if(!postCommitted){insertAttempted=true;draft.insertAttempted=true;
-  try{const {error}=await insertGystePost(newPost,members);if(error)throw error;postCommitted=true;}
+  try{const {error}=await insertGystePost(newPost,members);if(error)throw error;postCommitted=await confirmPublishedPost(uid,postId);if(!postCommitted)throw Error("Publicación no confirmada por el servidor");}
   catch(error){if(me?.id===uid)postCommitted=await confirmPublishedPost(uid,postId);if(!postCommitted)throw error;}}
   pendingPostTransfers.delete(mediaInput);
   if(me?.id!==uid)return {ok:true,warning:true};
