@@ -328,6 +328,14 @@ header{gap:6px;padding:8px 9px}
 .chat-contact .chat-snippet{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:12px}
 .chat-contact .chat-count{background:var(--mint);color:#082b3a;border-radius:20px;padding:4px 8px;font-weight:800;font-size:11px;white-space:nowrap}
 .chat-contact .chat-last-time{font-size:10px;color:var(--muted);white-space:nowrap}
+.chat-inbox .chat-contact{display:grid;grid-template-columns:44px minmax(0,1fr) auto;grid-template-areas:"avatar text time" "avatar text action";gap:4px 9px;max-width:100%;box-sizing:border-box;}
+.chat-inbox .chat-contact>.face{grid-area:avatar;width:44px;height:44px;min-width:0;padding:0;overflow:hidden;align-self:center;}
+.chat-inbox .chat-contact>.chat-contact-text{grid-area:text;width:100%;min-width:0;max-width:100%;padding:4px 0;border:0;text-align:left;align-items:stretch;overflow:hidden;white-space:normal;}
+.chat-inbox .chat-contact-text>span,.chat-inbox .chat-contact-text b,.chat-inbox .chat-snippet{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chat-inbox .chat-contact>[data-openchat]{grid-area:action;font-size:12px;padding:7px 9px;min-width:0;white-space:nowrap;}
+.chat-inbox .chat-contact>.chat-last-time{grid-area:time;text-align:right;}
+.chat-inbox .chat-contact>.chat-count{grid-column:2;grid-row:3;justify-self:start;}
+.chat-inbox,.chat-inbox-list{min-width:0;max-width:100%;box-sizing:border-box;}
 /* Perfil Aurora: portada, identidad y contenido primero */
 .profile-section{padding:0 0 14px;max-width:750px;margin-inline:auto;border-radius:19px;overflow:hidden}
 .profile-section .profile-cover{height:clamp(135px,39vw,245px);border-radius:18px 18px 0 0;background:linear-gradient(120deg,#164d66,#236b76 52%,#554d86)}
