@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-28-r69">
+<meta name="gyste-build" content="2026-11-28-r70">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -651,6 +651,8 @@ function scamSignals(raw){
  if(/\b(premio|sorteo|herencia|prize|lottery)\b/.test(t)&&/\b(paga|pago|comision|fee|pay|deposito)\b/.test(t))f.push("Premio condicionado a un pago");
  if(/ganancias garantizadas|rentabilidad garantizada|duplica tu dinero|guaranteed returns|double your money/.test(t))f.push("Promesa de ganancias garantizadas");
  if(/\b(urgente|ahora mismo|cuenta bloqueada|urgent|immediately)\b/.test(t)&&/\b(paga|verifica|confirma|transferencia|pay|verify|bizum|codigo)\b/.test(t))f.push("Presión para pagar o verificar");
+ if(/\b(soy tu hijo|soy tu hija|soy mama|soy papa|hola mama|hola papa|nuevo numero|cambie de numero)\b/.test(t)&&/\b(dinero|transferencia|bizum|paga|prestamo|enviame)\b/.test(t))f.push("Posible suplantación de un familiar con solicitud de dinero");
+ if(/\b(anydesk|teamviewer|rustdesk|acceso remoto|control remoto)\b/.test(t)&&/\b(instala|descarga|permite|comparte|codigo|banco)\b/.test(t))f.push("Solicitud de acceso remoto al dispositivo");
  const links=t.match(/https?:\/\/[^\s<>"']+/g)||[];
  if(links.some(link=>{const authority=link.replace(/^https?:\/\//,"").split(/[/?#]/)[0];const host=authority.replace(/:\d+$/,"").replace(/\.$/,"");return authority.includes("@")||/^(bit\.ly|tinyurl\.com|t\.co|is\.gd|cutt\.ly|rb\.gy)$/.test(host)||/(^|\.)xn--/.test(host)||/^\d+(\.\d+){3}$/.test(host);}))f.push("Enlace que merece revisión");
  return f;
