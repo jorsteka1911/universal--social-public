@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-28-r72">
+<meta name="gyste-build" content="2026-11-28-r73">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1025,7 +1025,7 @@ async function challengesView(){
 }
 const FEEDBACK_LABELS={idea:"Nueva idea",error:"Error técnico",accessibility:"Accesibilidad",safety:"Seguridad y privacidad",other:"Otra propuesta"};
 const FEEDBACK_STATES={pending:"Recibida",reviewed:"Revisada",implemented:"Implementada",closed:"Cerrada"};
-function aboutGysteView(){shell('<section class="panel"><h2>Acerca de Gyste</h2><p><a href="/presentacion.html">Presentación del piloto y guía de pruebas</a></p><p>GYSTE fue concebido y promovido por su fundador, JORSTEKA (cuenta de desarrollo jorsteka1911). Su desarrollo incorpora aportaciones humanas y asistencia de herramientas de inteligencia artificial.</p><p>© 2026 Gyste / JORSTEKA. Derechos reservados sobre las aportaciones originales que correspondan a sus titulares. Los contenidos de usuarios y componentes externos conservan sus derechos y licencias respectivos.</p><p>Versión beta. La identificación del fundador no implica una cesión de derechos a usuarios ni inversores. Los derechos de propiedad intelectual se reconocen en la medida en que correspondan legalmente a sus titulares. Esta mención no acredita un registro oficial de marca ni de propiedad intelectual.</p><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><button class="secondary full" data-tab="feedback">Enviar sugerencia</button></section>');}
+function aboutGysteView(){shell('<section class="panel"><h2>Acerca de Gyste</h2><p><a href="/presentacion.html">Presentación del piloto y guía de pruebas</a></p><p>GYSTE fue concebido y promovido por su fundador, JORSTEKA (cuenta de desarrollo jorsteka1911). Su desarrollo incorpora aportaciones humanas y asistencia de herramientas de inteligencia artificial.</p><p>© 2026 Gyste / JORSTEKA. Derechos reservados sobre las aportaciones originales que correspondan a sus titulares. Los contenidos de usuarios y componentes externos conservan sus derechos y licencias respectivos.</p><p>Versión beta. La identificación del fundador no implica una cesión de derechos a usuarios ni inversores. Los derechos de propiedad intelectual se reconocen en la medida en que correspondan legalmente a sus titulares. Esta mención no acredita un registro oficial de marca ni de propiedad intelectual.</p><p><a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Información de privacidad (beta) ↗</a> · <a href="/condiciones.html" target="_blank" rel="noopener noreferrer">Normas y condiciones (beta) ↗</a></p><p class="muted">¿Tienes una idea o has encontrado un problema? Puedes comunicarlo de forma privada al equipo.</p><button type="button" class="secondary full" data-tab="feedback">Enviar sugerencia o informar de un error</button></section>');}
 let commercialInterest=null,safetyFeedbackRequest=null;
 const GYSTE_OFFERS=[
  {id:"local7",title:"Escaparate local",price:"4,99 €",period:"7 días",description:"Propuesta de ficha destacada en el directorio de negocios, identificada como patrocinada."},
