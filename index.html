@@ -1829,7 +1829,7 @@ async function goReelCompose(initialFile=null,initialCaption=""){
  if(!input||!button||!audience||!status)return;
  document.getElementById("pick-post-photo")?.remove();document.getElementById("pick-post-video")?.remove();
  input.accept="video/mp4,video/webm";input.multiple=true;audience.value="public";audience.onchange?.();
- const label=input.closest("label");if(label?.firstChild?.nodeType===3)label.firstChild.textContent="Vídeos para Reels (hasta 10, 50 MB por vídeo)";
+ const label=input.closest("label");if(label?.firstChild?.nodeType===3)label.firstChild.textContent="Vídeos para Reels (hasta 10, 50 MB por vídeo; admite vídeos de 2–3 min si caben)";
  const hint=document.createElement("p");hint.className="muted";hint.textContent="Selecciona varios vídeos juntos o añade uno tras otro. Recomendamos MP4 con H.264 y AAC para Android e iPhone. Los MOV deben exportarse a MP4. Cada vídeo se guarda como un Reel independiente. La privacidad empieza en Público; puedes cambiarla antes de compartir.";input.parentElement.insertBefore(hint,input);
  const list=document.createElement("div");input.parentElement.append(list);
  const feedback=document.createElement("p");feedback.id="reel-upload-status";feedback.setAttribute("role","status");feedback.setAttribute("aria-live","polite");button.insertAdjacentElement("afterend",feedback);
@@ -2662,9 +2662,9 @@ function bindVideoRecovery(frame,video){
 function gysteCompressionPlan(kind,bytes,mode,duration=0,width=0,height=0){
  if(mode==="original")return null;
  if(kind==="photo"&&bytes>250*1024)return {maxSide:mode==="light"?1280:1920,quality:mode==="light"?0.78:0.88,target:mode==="light"?0.75:0.85};
- if(kind==="video"&&mode==="light"&&bytes>=6*1048576&&duration>=4&&duration<=20&&width>0&&height>0&&width*height<=1920*1080){
+ if(kind==="video"&&mode==="light"&&bytes>=6*1048576&&duration>=4&&duration<=180&&width>0&&height>0&&width*height<=1920*1080){
   const rate=bytes*8/duration;
-  const videoBits=Math.min(1800000,Math.floor(rate*0.55)-96000);
+  const videoBits=Math.min(1800000,Math.floor(rate*0.55)-96000,Math.floor(45*1048576*8/duration)-96000);
   if(videoBits>=500000)return {videoBits,audioBits:96000,target:0.8};
  }
  return null;
@@ -2717,7 +2717,7 @@ async function gysteOptimizeVideo(file,mode,active,report){
   stream=video.captureStream();
   if(stream.getVideoTracks().length!==1||stream.getAudioTracks().length!==1)return file;
   recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:plan.videoBits,audioBitsPerSecond:plan.audioBits});
-  report("Optimizando vídeo corto en tu teléfono…");
+  report("Optimizando vídeo en tu teléfono. Mantén Gyste abierto…");
   const blob=await new Promise((resolve,reject)=>{
    const chunks=[];let finished=false,ended=false;const finish=(e,v)=>{if(finished)return;finished=true;clearTimeout(timer);clearInterval(tick);video.removeEventListener("ended",end);if(e)reject(e);else resolve(v);};
    const end=()=>{ended=true;if(recorder.state!=="inactive")recorder.stop();};
