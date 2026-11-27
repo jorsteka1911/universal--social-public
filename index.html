@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r64">
+<meta name="gyste-build" content="2026-11-27-r65">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -726,9 +726,10 @@ bindEditorialReactions();
 bindEditorialComments();
 bindCaribbeanBulletins();
 bindCubaBrief();
-app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{
-if(!confirmNavigationDraft())return;
-resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter=b.dataset.filter;tab="feed";renderTab();window.scrollTo({top:0,behavior:"smooth"});
+app.querySelectorAll("[data-filter]").forEach(b=>b.onclick=async event=>{
+event.preventDefault();event.stopPropagation();if(!confirmNavigationDraft())return;
+const requested=b.dataset.filter;if(!["all","following","mine"].includes(requested))return;
+resetFeedPage();sharedPostId=null;selectedSpaceId=null;homeFilter=requested;tab="feed";await renderTab();if(tab==="feed"&&homeFilter===requested){const target=document.getElementById("feed")||document.querySelector(".home-tabs");target?.scrollIntoView({block:"start",behavior:"auto"});}
 });
 }
 
