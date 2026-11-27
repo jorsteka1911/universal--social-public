@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r47">
+<meta name="gyste-build" content="2026-11-27-r48">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -4147,6 +4147,6 @@ start();
 // Register independently of authentication; no reload and no cached application data.
 if(document.readyState==="complete")void registerGysteOffline();else window.addEventListener("load",()=>{void registerGysteOffline();},{once:true});
 </script>
-<script>document.addEventListener("contextmenu",function(e){if(e.target instanceof Element&&!e.target.closest("input,textarea,[contenteditable=true]"))e.preventDefault();},true);document.addEventListener("selectstart",function(e){if(e.target instanceof Element&&!e.target.closest("input,textarea,[contenteditable=true]"))e.preventDefault();},true);</script>
+<script>(()=>{const editable=e=>e instanceof Element&&Boolean(e.closest("input,textarea,[contenteditable]:not([contenteditable=false])"));const suppress=e=>{if(!editable(e.target)&&e.cancelable)e.preventDefault();};for(const type of ["contextmenu","selectstart","dragstart"])document.addEventListener(type,suppress,{capture:true,passive:false});document.addEventListener("selectionchange",()=>{const sel=window.getSelection();if(!sel||sel.isCollapsed||editable(document.activeElement))return;const node=sel.anchorNode;const el=node?.nodeType===1?node:node?.parentElement;if(el&&!editable(el))sel.removeAllRanges();});})();</script>
 </body>
 </html>
