@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r58">
+<meta name="gyste-build" content="2026-11-27-r60">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3292,7 +3292,9 @@ async function showReactors(id,b){
  if(error){box.textContent="No se pudieron cargar las reacciones.";return;}
  const users=[...new Set((data||[]).map(x=>x.user_id))];let names={};
  if(users.length){const {data:p}=await db.from("gyste_profiles").select("user_id,display_name").in("user_id",users);(p||[]).forEach(x=>names[x.user_id]=x.display_name);}
- box.innerHTML=(data||[]).map(x=>{const kind=REACTION_TYPES.find(t=>t[0]===x.reaction_type)||REACTION_TYPES[0];return `<div>${kind[1]} <b>${esc(names[x.user_id]||"Miembro de Gyste")}</b> · ${kind[2]}</div>`;}).join("")||"Todavía no hay reacciones.";
+ if(!box.isConnected||box.classList.contains("hidden"))return;
+ box.innerHTML=(data||[]).map(x=>{const kind=REACTION_TYPES.find(t=>t[0]===x.reaction_type)||REACTION_TYPES[0];return `<div>${kind[1]} ${names[x.user_id]?`<button type="button" class="ghost" data-member-profile="${esc(x.user_id)}">${esc(names[x.user_id])}</button>`:"<b>Miembro de Gyste</b>"} · ${esc(kind[2])}</div>`;}).join("")||"Todavía no hay reacciones.";
+ box.querySelectorAll("[data-member-profile]").forEach(n=>{n.onclick=()=>openMemberProfile(n.dataset.memberProfile);});
 }
 const savingPostIds=new Set();
 function savedPostButtons(id){return Array.from(app.querySelectorAll("[data-savepost]")).filter(n=>n.dataset.savepost===id);}
