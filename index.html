@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r42">
+<meta name="gyste-build" content="2026-11-27-r43">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -599,7 +599,7 @@ function profileImageUrl(value){
  if(!value)return "";
  try{
   const u=new URL(value);const root=new URL(URL_DB);
-  return u.protocol==="https:"&&u.origin===root.origin&&u.pathname.startsWith("/storage/v1/object/public/")?u.href:"";
+  return u.protocol==="https:"&&u.origin===root.origin&&u.pathname.startsWith(`/storage/v1/object/public/${PROFILE_BUCKET}/`)&&!u.username&&!u.password?u.href:"";
  }catch{return "";}
 }
 function profileImageHTML(value){
