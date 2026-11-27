@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A1929">
-<meta name="gyste-build" content="2026-11-27-r60">
+<meta name="gyste-build" content="2026-11-27-r61">
 <link rel="manifest" href="/gyste.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/gyste-icon-192.svg">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3869,7 +3869,7 @@ function chatMarkup(items){
  let previousDay=null;
  return (items||[]).map(m=>{
  const mine=m.sender_id===me.id,day=chatDateKey(m.created_at),separator=day&&day!==previousDay?'<div class="chat-day">'+esc(chatDayLabel(m.created_at))+'</div>':"";previousDay=day;
- return separator+'<div class="chat-line '+(mine?"mine":"received")+'">'+(!mine?'<button type="button" class="face" data-member-profile="'+esc(m.sender_id)+'" aria-label="Ver perfil del remitente">'+avatarContent(chatPeerProfile)+'</button>':"")+'<div class="chat-bubble '+(m.media_path?"has-media":"")+'"><div class="bodytext">'+chatBody(m.content)+'</div>'+assistHTML(m.content,!mine)+chatAttachment(m)+'<small class="chat-time">'+esc(chatClock(m.created_at))+(mine?(m.read_at?' · Leído':' · Enviado'):"")+'</small></div></div>';
+ return separator+'<div class="chat-line '+(mine?"mine":"received")+'">'+(!mine?'<button type="button" class="face" data-member-profile="'+esc(m.sender_id)+'" aria-label="Ver perfil del remitente">'+avatarContent(chatPeerProfile)+'</button>':"")+'<div class="chat-bubble '+(m.media_path?"has-media":"")+'"><div class="bodytext">'+chatBody(m.content)+'</div>'+assistHTML(m.content,!mine)+chatAttachment(m)+'<small class="chat-time">'+esc(chatClock(m.created_at))+(mine?(m.read_at?' · ✓✓ Leído a las '+esc(chatClock(m.read_at)):' · ✓ Enviado (lectura sin confirmar)'):"")+'</small></div></div>';
  }).join("")||'<p class="muted">Inicia la conversación.</p>';
 }
 const chatRefreshLocks=new WeakSet(),chatRefreshQueued=new WeakSet();
