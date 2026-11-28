@@ -27,6 +27,9 @@ jobs:
             const fallback=await request('/');
             assert.equal(fallback.status,503);
             assert.equal(fallback.headers.get('Cache-Control'),'no-store');
+            assert.equal(fallback.headers.get('Referrer-Policy'),'no-referrer');
+            assert.equal(fallback.headers.get('X-Frame-Options'),'DENY');
+            assert.match(fallback.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);
             assert.match(await fallback.text(),/No hay conexión/);
             for(const path of ['/api/messages','/?token=secret','https://other.test/','/privacidad.html'])assert.equal(request(path),undefined);
             assert.equal(request('/','cors'),undefined);
