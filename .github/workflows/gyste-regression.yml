@@ -46,3 +46,6 @@ jobs:
           assert.ok(source.includes('getElementById("chat-profile-name").onclick=()=>openMemberProfile(requestedChat)'));
           console.log('Syntax and isolated profile navigation checks passed');
           NODE
+
+      - name: Verify push registration consent
+        run: node --test tests/push-registration.test.mjs
