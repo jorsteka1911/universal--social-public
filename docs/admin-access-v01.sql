@@ -16,6 +16,7 @@ begin
  where a.user_id=auth.uid() and u.deleted_at is null
  and u.confirmed_at is not null
  and s.id::text=auth.jwt()->>'session_id'
+ and (s.not_after is null or s.not_after > now())
  and coalesce(auth.jwt()->>'is_anonymous','false')='false'
  and (u.banned_until is null or u.banned_until < now())
  ) then raise exception 'Access denied' using errcode='42501'; end if;
