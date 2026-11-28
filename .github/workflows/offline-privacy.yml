@@ -1,0 +1,36 @@
+name: Offline privacy checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node <<'NODE'
+          const vm=require('node:vm'), fs=require('node:fs'), assert=require('node:assert/strict');
+          const handlers={};
+          let fail=false;
+          vm.runInNewContext(fs.readFileSync('sw.js','utf8'),{URL,Response,self:{location:{origin:'https://gyste.test'},addEventListener:(name,fn)=>handlers[name]=fn},fetch:async()=>{if(fail)throw Error('offline');return new Response('online')}});
+          function request(path,mode='navigate',method='GET'){
+            let response;
+            handlers.fetch({request:{url:new URL(path,'https://gyste.test').href,mode,method},respondWith:p=>response=p});
+            return response;
+          }
+          (async()=>{
+            assert.equal(await (await request('/')).text(),'online');
+            fail=true;
+            const fallback=await request('/');
+            assert.equal(fallback.status,503);
+            assert.equal(fallback.headers.get('Cache-Control'),'no-store');
+            assert.match(await fallback.text(),/No hay conexión/);
+            for(const path of ['/api/messages','/?token=secret','https://other.test/','/privacidad.html'])assert.equal(request(path),undefined);
+            assert.equal(request('/','cors'),undefined);
+            assert.equal(request('/','navigate','POST'),undefined);
+            console.log('Offline and request isolation checks passed');
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
