@@ -22,6 +22,7 @@ begin
  return jsonb_build_object(
  'registered_users',(select count(*) from auth.users where deleted_at is null),
  'registrations_24h',(select count(*) from auth.users where deleted_at is null and created_at>=now()-interval '24 hours'),
+ 'latest_registrations',coalesce((select jsonb_agg((to_jsonb(q)-'sort_id') order by q.registered_at desc,q.sort_id desc) from (select u.created_at as registered_at, u.id as sort_id, (select p.username from public.gyste_profiles p where p.user_id=u.id order by p.created_at desc limit 1) as username, u.confirmed_at is not null as confirmed from auth.users u where u.deleted_at is null order by u.created_at desc,u.id desc limit 100) q),'[]'::jsonb),
  'total_posts',(select count(*) from public.posts),
  'pending_feedback',(select count(*) from public.gyste_feedback where status='pending')
  );
