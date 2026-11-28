@@ -11,3 +11,5 @@ test("all unavailable engines explain why",()=>{const r=request("GET");for(const
 test("reject other modifying methods",()=>{for(const method of ["PUT","PATCH","DELETE"])assert.equal(request(method).code,405);});
 
 test("security headers apply to success and errors",()=>{for(const method of ["GET","POST"]){const r=request(method);assert.equal(r.headers["X-Frame-Options"],"DENY");assert.equal(r.headers["Referrer-Policy"],"no-referrer");assert.match(r.headers["Content-Security-Policy"],/frame-ancestors 'none'/);}});
+
+test("creative status restricts cross-origin embedding",()=>{for(const method of ["GET","POST"])assert.equal(request(method).headers["Cross-Origin-Resource-Policy"],"same-origin");});
