@@ -3734,7 +3734,7 @@ function paintUnreadBadges(){
 async function refreshUnreadBadges(force=false){
  const uid=me?.id;if(!uid||session?.user?.id!==uid||document.hidden||navigator.onLine===false)return;
  if(unreadState.uid!==uid)unreadState={uid,stamp:0,serial:0,loading:false,messages:null,notifications:null};
- const state=unreadState,now=Date.now(),interval=gysteDataSaver(uid)?120000:60000;
+ const state=unreadState,now=Date.now(),interval=gysteDataSaver(uid)?120000:15000;
  if(!force&&(state.loading||now-state.stamp<interval))return;
  const serial=++state.serial;state.loading=true;state.stamp=now;
  try{
@@ -4192,7 +4192,7 @@ if(expiring){const state=navigationDraftState();const viewing=Boolean(document.f
 document.addEventListener("play",e=>{if(e.target instanceof HTMLMediaElement)document.querySelectorAll("video,audio").forEach(m=>{if(m!==e.target&&!m.paused)m.pause();});},true);
 for(const event of ["play","playing","waiting","stalled","pause","ended","error","emptied","seeking"])document.addEventListener(event,observeVideoTiming,true);
 document.addEventListener("visibilitychange",()=>{if(document.hidden)gysteMediaTimings=new WeakMap();else void refreshUnreadBadges();});
-setInterval(()=>{if(!document.hidden)void refreshUnreadBadges();},60000);
+setInterval(()=>{if(!document.hidden)void refreshUnreadBadges();},15000);
 window.addEventListener("pagehide",stopVoiceCapture);
 window.addEventListener("error",e=>{if(e.target===window)gysteFault("programa");else if(e.target instanceof HTMLMediaElement&&app.contains(e.target))gysteFault("archivos");},true);
 window.addEventListener("unhandledrejection",()=>gysteFault("programa"));
