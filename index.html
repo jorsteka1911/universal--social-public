@@ -2876,14 +2876,14 @@ const pickPostFile=(accept)=>{const media=document.getElementById("media");if(me
 pickPhoto.onclick=()=>pickPostFile("image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif");pickVideo.onclick=()=>pickPostFile("video/mp4,video/webm");
 const quickCompose=document.getElementById("quick-compose");if(quickCompose)quickCompose.onclick=()=>revealPostComposer(true);
 const closeComposer=document.getElementById("composer-close");if(closeComposer)closeComposer.onclick=()=>{if(publishLocks.has(me?.id))return;document.getElementById("composer").hidden=true;quickCompose?.setAttribute("aria-expanded","false");quickCompose?.focus({preventScroll:true});quickCompose?.scrollIntoView({block:"center"});};
-const quickMedia=document.getElementById("quick-media");if(quickMedia)quickMedia.onclick=()=>{const media=document.getElementById("media");if(media&&!media.disabled){revealPostComposer();media.click();}};
+const quickMedia=document.getElementById("quick-media");if(quickMedia)quickMedia.onclick=()=>{revealPostComposer();pickPostFile("image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif");};
 const quickStudio=document.getElementById("quick-studio");if(quickStudio)quickStudio.onclick=()=>document.getElementById("open-creator-studio")?.click();
  document.getElementById("open-creator-studio").onclick=()=>goTab("studio");
  bindAudiencePicker();
  bindPostDraft();
  document.getElementById("media").onchange=e=>{
  const files=Array.from(e.target.files||[]),bytes=files.reduce((n,f)=>n+f.size,0);
- renderPostPreviews(bytes<=MAX_POST_BYTES&&files.length<=MAX_POST_FILES?files:[]);if(files.length)document.getElementById("post-preview")?.scrollIntoView({block:"center",behavior:"auto"});
+ renderPostPreviews(bytes<=MAX_POST_BYTES&&files.length<=MAX_POST_FILES?files:[]);if(files.length)document.getElementById("publish")?.scrollIntoView({block:"center",behavior:"auto"});
  document.getElementById("media-selection").textContent=files.length?files.length+" archivo(s) · "+(bytes/1024/1024).toFixed(1)+" MB"+(files.length>MAX_POST_FILES||bytes>MAX_POST_BYTES?" · Supera el límite":files.some(f=>postFileMode(f)==="invalid")?" · Hay formatos no admitidos. Usa JPG, PNG, WebP o MP4.":files.some(f=>postFileMode(f)==="convert")?" · Se intentará convertir las fotos compatibles a JPG antes de publicar.":""):"Puedes seleccionar varias fotos de una vez.";
  };
 bindPostActions();
