@@ -1,0 +1,31 @@
+name: Android PWA checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  pwa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node <<'NODE'
+          const fs=require('node:fs'),assert=require('node:assert/strict');
+          const m=JSON.parse(fs.readFileSync('gyste.webmanifest','utf8'));
+          assert.equal(m.start_url,'/');
+          assert.equal(m.scope,'/');
+          assert.equal(m.display,'standalone');
+          assert.ok(m.name && m.short_name);
+          for(const size of ['192x192','512x512']){
+            const icon=m.icons.find(i=>i.sizes===size);
+            assert.ok(icon);
+            assert.ok(fs.existsSync('.'+icon.src));
+            assert.ok(fs.statSync('.'+icon.src).size>0);
+          }
+          const html=fs.readFileSync('index.html','utf8');
+          assert.match(html,/gyste\.webmanifest/);
+          assert.match(html,/serviceWorker/);
+          console.log('PWA manifest and asset checks passed');
+          NODE
