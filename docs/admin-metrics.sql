@@ -14,3 +14,13 @@ select count(*) as total_posts,
  count(*) filter (where created_at >= now()-interval '24 hours') as posts_24h,
  count(distinct user_id) filter (where created_at >= now()-interval '7 days') as publishing_users_7d
 from public.posts;
+
+-- Authorized SQL editor only. Never expose this query directly to clients.
+-- Latest 100 registrations, including accounts without a profile.
+select (select p.username from public.gyste_profiles p
+ where p.user_id=u.id order by p.created_at desc limit 1) as username,
+ u.created_at as registered_at,
+ u.created_at at time zone 'Europe/Madrid' as registered_local,
+ u.confirmed_at is not null as confirmed
+from auth.users u where u.deleted_at is null
+order by u.created_at desc,u.id desc limit 100;
