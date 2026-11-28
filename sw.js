@@ -5,5 +5,5 @@ self.addEventListener("activate",event=>{event.waitUntil(self.clients.claim());}
 self.addEventListener("fetch",event=>{
  const request=event.request,url=new URL(request.url);
  if(request.method!=="GET"||request.mode!=="navigate"||url.origin!==self.location.origin||!["/","/index.html"].includes(url.pathname)||url.search)return;
- event.respondWith(fetch(request).catch(()=>new Response(OFFLINE_HTML,{status:503,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"}})));
+ event.respondWith(fetch(request).catch(()=>new Response(OFFLINE_HTML,{status:503,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}})));
 });
