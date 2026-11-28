@@ -11,3 +11,13 @@ export async function registerGystePush({publicKey,save,registration,notificatio
  await save(subscription.toJSON());
  return {registered:true,permission};
 }
+
+export async function unregisterGystePush({registration,remove}={}){
+ if(!registration?.pushManager||typeof remove!=="function")throw Error("push_unavailable");
+ const subscription=await registration.pushManager.getSubscription();
+ if(!subscription)return {registered:false};
+ await remove(subscription.endpoint);
+ const stopped=await subscription.unsubscribe();
+ if(!stopped&&await registration.pushManager.getSubscription())throw Error("unsubscribe_failed");
+ return {registered:false};
+}
