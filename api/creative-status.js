@@ -2,6 +2,9 @@
 export default function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({error:"method_not_allowed"});
