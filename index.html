@@ -3466,7 +3466,7 @@ shell(`<section class="panel explore-hero"><h1>Explorar Gyste</h1><p>Encuentra p
 const input=document.getElementById("search"),box=document.getElementById("people"),status=document.getElementById("people-status"),more=document.getElementById("people-more");
 let serial=0,timer=null,offset=0;const size=30,valid=()=>tab==="explore"&&me?.id===uid&&input.isConnected;
 async function search(append=false){
- const n=++serial,term=input.value.trim().replace(/^@/,"").replace(/[^\p{L}\p{N}_ .-]/gu,"").replace(/[%_,]/g,"").trim();
+ const n=++serial,term=input.value.trim().replace(/^@/,"").replace(/[^\p{L}\p{N}_ .-]/gu,"").replace(/[%,]/g,"").trim();
  if(!valid())return;
  if(!append){offset=0;box.replaceChildren();profiles=[];}
  more.hidden=true;
@@ -3474,7 +3474,13 @@ async function search(append=false){
  status.textContent="Buscando…";
  try{
  const base=()=>db.from("gyste_profiles").select("user_id,username,display_name,bio,avatar_url").neq("user_id",uid).order("display_name").order("user_id");
- const query=term?base().or("display_name.ilike.%"+term+"%,username.ilike.%"+term+"%"):base();
+ // Match each name fragment independently while retaining database visibility rules.
+ const words=term.split(/\s+/).filter(Boolean).slice(0,8);
+ let query=base();
+ for(const word of words){
+ const pattern=word.replace(/_/g,"\\_");
+ query=query.or("display_name.ilike.%"+pattern+"%,username.ilike.%"+pattern+"%");
+ }
  const {data,error}=await query.range(offset,offset+size-1);
  if(!valid()||n!==serial)return;if(error)throw error;
  const batch=data||[];profiles=[...new Map([...profiles,...batch].map(p=>[p.user_id,p])).values()];offset+=batch.length;
