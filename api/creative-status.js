@@ -9,8 +9,8 @@ export default function handler(req, res) {
   return res.status(200).json({
     schemaVersion: 1,
     sceneGeneration: {available:false, reason:"provider_not_connected"},
-    imageAnimation: {available:false},
-    automaticNarration: {available:false},
+    imageAnimation: {available:false, reason:"provider_not_connected"},
+    automaticNarration: {available:false, reason:"provider_not_connected"},
     billingEnabled:false
   });
 }
