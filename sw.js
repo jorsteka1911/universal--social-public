@@ -7,3 +7,20 @@ self.addEventListener("fetch",event=>{
  if(request.method!=="GET"||request.mode!=="navigate"||url.origin!==self.location.origin||!["/","/index.html"].includes(url.pathname)||url.search)return;
  event.respondWith(fetch(request).catch(()=>new Response(OFFLINE_HTML,{status:503,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}})));
 });
+ // Generic push notices deliberately omit sender names and private content.
+ self.addEventListener("push",event=>{
+  event.waitUntil(self.registration.showNotification("Gyste",{
+   body:"Tienes una nueva actividad. Abre Gyste para consultarla.",
+   tag:"gyste-activity",
+   data:{path:"/"}
+  }));
+ });
+ self.addEventListener("notificationclick",event=>{
+  event.notification.close();
+  event.waitUntil((async()=>{
+   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+   const existing=windows.find(client=>new URL(client.url).origin===self.location.origin&&["/","/index.html"].includes(new URL(client.url).pathname));
+   if(existing)return existing.focus();
+   return self.clients.openWindow(new URL("/",self.location.origin).href);
+  })());
+ });
