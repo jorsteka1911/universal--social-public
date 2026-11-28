@@ -52,3 +52,6 @@ jobs:
 
       - name: Verify push subscription validation
         run: node --test tests/push-subscription-validation.test.mjs
+
+      - name: Verify authenticated push ownership
+        run: node --test tests/push-registration-server.test.mjs
